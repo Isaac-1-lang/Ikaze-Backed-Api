@@ -31,3 +31,32 @@ build/
 
 ### VS Code ###
 .vscode/
+
+### Environment Variables ###
+.env
+.env.local
+.env.development
+.env.production
+
+### Logs ###
+logs/
+*.log
+
+### Database ###
+*.db
+*.sqlite
+*.sqlite3
+
+### OS Generated Files ###
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+### Application Specific ###
+uploads/
+temp/
+*.tmp
