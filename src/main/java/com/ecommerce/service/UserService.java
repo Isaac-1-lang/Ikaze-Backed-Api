@@ -20,7 +20,7 @@ public class UserService {
         User user = new User();
         user.setFirstName(registrationDTO.getFirstName());
         user.setLastName(registrationDTO.getLastName());
-        user.setEmail(registrationDTO.getEmail());
+        user.setUserEmail(registrationDTO.getEmail());
         user.setPhoneNumber(registrationDTO.getPhoneNumber());
         user.setPassword(passwordEncoder.encode(registrationDTO.getPassword()));
         user.setRole(User.UserRole.CUSTOMER);

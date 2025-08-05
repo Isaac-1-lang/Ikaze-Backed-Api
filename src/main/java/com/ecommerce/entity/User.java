@@ -90,6 +90,12 @@ public class User implements UserDetails {
     @Column(name = "updated_at")
     private LocalDateTime updatedAt;
 
+    @Column(name = "reset_token")
+    private String resetToken;
+
+    @Column(name = "reset_token_expiry")
+    private LocalDateTime resetTokenExpiry;
+
     @OneToMany(mappedBy = "user", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
     private Set<Address> addresses;
 
@@ -153,5 +159,30 @@ public class User implements UserDetails {
 
     public enum AuthProvider {
         LOCAL, GOOGLE, FACEBOOK
+    }
+
+    public void setUserPassword(String hashedPassword) {
+        // TODO Auto-generated method stub
+        throw new UnsupportedOperationException("Unimplemented method 'setUserPassword'");
+    }
+
+    public void setUserPhone(String userPhone) {
+        // TODO Auto-generated method stub
+        throw new UnsupportedOperationException("Unimplemented method 'setUserPhone'");
+    }
+
+    public void createResetToken(String token) {
+        this.resetToken = token;
+        this.resetTokenExpiry = LocalDateTime.now().plusMinutes(15);
+    }
+
+    public boolean isResetTokenValid(String token) {
+        return this.resetToken != null && this.resetToken.equals(token)
+                && this.resetTokenExpiry.isAfter(LocalDateTime.now());
+    }
+
+    public void clearResetToken() {
+        this.resetToken = null;
+        this.resetTokenExpiry = null;
     }
 }
