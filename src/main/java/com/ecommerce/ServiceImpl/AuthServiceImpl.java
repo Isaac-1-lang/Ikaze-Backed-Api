@@ -5,10 +5,10 @@ import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.Authentication;
-import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
+import com.ecommerce.Exception.CustomException;
 import com.ecommerce.dto.LoginDto;
 import com.ecommerce.dto.LoginResponseDto;
 import com.ecommerce.dto.RegisterDto;
@@ -42,7 +42,7 @@ public class AuthServiceImpl implements AuthService {
     public String registerUser(RegisterDto registerDto) {
 
         if (userRepository.findByUserEmail(registerDto.getUserEmail()).isPresent()) {
-            return "Email already exists";
+            throw new CustomException("Email already exists");
         }
 
         String hashedPassword = passwordEncoder.encode(registerDto.getUserPassword());
@@ -56,7 +56,7 @@ public class AuthServiceImpl implements AuthService {
 
         User savedUser = userRepository.save(user);
 
-        // after successful registration,I send a welcome email
+    
         emailService.sendSimpleEmail(
                 savedUser.getUserEmail(),
                 "Welcome to Our App!",
@@ -77,7 +77,7 @@ public class AuthServiceImpl implements AuthService {
 
             if (authentication.isAuthenticated()) {
                 User user = userRepository.findByUserEmail(loginDto.getUserEmail()) // Updated to use findByUserEmail
-                        .orElseThrow(() -> new UsernameNotFoundException("User not found"));
+                        .orElseThrow(() -> new CustomException("User not found"));
 
                 // Fix: Pass both username and role to generateToken
                 String token = jwtService.generateToken(user.getUserEmail(), user.getRole().name());
@@ -86,11 +86,9 @@ public class AuthServiceImpl implements AuthService {
                         user.getId(), user.getRole());
             }
         } catch (BadCredentialsException e) {
-            throw new BadCredentialsException("Invalid username or password");
-        } catch (UsernameNotFoundException e) {
-            throw new UsernameNotFoundException("User not found");
+            throw new CustomException("Invalid username or password");
         }
-        throw new RuntimeException("Login failed");
+        throw new CustomException("Login failed");
     }
 
     @Override
