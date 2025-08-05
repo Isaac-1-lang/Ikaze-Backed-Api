@@ -41,7 +41,7 @@ public class User implements UserDetails {
     @Email(message = "Email should be valid")
     @NotBlank(message = "Email is required")
     @Column(unique = true, nullable = false)
-  private String userEmail;
+    private String userEmail;
 
     @Pattern(regexp = "^\\+?[1-9]\\d{1,14}$", message = "Phone number should be valid")
     @Column(name = "phone_number")
@@ -120,7 +120,7 @@ public class User implements UserDetails {
 
     @Override
     public String getUsername() {
-        return email;
+        return userEmail;
     }
 
     @Override
