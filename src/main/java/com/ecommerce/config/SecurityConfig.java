@@ -9,10 +9,6 @@ import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
 
-import static org.springframework.security.config.http.SessionCreationPolicy.*;
-import static org.springframework.security.config.annotation.web.builders.HttpSecurity.*;
-import static org.springframework.security.config.annotation.web.builders.HttpSecurity.httpBasic;
-
 @Configuration
 public class SecurityConfig {
 
@@ -22,10 +18,10 @@ public class SecurityConfig {
                 .csrf(csrf -> csrf.disable())
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/api/v1/auth/users/auth/login", "/api/v1/auth/users/request-password-reset",
-                                "/api/v1/auth/verify-reset-code", "/api/v1/auth/reset-password").permitAll()
-                        .anyRequest().authenticated()
-                )
-                .httpBasic(withDefaults());
+                                "/api/v1/auth/verify-reset-code", "/api/v1/auth/reset-password")
+                        .permitAll()
+                        .anyRequest().authenticated())
+                .httpBasic(httpBasic -> httpBasic.disable()); // Disable httpBasic explicitly
         return http.build();
     }
 

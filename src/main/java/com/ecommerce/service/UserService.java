@@ -26,4 +26,23 @@ public class UserService {
         user.setRole(User.UserRole.CUSTOMER);
         return userRepository.save(user);
     }
+
+    public String loginUser(String email, String password) {
+        // Implement login logic here
+        return "mock-token"; // Replace with actual token generation logic
+    }
+
+    public String requestPasswordReset(String email) {
+        // Implement password reset request logic here
+        return "Password reset link sent to email";
+    }
+
+    public boolean verifyResetCode(String email, String code) {
+        // Implement reset code verification logic here
+        return true; // Replace with actual verification logic
+    }
+
+    public void resetPassword(String email, String code, String newPassword) {
+        // Implement password reset logic here
+    }
 }
