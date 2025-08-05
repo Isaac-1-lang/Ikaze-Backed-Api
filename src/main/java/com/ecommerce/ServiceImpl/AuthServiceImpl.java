@@ -9,12 +9,11 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
 import com.ecommerce.Exception.CustomException;
-import com.ecommerce.dto.LoginDto;
-import com.ecommerce.dto.LoginResponseDto;
-import com.ecommerce.dto.RegisterDto;
+import com.ecommerce.dto.UserRegistrationDTO;
 import com.ecommerce.entity.User;
 import com.ecommerce.repository.UserRepository;
 import com.ecommerce.service.AuthService;
+import com.ecommerce.dto.LoginResponseDto;
 
 @Service
 public class AuthServiceImpl implements AuthService {
@@ -39,51 +38,51 @@ public class AuthServiceImpl implements AuthService {
     }
 
     @Override
-    public String registerUser(RegisterDto registerDto) {
-
-        if (userRepository.findByUserEmail(registerDto.getUserEmail()).isPresent()) {
+    public String registerUser(UserRegistrationDTO registrationDTO) {
+        if (userRepository.findByUserEmail(registrationDTO.getEmail()).isPresent()) {
             throw new CustomException("Email already exists");
         }
 
-        String hashedPassword = passwordEncoder.encode(registerDto.getUserPassword());
+        String hashedPassword = passwordEncoder.encode(registrationDTO.getPassword());
 
         User user = new User();
-        user.setFirstName(registerDto.getUserName());
-        user.setUserEmail(registerDto.getUserEmail());
-        user.setUserPassword(hashedPassword);
-        user.setUserPhone(registerDto.getUserPhone());
-        user.setRole(User.UserRole.valueOf(registerDto.getRole().toUpperCase()));
+        user.setFirstName(registrationDTO.getFirstName());
+        user.setLastName(registrationDTO.getLastName());
+        user.setUserEmail(registrationDTO.getEmail());
+        user.setPassword(hashedPassword);
+        user.setPhoneNumber(registrationDTO.getPhoneNumber());
+        user.setRole(User.UserRole.CUSTOMER); // Default role
 
         User savedUser = userRepository.save(user);
 
-    
         emailService.sendSimpleEmail(
                 savedUser.getUserEmail(),
                 "Welcome to Our App!",
                 "Hello " + savedUser.getFirstName() + ",\n\nThank you for signing up!");
 
-        return "User registered successfully with ID: " + savedUser.getId()
-                + " and role: " + savedUser.getRole();
-
+        return "User registered successfully with ID: " + savedUser.getId().toString();
     }
 
     @Override
-    public LoginResponseDto loginUser(LoginDto loginDto) {
+    public LoginResponseDto loginUser(String email, String password) {
         try {
             Authentication authentication = authenticationManager.authenticate(
-                    new UsernamePasswordAuthenticationToken(
-                            loginDto.getUserEmail(), // Updated to use getUserEmail
-                            loginDto.getUserPassword()));
+                    new UsernamePasswordAuthenticationToken(email, password));
 
             if (authentication.isAuthenticated()) {
-                User user = userRepository.findByUserEmail(loginDto.getUserEmail()) // Updated to use findByUserEmail
+                User user = userRepository.findByUserEmail(email)
                         .orElseThrow(() -> new CustomException("User not found"));
 
-                // Fix: Pass both username and role to generateToken
                 String token = jwtService.generateToken(user.getUserEmail(), user.getRole().name());
 
-                return new LoginResponseDto(token, user.getFirstName(), user.getUserEmail(), "Login successful",
-                        user.getId(), user.getRole());
+                return new LoginResponseDto(
+                        token,
+                        user.getFirstName() + " " + user.getLastName(),
+                        user.getUserEmail(),
+                        "Login successful",
+                        user.getId(),
+                        user.getPhoneNumber(),
+                        user.getRole());
             }
         } catch (BadCredentialsException e) {
             throw new CustomException("Invalid username or password");
@@ -119,13 +118,14 @@ public class AuthServiceImpl implements AuthService {
         User user = userRepository.findByUserEmail(email)
                 .orElseThrow(() -> new RuntimeException("User not found"));
 
-        user.setUserPassword(passwordEncoder.encode(newPassword));
+        user.setPassword(passwordEncoder.encode(newPassword));
         user.clearResetToken();
         userRepository.save(user);
     }
 
     @Override
-    public String logoutrUser() {
-        return "about to log out";
+    public String logoutUser(String token) {
+        jwtService.invalidateToken(token); // Pass the token to invalidate
+        return "User logged out successfully";
     }
 }

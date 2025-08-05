@@ -9,6 +9,8 @@ import org.springframework.stereotype.Component;
 
 import javax.crypto.SecretKey;
 import java.util.Date;
+import java.util.HashSet;
+import java.util.Set;
 import java.util.function.Function;
 
 @Component
@@ -17,6 +19,7 @@ public class JwtService {
     private static final String BASE64_SECRET_KEY = "5d4e74cd64403e075a76438873d2a160948d9fdcfd54aea27f0ddeb4b050162f";
 
     private final SecretKey secretKey = Keys.hmacShaKeyFor(Decoders.BASE64.decode(BASE64_SECRET_KEY));
+    private final Set<String> tokenBlacklist = new HashSet<>();
 
     private SecretKey getSigningKey() {
         return secretKey;
@@ -59,6 +62,9 @@ public class JwtService {
     }
 
     public boolean validateToken(String token, String username) {
+        if (tokenBlacklist.contains(token)) {
+            return false; // Token is invalidated
+        }
         final String extractedUsername = extractUsername(token);
         return (extractedUsername.equals(username) && !isTokenExpired(token));
     }
@@ -69,5 +75,9 @@ public class JwtService {
 
     private Date extractExpiration(String token) {
         return extractClaim(token, Claims::getExpiration);
+    }
+
+    public void invalidateToken(String token) {
+        tokenBlacklist.add(token);
     }
 }

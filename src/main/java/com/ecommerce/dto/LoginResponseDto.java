@@ -1,6 +1,8 @@
 package com.ecommerce.dto;
 
 
+import java.util.UUID;
+
 import com.ecommerce.entity.User.UserRole;
 
 import lombok.AllArgsConstructor;
@@ -15,11 +17,11 @@ public class LoginResponseDto {
     private String userName;
     private String userEmail;
     private String message;
-    private Long userId;
+    private  UUID  userId;
     private String userPhone;
     private UserRole role;
 
-    public LoginResponseDto(String token, String userName, String userEmail, String message, Long userId, UserRole role) {
+    public LoginResponseDto(String token, String userName, String userEmail, String message, UUID userId, UserRole role) {
         this.token = token;
         this.userName = userName;
         this.userEmail = userEmail;

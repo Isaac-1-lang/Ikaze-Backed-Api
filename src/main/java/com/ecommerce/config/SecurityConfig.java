@@ -17,11 +17,15 @@ public class SecurityConfig {
         http
                 .csrf(csrf -> csrf.disable())
                 .authorizeHttpRequests(auth -> auth
-                        .requestMatchers("/api/v1/auth/users/auth/login", "/api/v1/auth/users/request-password-reset",
-                                "/api/v1/auth/verify-reset-code", "/api/v1/auth/reset-password")
+                        .requestMatchers(
+                            "/api/v1/auth/users/login",
+                             "/api/v1/auth/users/register",
+                            "/api/v1/auth/users/request-password-reset",
+                            "/api/v1/auth/users/verify-reset-code",
+                            "/api/v1/auth/users/reset-password")
                         .permitAll()
                         .anyRequest().authenticated())
-                .httpBasic(httpBasic -> httpBasic.disable()); // Disable httpBasic explicitly
+                .httpBasic(httpBasic -> httpBasic.disable());
         return http.build();
     }
 

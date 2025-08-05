@@ -7,7 +7,10 @@ import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 import lombok.AllArgsConstructor;
 import lombok.Data;
+import lombok.Getter;
 import lombok.NoArgsConstructor;
+import lombok.Setter;
+
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.userdetails.UserDetails;
@@ -16,17 +19,21 @@ import java.time.LocalDateTime;
 import java.util.Collection;
 import java.util.List;
 import java.util.Set;
+import java.util.UUID;
 
 @Entity
 @Table(name = "users")
 @Data
+@Getter
+@Setter
 @NoArgsConstructor
 @AllArgsConstructor
 public class User implements UserDetails {
 
     @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
+    @GeneratedValue
+    @Column(name = "id", updatable = false, nullable = false)
+    private UUID id;
 
     @NotBlank(message = "First name is required")
     @Size(min = 2, max = 50, message = "First name must be between 2 and 50 characters")
@@ -161,16 +168,6 @@ public class User implements UserDetails {
         LOCAL, GOOGLE, FACEBOOK
     }
 
-    public void setUserPassword(String hashedPassword) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'setUserPassword'");
-    }
-
-    public void setUserPhone(String userPhone) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'setUserPhone'");
-    }
-
     public void createResetToken(String token) {
         this.resetToken = token;
         this.resetTokenExpiry = LocalDateTime.now().plusMinutes(15);
@@ -185,4 +182,7 @@ public class User implements UserDetails {
         this.resetToken = null;
         this.resetTokenExpiry = null;
     }
+
+   
+
 }

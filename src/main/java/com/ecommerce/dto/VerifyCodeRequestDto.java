@@ -5,8 +5,8 @@ import lombok.*;
 @Data
 @AllArgsConstructor
 @NoArgsConstructor
-//@Setter
-//@Getter
+@Setter
+@Getter
 public class VerifyCodeRequestDto {
 
     private String email;
