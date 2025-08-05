@@ -1,4 +1,4 @@
-package com.ecommerce.exception;
+package com.ecommerce.Exception;
 
 public class CustomException extends RuntimeException {
 
