@@ -65,6 +65,9 @@ public class ProductVariant {
     private java.util.List<CartItem> cartItems;
     
     @OneToMany(mappedBy = "productVariant", fetch = FetchType.LAZY)
+    private java.util.List<OrderItem> orderItems;
+    
+    @OneToMany(mappedBy = "productVariant", fetch = FetchType.LAZY)
     private java.util.List<WishlistProduct> wishlistProducts;
 
     @Column(name = "created_at")

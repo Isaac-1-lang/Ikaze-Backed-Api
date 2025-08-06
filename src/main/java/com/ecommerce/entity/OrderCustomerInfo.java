@@ -1,0 +1,72 @@
+package com.ecommerce.entity;
+
+import jakarta.persistence.*;
+import jakarta.validation.constraints.Email;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Pattern;
+import lombok.AllArgsConstructor;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+
+import java.time.LocalDateTime;
+
+@Entity
+@Table(name = "order_customer_info")
+@Data
+@NoArgsConstructor
+@AllArgsConstructor
+public class OrderCustomerInfo {
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @Column(name = "order_customer_info_id")
+    private Long orderCustomerInfoId;
+
+    @OneToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "order_id", nullable = false)
+    private Order order;
+
+    @NotBlank(message = "First name is required")
+    @Column(name = "first_name", nullable = false)
+    private String firstName;
+
+    @NotBlank(message = "Last name is required")
+    @Column(name = "last_name", nullable = false)
+    private String lastName;
+
+    @Email(message = "Email should be valid")
+    @NotBlank(message = "Email is required")
+    @Column(name = "email", nullable = false)
+    private String email;
+
+    @Pattern(regexp = "^\\+?[1-9]\\d{1,14}$", message = "Phone number should be valid")
+    @Column(name = "phone_number", nullable = false)
+    private String phoneNumber;
+
+    @Column(name = "created_at")
+    private LocalDateTime createdAt;
+
+    @Column(name = "updated_at")
+    private LocalDateTime updatedAt;
+
+    @PrePersist
+    protected void onCreate() {
+        createdAt = LocalDateTime.now();
+        updatedAt = LocalDateTime.now();
+    }
+
+    @PreUpdate
+    protected void onUpdate() {
+        updatedAt = LocalDateTime.now();
+    }
+
+    /**
+     * Gets the full name of the customer
+     * 
+     * @return The full name
+     */
+    @Transient
+    public String getFullName() {
+        return firstName + " " + lastName;
+    }
+}
