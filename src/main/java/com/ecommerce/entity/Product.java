@@ -90,6 +90,10 @@ public class Product {
 
     @Column(name = "sale_percentage")
     private Integer salePercentage;
+    
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "discount_id")
+    private Discount discount;
 
     @OneToOne(mappedBy = "product", cascade = CascadeType.ALL, fetch = FetchType.LAZY, orphanRemoval = true)
     private ProductDetail productDetail;
@@ -147,7 +151,12 @@ public class Product {
     }
 
     public BigDecimal getDiscountedPrice() {
-        if (isOnSale && salePercentage != null && salePercentage > 0) {
+        // First check if there's a valid discount entity associated
+        if (discount != null && discount.isValid()) {
+            return price.multiply(BigDecimal.valueOf(1 - discount.getPercentage() / 100.0));
+        }
+        // Fall back to the legacy discount method
+        else if (isOnSale && salePercentage != null && salePercentage > 0) {
             return price.multiply(BigDecimal.valueOf(1 - salePercentage / 100.0));
         }
         return price;
