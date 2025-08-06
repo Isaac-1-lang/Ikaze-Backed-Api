@@ -104,9 +104,6 @@ public class Product {
     private List<Review> reviews = new ArrayList<>();
 
     @OneToMany(mappedBy = "product", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
-    private List<Wishlist> wishlists = new ArrayList<>();
-
-    @OneToMany(mappedBy = "product", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
     private List<ProductVideo> videos = new ArrayList<>();
 
     @Column(name = "created_at")

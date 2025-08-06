@@ -60,6 +60,12 @@ public class ProductVariant {
 
     @OneToMany(mappedBy = "productVariant", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
     private java.util.List<VariantAttributeValue> attributeValues;
+    
+    @OneToMany(mappedBy = "productVariant", fetch = FetchType.LAZY)
+    private java.util.List<CartItem> cartItems;
+    
+    @OneToMany(mappedBy = "productVariant", fetch = FetchType.LAZY)
+    private java.util.List<WishlistProduct> wishlistProducts;
 
     @Column(name = "created_at")
     private LocalDateTime createdAt;
