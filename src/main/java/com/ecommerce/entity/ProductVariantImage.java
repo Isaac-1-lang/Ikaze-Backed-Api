@@ -7,6 +7,11 @@ import lombok.NoArgsConstructor;
 
 import java.time.LocalDateTime;
 
+/**
+ * ProductVariantImage represents images specifically associated with product variants.
+ * This entity allows each variant to have its own set of images, which is essential for
+ * showing the correct visual representation of each variant (e.g., different colors, styles).
+ */
 @Entity
 @Table(name = "product_variant_images")
 @Data

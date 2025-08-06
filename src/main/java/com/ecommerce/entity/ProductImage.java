@@ -7,6 +7,10 @@ import lombok.NoArgsConstructor;
 
 import java.time.LocalDateTime;
 
+/**
+ * ProductImage represents images associated with a base product.
+ * For variant-specific images, use ProductVariantImage instead.
+ */
 @Entity
 @Table(name = "product_images")
 @Data
@@ -49,6 +53,8 @@ public class ProductImage {
     @Column(name = "height")
     private Integer height;
     
+    // Removing attribute_value relationship as it's better handled by ProductVariantImage
+    
     @Column(name = "created_at")
     private LocalDateTime createdAt;
     
@@ -56,4 +62,4 @@ public class ProductImage {
     protected void onCreate() {
         createdAt = LocalDateTime.now();
     }
-} 
+}
