@@ -5,7 +5,6 @@ import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
-import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
@@ -25,39 +24,15 @@ public class Cart {
     @JoinColumn(name = "user_id")
     private User user;
 
-    @Column(name = "session_id", unique = true)
-    private String sessionId;
-
     @OneToMany(mappedBy = "cart", cascade = CascadeType.ALL, fetch = FetchType.LAZY, orphanRemoval = true)
     private List<CartItem> items = new ArrayList<>();
-
-    @Column(name = "subtotal", precision = 10, scale = 2)
-    private BigDecimal subtotal = BigDecimal.ZERO;
-
-    @Column(name = "tax_amount", precision = 10, scale = 2)
-    private BigDecimal taxAmount = BigDecimal.ZERO;
-
-    @Column(name = "shipping_amount", precision = 10, scale = 2)
-    private BigDecimal shippingAmount = BigDecimal.ZERO;
-
-    @Column(name = "discount_amount", precision = 10, scale = 2)
-    private BigDecimal discountAmount = BigDecimal.ZERO;
-
-    @Column(name = "total_amount", precision = 10, scale = 2)
-    private BigDecimal totalAmount = BigDecimal.ZERO;
-
-    @Column(name = "currency", length = 3)
-    private String currency = "USD";
-
-    @Column(name = "is_active")
-    private boolean isActive = true;
 
     @Column(name = "created_at")
     private LocalDateTime createdAt;
 
     @Column(name = "updated_at")
     private LocalDateTime updatedAt;
-
+    
     @PrePersist
     protected void onCreate() {
         createdAt = LocalDateTime.now();
@@ -68,47 +43,49 @@ public class Cart {
     protected void onUpdate() {
         updatedAt = LocalDateTime.now();
     }
-
+    
+    /**
+     * Adds an item to the cart
+     * 
+     * @param item The cart item to add
+     */
     public void addItem(CartItem item) {
         items.add(item);
         item.setCart(this);
-        recalculateTotals();
     }
-
+    
+    /**
+     * Removes an item from the cart
+     * 
+     * @param item The cart item to remove
+     */
     public void removeItem(CartItem item) {
         items.remove(item);
         item.setCart(null);
-        recalculateTotals();
     }
-
+    
+    /**
+     * Clears all items from the cart
+     */
     public void clear() {
         items.clear();
-        recalculateTotals();
     }
 
+    /**
+     * Gets the total number of items in the cart
+     * 
+     * @return The total quantity of all items
+     */
     public int getItemCount() {
         return items.stream().mapToInt(CartItem::getQuantity).sum();
     }
 
+    /**
+     * Checks if the cart is empty
+     * 
+     * @return true if the cart has no items, false otherwise
+     */
     public boolean isEmpty() {
         return items.isEmpty();
-    }
-
-    private void recalculateTotals() {
-        subtotal = items.stream()
-                .map(item -> item.getPrice().multiply(BigDecimal.valueOf(item.getQuantity())))
-                .reduce(BigDecimal.ZERO, BigDecimal::add);
-
-        totalAmount = subtotal.add(taxAmount).add(shippingAmount).subtract(discountAmount);
-    }
-
-    public BigDecimal getSubtotal() {
-        recalculateTotals();
-        return subtotal;
-    }
-
-    public BigDecimal getTotalAmount() {
-        recalculateTotals();
-        return totalAmount;
     }
 }

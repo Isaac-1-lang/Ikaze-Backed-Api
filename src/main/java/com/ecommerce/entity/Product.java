@@ -13,6 +13,7 @@ import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.UUID;
 
 @Entity
 @Table(name = "products")
@@ -23,16 +24,12 @@ public class Product {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
+    private UUID productId;
 
     @NotBlank(message = "Product name is required")
     @Size(min = 2, max = 255, message = "Product name must be between 2 and 255 characters")
     @Column(nullable = false)
-    private String name;
-
-    @Size(max = 1000, message = "Description must not exceed 1000 characters")
-    @Column(columnDefinition = "TEXT")
-    private String description;
+    private String productName;
 
     @Column(name = "short_description")
     private String shortDescription;
@@ -62,18 +59,13 @@ public class Product {
     @Column(name = "low_stock_threshold")
     private Integer lowStockThreshold = 5;
 
-    @Column(name = "weight_kg", precision = 8, scale = 3)
-    private BigDecimal weightKg;
-
-    @Column(name = "dimensions_cm")
-    private String dimensionsCm; // Format: "LxWxH"
-
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "category_id")
     private Category category;
 
-    @Column(name = "brand")
-    private String brand;
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "brand_id")
+    private Brand brand;
 
     @Column(name = "model")
     private String model;
@@ -98,18 +90,13 @@ public class Product {
 
     @Column(name = "sale_percentage")
     private Integer salePercentage;
+    
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "discount_id")
+    private Discount discount;
 
-    @Column(name = "meta_title")
-    private String metaTitle;
-
-    @Column(name = "meta_description")
-    private String metaDescription;
-
-    @Column(name = "meta_keywords")
-    private String metaKeywords;
-
-    @Column(name = "search_keywords")
-    private String searchKeywords;
+    @OneToOne(mappedBy = "product", cascade = CascadeType.ALL, fetch = FetchType.LAZY, orphanRemoval = true)
+    private ProductDetail productDetail;
 
     @OneToMany(mappedBy = "product", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
     private List<ProductImage> images = new ArrayList<>();
@@ -121,7 +108,7 @@ public class Product {
     private List<Review> reviews = new ArrayList<>();
 
     @OneToMany(mappedBy = "product", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
-    private List<Wishlist> wishlists = new ArrayList<>();
+    private List<ProductVideo> videos = new ArrayList<>();
 
     @Column(name = "created_at")
     private LocalDateTime createdAt;
@@ -134,7 +121,7 @@ public class Product {
         createdAt = LocalDateTime.now();
         updatedAt = LocalDateTime.now();
         if (slug == null || slug.trim().isEmpty()) {
-            slug = generateSlug(name);
+            slug = generateSlug(productName);
         }
     }
 
@@ -164,7 +151,12 @@ public class Product {
     }
 
     public BigDecimal getDiscountedPrice() {
-        if (isOnSale && salePercentage != null && salePercentage > 0) {
+        // First check if there's a valid discount entity associated
+        if (discount != null && discount.isValid()) {
+            return price.multiply(BigDecimal.valueOf(1 - discount.getPercentage() / 100.0));
+        }
+        // Fall back to the legacy discount method
+        else if (isOnSale && salePercentage != null && salePercentage > 0) {
             return price.multiply(BigDecimal.valueOf(1 - salePercentage / 100.0));
         }
         return price;
@@ -172,6 +164,34 @@ public class Product {
 
     public BigDecimal getDiscountAmount() {
         return price.subtract(getDiscountedPrice());
+    }
+
+    public String getDescription() {
+        return productDetail != null ? productDetail.getDescription() : null;
+    }
+
+    public String getMetaTitle() {
+        return productDetail != null ? productDetail.getMetaTitle() : null;
+    }
+
+    public String getMetaDescription() {
+        return productDetail != null ? productDetail.getMetaDescription() : null;
+    }
+
+    public String getMetaKeywords() {
+        return productDetail != null ? productDetail.getMetaKeywords() : null;
+    }
+
+    public String getSearchKeywords() {
+        return productDetail != null ? productDetail.getSearchKeywords() : null;
+    }
+
+    public String getDimensionsCm() {
+        return productDetail != null ? productDetail.getDimensionsCm() : null;
+    }
+
+    public BigDecimal getWeightKg() {
+        return productDetail != null ? productDetail.getWeightKg() : null;
     }
 
     public String getMainImageUrl() {

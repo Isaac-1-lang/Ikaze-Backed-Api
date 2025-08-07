@@ -31,24 +31,6 @@ public class ProductVariant {
     @Column(name = "variant_barcode")
     private String variantBarcode;
 
-    @Column(name = "size")
-    private String size;
-
-    @Column(name = "color")
-    private String color;
-
-    @Column(name = "material")
-    private String material;
-
-    @Column(name = "style")
-    private String style;
-
-    @Column(name = "weight_kg", precision = 8, scale = 3)
-    private BigDecimal weightKg;
-
-    @Column(name = "dimensions_cm")
-    private String dimensionsCm;
-
     @NotNull(message = "Price is required")
     @Positive(message = "Price must be positive")
     @Column(nullable = false, precision = 10, scale = 2)
@@ -75,6 +57,18 @@ public class ProductVariant {
 
     @OneToMany(mappedBy = "productVariant", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
     private java.util.List<ProductVariantImage> images;
+
+    @OneToMany(mappedBy = "productVariant", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
+    private java.util.List<VariantAttributeValue> attributeValues;
+    
+    @OneToMany(mappedBy = "productVariant", fetch = FetchType.LAZY)
+    private java.util.List<CartItem> cartItems;
+    
+    @OneToMany(mappedBy = "productVariant", fetch = FetchType.LAZY)
+    private java.util.List<OrderItem> orderItems;
+    
+    @OneToMany(mappedBy = "productVariant", fetch = FetchType.LAZY)
+    private java.util.List<WishlistProduct> wishlistProducts;
 
     @Column(name = "created_at")
     private LocalDateTime createdAt;
@@ -106,25 +100,22 @@ public class ProductVariant {
     }
 
     public String getVariantName() {
+        if (attributeValues == null || attributeValues.isEmpty()) {
+            return "";
+        }
+        
         StringBuilder name = new StringBuilder();
-        if (size != null && !size.trim().isEmpty()) {
-            name.append(size);
-        }
-        if (color != null && !color.trim().isEmpty()) {
-            if (name.length() > 0)
-                name.append(" - ");
-            name.append(color);
-        }
-        if (material != null && !material.trim().isEmpty()) {
-            if (name.length() > 0)
-                name.append(" - ");
-            name.append(material);
-        }
-        if (style != null && !style.trim().isEmpty()) {
-            if (name.length() > 0)
-                name.append(" - ");
-            name.append(style);
-        }
+        
+        // Get all attribute values and build a name from them
+        attributeValues.stream()
+            .map(varAttr -> varAttr.getAttributeValue())
+            .forEach(attrValue -> {
+                if (name.length() > 0) {
+                    name.append(" - ");
+                }
+                name.append(attrValue.getValue());
+            });
+            
         return name.toString();
     }
 }

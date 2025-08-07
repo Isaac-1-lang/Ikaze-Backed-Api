@@ -161,7 +161,7 @@ public class User implements UserDetails {
     }
 
     public enum UserRole {
-        CUSTOMER, ADMIN, MODERATOR
+        CUSTOMER, ADMIN, EMPLOYEE, DELIVERY_AGENT
     }
 
     public enum AuthProvider {
