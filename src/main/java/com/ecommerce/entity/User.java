@@ -31,7 +31,7 @@ import java.util.UUID;
 public class User implements UserDetails {
 
     @Id
-    @GeneratedValue
+    @GeneratedValue(strategy = GenerationType.AUTO)
     @Column(name = "id", updatable = false, nullable = false)
     private UUID id;
 
@@ -182,7 +182,5 @@ public class User implements UserDetails {
         this.resetToken = null;
         this.resetTokenExpiry = null;
     }
-
-   
 
 }

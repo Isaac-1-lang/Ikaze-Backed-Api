@@ -9,7 +9,6 @@ import org.springframework.security.core.userdetails.UserDetails;
 import com.ecommerce.entity.User;
 import com.ecommerce.entity.User.UserRole;
 
-
 public class CustomUserDetails implements UserDetails {
 
     private String name;
@@ -17,11 +16,9 @@ public class CustomUserDetails implements UserDetails {
     private UserRole role;
 
     public CustomUserDetails(User user) {
-
         this.name = user.getFirstName();
         this.password = user.getPassword();
         this.role = user.getRole();
-
     }
 
     @Override
@@ -39,6 +36,24 @@ public class CustomUserDetails implements UserDetails {
         return this.name;
     }
 
+    @Override
+    public boolean isAccountNonExpired() {
+        return true;
+    }
 
-    
+    @Override
+    public boolean isAccountNonLocked() {
+        return true;
+    }
+
+    @Override
+    public boolean isCredentialsNonExpired() {
+        return true;
+    }
+
+    @Override
+    public boolean isEnabled() {
+        return true;
+    }
+
 }

@@ -11,11 +11,10 @@ import lombok.Setter;
 @AllArgsConstructor
 public class LoginDto {
 
-    
     @NotBlank(message = "User email is required.")
     private String email;
-    
-       @NotBlank(message = "User password is required.")
-       @Size(min = 6, message = "Password must be at least 6 characters long.")
-       private String password;
+
+    @NotBlank(message = "User password is required.")
+    @Size(min = 6, message = "Password must be at least 6 characters long.")
+    private String password;
 }

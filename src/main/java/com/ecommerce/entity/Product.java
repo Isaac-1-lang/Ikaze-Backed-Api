@@ -23,7 +23,7 @@ import java.util.UUID;
 public class Product {
 
     @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @GeneratedValue(strategy = GenerationType.AUTO)
     private UUID productId;
 
     @NotBlank(message = "Product name is required")
@@ -90,7 +90,7 @@ public class Product {
 
     @Column(name = "sale_percentage")
     private Integer salePercentage;
-    
+
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "discount_id")
     private Discount discount;
