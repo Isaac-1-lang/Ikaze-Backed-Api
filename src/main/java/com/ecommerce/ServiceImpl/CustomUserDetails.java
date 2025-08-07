@@ -9,7 +9,6 @@ import org.springframework.security.core.userdetails.UserDetails;
 import com.ecommerce.entity.User;
 import com.ecommerce.entity.User.UserRole;
 
-
 public class CustomUserDetails implements UserDetails {
 
     private String name;
@@ -36,7 +35,7 @@ public class CustomUserDetails implements UserDetails {
     public String getUsername() {
         return this.name;
     }
-    
+
     @Override
     public boolean isAccountNonExpired() {
         return true;
@@ -56,5 +55,5 @@ public class CustomUserDetails implements UserDetails {
     public boolean isEnabled() {
         return true;
     }
-    
+
 }

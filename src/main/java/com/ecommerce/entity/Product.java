@@ -90,7 +90,7 @@ public class Product {
 
     @Column(name = "sale_percentage")
     private Integer salePercentage;
-    
+
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "discount_id")
     private Discount discount;

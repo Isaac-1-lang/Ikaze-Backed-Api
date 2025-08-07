@@ -16,7 +16,7 @@ public class GlobalExceptionHandler {
     public ResponseEntity<String> handleCustomException(CustomException ex) {
         return new ResponseEntity<>(ex.getMessage(), HttpStatus.BAD_REQUEST);
     }
-    
+
     @ExceptionHandler(FileUploadException.class)
     public ResponseEntity<FileUploadResponseDTO> handleFileUploadException(FileUploadException ex) {
         FileUploadResponseDTO response = FileUploadResponseDTO.builder()
@@ -24,7 +24,7 @@ public class GlobalExceptionHandler {
                 .build();
         return new ResponseEntity<>(response, HttpStatus.BAD_REQUEST);
     }
-    
+
     @ExceptionHandler(MaxUploadSizeExceededException.class)
     public ResponseEntity<FileUploadResponseDTO> handleMaxSizeException(MaxUploadSizeExceededException ex) {
         FileUploadResponseDTO response = FileUploadResponseDTO.builder()

@@ -21,13 +21,14 @@ import io.swagger.v3.oas.models.info.License;
 })
 public class OpenApiConfig {
 
-    @Bean
-    public OpenAPI customOpenAPI() {
-        return new OpenAPI()
-                .info(new io.swagger.v3.oas.models.info.Info()
-                        .title("E-Commerce API")
-                        .version("1.0")
-                        .description("API for E-Commerce platform")
-                        .license(new License().name("Apache 2.0").url("https://springdoc.org")));
-    }
+        @Bean
+        public OpenAPI customOpenAPI() {
+                return new OpenAPI()
+                                .info(new io.swagger.v3.oas.models.info.Info()
+                                                .title("E-Commerce API")
+                                                .version("1.0")
+                                                .description("API for E-Commerce platform")
+                                                .license(new License().name("Apache 2.0")
+                                                                .url("https://springdoc.org")));
+        }
 }
