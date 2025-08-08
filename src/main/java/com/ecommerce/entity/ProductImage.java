@@ -52,9 +52,7 @@ public class ProductImage {
     
     @Column(name = "height")
     private Integer height;
-    
-    // Removing attribute_value relationship as it's better handled by ProductVariantImage
-    
+        
     @Column(name = "created_at")
     private LocalDateTime createdAt;
     

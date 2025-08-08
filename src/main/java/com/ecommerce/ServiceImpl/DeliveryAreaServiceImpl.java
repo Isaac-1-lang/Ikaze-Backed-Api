@@ -38,7 +38,8 @@ public class DeliveryAreaServiceImpl implements DeliveryAreaService {
         // Update parent if changed
         if (deliveryAreaDTO.getParentId() != null) {
             DeliveryArea parent = deliveryAreaRepository.findById(deliveryAreaDTO.getParentId())
-                    .orElseThrow(() -> new EntityNotFoundException("Parent delivery area not found with id: " + deliveryAreaDTO.getParentId()));
+                    .orElseThrow(() -> new EntityNotFoundException(
+                            "Parent delivery area not found with id: " + deliveryAreaDTO.getParentId()));
             existingDeliveryArea.setParent(parent);
         } else {
             existingDeliveryArea.setParent(null);
@@ -88,7 +89,7 @@ public class DeliveryAreaServiceImpl implements DeliveryAreaService {
     public List<DeliveryAreaDTO> getSubAreas(Long parentId) {
         DeliveryArea parent = deliveryAreaRepository.findById(parentId)
                 .orElseThrow(() -> new EntityNotFoundException("Parent delivery area not found with id: " + parentId));
-        
+
         return parent.getChildren().stream()
                 .map(this::convertToDTO)
                 .collect(Collectors.toList());
@@ -120,9 +121,9 @@ public class DeliveryAreaServiceImpl implements DeliveryAreaService {
                     return childDTO;
                 })
                 .collect(Collectors.toList());
-        
+
         dto.setChildren(childrenDTOs);
-        
+
         return dto;
     }
 
@@ -137,7 +138,8 @@ public class DeliveryAreaServiceImpl implements DeliveryAreaService {
 
         if (deliveryAreaDTO.getParentId() != null) {
             DeliveryArea parent = deliveryAreaRepository.findById(deliveryAreaDTO.getParentId())
-                    .orElseThrow(() -> new EntityNotFoundException("Parent delivery area not found with id: " + deliveryAreaDTO.getParentId()));
+                    .orElseThrow(() -> new EntityNotFoundException(
+                            "Parent delivery area not found with id: " + deliveryAreaDTO.getParentId()));
             deliveryArea.setParent(parent);
         }
 
