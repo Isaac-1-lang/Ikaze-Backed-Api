@@ -1,17 +1,23 @@
 package com.ecommerce.ServiceImpl;
 
 import com.ecommerce.dto.CategoryDTO;
+import com.ecommerce.dto.CategorySearchDTO;
 import com.ecommerce.entity.Category;
 import com.ecommerce.repository.CategoryRepository;
 import com.ecommerce.service.CategoryService;
 import jakarta.persistence.EntityNotFoundException;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
+import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -126,23 +132,103 @@ public class CategoryServiceImpl implements CategoryService {
 
     @Override
     @Transactional(readOnly = true)
-    public Page<CategoryDTO> searchCategoriesByName(String name, Pageable pageable) {
-        Page<Category> categories = categoryRepository.findByNameContainingIgnoreCase(name, pageable);
+    public Page<CategoryDTO> searchCategories(CategorySearchDTO searchDTO) {
+        // Create a specification for dynamic filtering
+        Specification<Category> spec = Specification.where(null);
+        
+        // Add filters based on search criteria
+        if (searchDTO.getName() != null && !searchDTO.getName().isEmpty()) {
+            spec = spec.and((root, query, cb) -> 
+                cb.like(cb.lower(root.get("name")), "%" + searchDTO.getName().toLowerCase() + "%"));
+        }
+        
+        if (searchDTO.getDescription() != null && !searchDTO.getDescription().isEmpty()) {
+            spec = spec.and((root, query, cb) -> 
+                cb.like(cb.lower(root.get("description")), "%" + searchDTO.getDescription().toLowerCase() + "%"));
+        }
+        
+        if (searchDTO.getIsActive() != null) {
+            spec = spec.and((root, query, cb) -> 
+                cb.equal(root.get("isActive"), searchDTO.getIsActive()));
+        }
+        
+        if (searchDTO.getIsFeatured() != null) {
+            spec = spec.and((root, query, cb) -> 
+                cb.equal(root.get("isFeatured"), searchDTO.getIsFeatured()));
+        }
+        
+        // Create pageable with sorting
+        String sortBy = searchDTO.getSortBy() != null ? searchDTO.getSortBy() : "name";
+        String sortDir = searchDTO.getSortDirection() != null ? searchDTO.getSortDirection() : "asc";
+        
+        // Handle special sorting cases
+        if (searchDTO.getSortByChildrenCount() != null && searchDTO.getSortByChildrenCount()) {
+            // This requires a custom query with join and count
+            // For simplicity, we'll use a workaround by fetching all matching categories and sorting in memory
+            List<Category> allMatchingCategories = categoryRepository.findAll(spec);
+            
+            // Sort by children count
+            if ("asc".equalsIgnoreCase(sortDir)) {
+                allMatchingCategories.sort(Comparator.comparingInt(c -> c.getChildren().size()));
+            } else {
+                allMatchingCategories.sort((c1, c2) -> Integer.compare(c2.getChildren().size(), c1.getChildren().size()));
+            }
+            
+            // Create a page manually
+            int pageSize = searchDTO.getSize() != null ? searchDTO.getSize() : 10;
+            int pageNum = searchDTO.getPage() != null ? searchDTO.getPage() : 0;
+            int start = pageNum * pageSize;
+            int end = Math.min(start + pageSize, allMatchingCategories.size());
+            
+            List<Category> pageContent = start < allMatchingCategories.size() ?
+                    allMatchingCategories.subList(start, end) : new ArrayList<>();
+            
+            Page<Category> page = new PageImpl<>(pageContent, 
+                    PageRequest.of(pageNum, pageSize), allMatchingCategories.size());
+            
+            return page.map(this::convertToDTO);
+        }
+        
+        if (searchDTO.getSortByProductCount() != null && searchDTO.getSortByProductCount()) {
+            // Similar approach for sorting by product count
+            List<Category> allMatchingCategories = categoryRepository.findAll(spec);
+            
+            // Sort by product count
+            if ("asc".equalsIgnoreCase(sortDir)) {
+                allMatchingCategories.sort(Comparator.comparingInt(c -> 
+                    c.getProducts() != null ? c.getProducts().size() : 0));
+            } else {
+                allMatchingCategories.sort((c1, c2) -> Integer.compare(
+                    c2.getProducts() != null ? c2.getProducts().size() : 0,
+                    c1.getProducts() != null ? c1.getProducts().size() : 0));
+            }
+            
+            // Create a page manually
+            int pageSize = searchDTO.getSize() != null ? searchDTO.getSize() : 10;
+            int pageNum = searchDTO.getPage() != null ? searchDTO.getPage() : 0;
+            int start = pageNum * pageSize;
+            int end = Math.min(start + pageSize, allMatchingCategories.size());
+            
+            List<Category> pageContent = start < allMatchingCategories.size() ?
+                    allMatchingCategories.subList(start, end) : new ArrayList<>();
+            
+            Page<Category> page = new PageImpl<>(pageContent, 
+                    PageRequest.of(pageNum, pageSize), allMatchingCategories.size());
+            
+            return page.map(this::convertToDTO);
+        }
+        
+        // Standard sorting for other cases
+        Sort sort = "asc".equalsIgnoreCase(sortDir) ?
+                Sort.by(sortBy).ascending() : Sort.by(sortBy).descending();
+        
+        Pageable pageable = PageRequest.of(
+                searchDTO.getPage() != null ? searchDTO.getPage() : 0,
+                searchDTO.getSize() != null ? searchDTO.getSize() : 10,
+                sort);
+        
+        Page<Category> categories = categoryRepository.findAll(spec, pageable);
         return categories.map(this::convertToDTO);
-    }
-
-    @Override
-    @Transactional(readOnly = true)
-    public Page<CategoryDTO> getActiveCategories(Pageable pageable) {
-        Page<Category> activeCategories = categoryRepository.findByIsActiveTrue(pageable);
-        return activeCategories.map(this::convertToDTO);
-    }
-
-    @Override
-    @Transactional(readOnly = true)
-    public Page<CategoryDTO> getFeaturedCategories(Pageable pageable) {
-        Page<Category> featuredCategories = categoryRepository.findByIsFeaturedTrue(pageable);
-        return featuredCategories.map(this::convertToDTO);
     }
 
     @Override

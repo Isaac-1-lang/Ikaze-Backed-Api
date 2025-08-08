@@ -1,6 +1,7 @@
 package com.ecommerce.controller;
 
 import com.ecommerce.dto.CategoryDTO;
+import com.ecommerce.dto.CategorySearchDTO;
 import com.ecommerce.service.CategoryService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
@@ -95,40 +96,14 @@ public class CategoryController {
         return ResponseEntity.ok(subCategories);
     }
 
-    @GetMapping("/search")
-    @Operation(summary = "Search categories by name", description = "Search for categories by name with pagination")
-    public ResponseEntity<Page<CategoryDTO>> searchCategoriesByName(
-            @RequestParam String name,
-            @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "10") int size) {
+    @PostMapping("/search")
+    @Operation(summary = "Search categories", description = "Search for categories with multiple criteria and pagination")
+    public ResponseEntity<Page<CategoryDTO>> searchCategories(@RequestBody(required = false) CategorySearchDTO searchDTO) {
+        if (searchDTO == null) {
+            searchDTO = new CategorySearchDTO();
+        }
         
-        Pageable pageable = PageRequest.of(page, size);
-        Page<CategoryDTO> categories = categoryService.searchCategoriesByName(name, pageable);
-        
+        Page<CategoryDTO> categories = categoryService.searchCategories(searchDTO);
         return ResponseEntity.ok(categories);
-    }
-
-    @GetMapping("/active")
-    @Operation(summary = "Get active categories", description = "Retrieve all active categories with pagination")
-    public ResponseEntity<Page<CategoryDTO>> getActiveCategories(
-            @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "10") int size) {
-        
-        Pageable pageable = PageRequest.of(page, size);
-        Page<CategoryDTO> activeCategories = categoryService.getActiveCategories(pageable);
-        
-        return ResponseEntity.ok(activeCategories);
-    }
-
-    @GetMapping("/featured")
-    @Operation(summary = "Get featured categories", description = "Retrieve all featured categories with pagination")
-    public ResponseEntity<Page<CategoryDTO>> getFeaturedCategories(
-            @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "10") int size) {
-        
-        Pageable pageable = PageRequest.of(page, size);
-        Page<CategoryDTO> featuredCategories = categoryService.getFeaturedCategories(pageable);
-        
-        return ResponseEntity.ok(featuredCategories);
     }
 }
