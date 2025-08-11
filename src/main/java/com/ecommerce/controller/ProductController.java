@@ -2,6 +2,7 @@ package com.ecommerce.controller;
 
 import com.ecommerce.dto.CreateProductDTO;
 import com.ecommerce.dto.ProductDTO;
+import com.ecommerce.dto.ProductUpdateDTO;
 import com.ecommerce.service.ProductService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.media.Content;
@@ -286,6 +287,42 @@ public class ProductController {
             log.error("Error fetching on sale products: {}", e.getMessage(), e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                     .body(createErrorResponse("INTERNAL_ERROR", "Failed to fetch on sale products"));
+        }
+    }
+
+    @PutMapping(value = "/{productId}", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    @PreAuthorize("hasAnyRole('ADMIN', 'EMPLOYEE')")
+    @Operation(summary = "Update a product", description = "Update an existing product with optional new variants and images", responses = {
+            @ApiResponse(responseCode = "200", description = "Product updated successfully", content = @Content(schema = @Schema(implementation = ProductDTO.class))),
+            @ApiResponse(responseCode = "400", description = "Invalid input data"),
+            @ApiResponse(responseCode = "401", description = "Unauthorized"),
+            @ApiResponse(responseCode = "403", description = "Forbidden"),
+            @ApiResponse(responseCode = "404", description = "Product not found"),
+            @ApiResponse(responseCode = "500", description = "Internal server error")
+    })
+    public ResponseEntity<?> updateProduct(@PathVariable UUID productId,
+            @Valid @ModelAttribute ProductUpdateDTO updateProductDTO) {
+        try {
+            log.info("Updating product with ID: {}", productId);
+            ProductDTO updatedProduct = productService.updateProduct(productId, updateProductDTO);
+            log.info("Product updated successfully with ID: {}", productId);
+            return ResponseEntity.ok(updatedProduct);
+        } catch (EntityNotFoundException e) {
+            log.error("Entity not found while updating product: {}", e.getMessage());
+            return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                    .body(createErrorResponse("ENTITY_NOT_FOUND", e.getMessage()));
+        } catch (IllegalArgumentException e) {
+            log.error("Invalid argument while updating product: {}", e.getMessage());
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                    .body(createErrorResponse("INVALID_ARGUMENT", e.getMessage()));
+        } catch (RuntimeException e) {
+            log.error("Runtime error while updating product: {}", e.getMessage(), e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(createErrorResponse("INTERNAL_ERROR", "Failed to update product: " + e.getMessage()));
+        } catch (Exception e) {
+            log.error("Unexpected error while updating product: {}", e.getMessage(), e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(createErrorResponse("UNEXPECTED_ERROR", "An unexpected error occurred"));
         }
     }
 

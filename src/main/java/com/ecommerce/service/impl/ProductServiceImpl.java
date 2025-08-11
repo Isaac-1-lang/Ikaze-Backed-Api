@@ -3,6 +3,7 @@ package com.ecommerce.service.impl;
 import com.ecommerce.dto.CreateProductDTO;
 import com.ecommerce.dto.CreateProductVariantDTO;
 import com.ecommerce.dto.ProductDTO;
+import com.ecommerce.dto.ProductUpdateDTO;
 import com.ecommerce.dto.ProductVariantDTO;
 import com.ecommerce.entity.*;
 import com.ecommerce.repository.*;
@@ -255,8 +256,60 @@ public class ProductServiceImpl implements ProductService {
     }
 
     @Override
-    public ProductDTO updateProduct(UUID productId, CreateProductDTO updateProductDTO) {
-        throw new UnsupportedOperationException("Method not yet implemented");
+    @Transactional
+    public ProductDTO updateProduct(UUID productId, ProductUpdateDTO updateProductDTO) {
+        try {
+            log.info("Starting product update for ID: {}", productId);
+
+            // Get existing product
+            Product existingProduct = productRepository.findById(productId)
+                    .orElseThrow(() -> new EntityNotFoundException("Product not found with ID: " + productId));
+
+            // Update basic product fields if provided
+            updateBasicProductFields(existingProduct, updateProductDTO);
+
+            // Update category if provided
+            if (updateProductDTO.getCategoryId() != null) {
+                Category category = validateAndGetCategory(updateProductDTO.getCategoryId());
+                existingProduct.setCategory(category);
+            }
+
+            // Update brand if provided
+            if (updateProductDTO.getBrandId() != null) {
+                Brand brand = validateAndGetBrand(updateProductDTO.getBrandId());
+                existingProduct.setBrand(brand);
+            }
+
+            // Update discount if provided
+            if (updateProductDTO.getDiscountId() != null) {
+                Discount discount = validateAndGetDiscount(updateProductDTO.getDiscountId());
+                existingProduct.setDiscount(discount);
+            }
+
+            // Update product detail if provided
+            updateProductDetail(existingProduct, updateProductDTO);
+
+            // Save updated product
+            Product savedProduct = productRepository.save(existingProduct);
+            log.info("Product basic fields updated successfully for ID: {}", productId);
+
+            // Process new variants if provided
+            if (updateProductDTO.getNewVariants() != null && !updateProductDTO.getNewVariants().isEmpty()) {
+                processNewVariants(savedProduct, updateProductDTO.getNewVariants(),
+                        updateProductDTO.getNewVariantImages(), updateProductDTO.getNewVariantImageMetadata());
+            }
+
+            // Refresh product from database to get all relationships
+            Product refreshedProduct = productRepository.findById(savedProduct.getProductId())
+                    .orElseThrow(() -> new EntityNotFoundException("Product not found after update"));
+
+            log.info("Product update completed successfully for ID: {}", productId);
+            return mapProductToDTO(refreshedProduct);
+
+        } catch (Exception e) {
+            log.error("Error updating product with ID {}: {}", productId, e.getMessage(), e);
+            throw new RuntimeException("Failed to update product: " + e.getMessage(), e);
+        }
     }
 
     @Override
@@ -543,6 +596,222 @@ public class ProductServiceImpl implements ProductService {
             log.info("Successfully processed {} variant images for variant {}", uploadResults.size(), variant.getId());
         } catch (Exception e) {
             log.error("Error processing variant images for variant {}", variant.getId(), e);
+            throw new RuntimeException("Failed to process variant images: " + e.getMessage(), e);
+        }
+    }
+
+    private void updateBasicProductFields(Product product, ProductUpdateDTO updateDTO) {
+        if (updateDTO.getName() != null) {
+            product.setProductName(updateDTO.getName());
+        }
+        if (updateDTO.getDescription() != null) {
+            product.setShortDescription(updateDTO.getDescription());
+        }
+        if (updateDTO.getBarcode() != null) {
+            product.setBarcode(updateDTO.getBarcode());
+        }
+        if (updateDTO.getBasePrice() != null) {
+            product.setPrice(updateDTO.getBasePrice());
+        }
+        if (updateDTO.getSalePrice() != null) {
+            product.setCompareAtPrice(updateDTO.getSalePrice());
+        }
+        if (updateDTO.getCostPrice() != null) {
+            product.setCostPrice(updateDTO.getCostPrice());
+        }
+        if (updateDTO.getStockQuantity() != null) {
+            product.setStockQuantity(updateDTO.getStockQuantity());
+        }
+        if (updateDTO.getLowStockThreshold() != null) {
+            product.setLowStockThreshold(updateDTO.getLowStockThreshold());
+        }
+        if (updateDTO.getModel() != null) {
+            product.setModel(updateDTO.getModel());
+        }
+        if (updateDTO.getSlug() != null) {
+            product.setSlug(updateDTO.getSlug());
+        } else if (updateDTO.getName() != null) {
+            // Generate new slug if name changed but slug not provided
+            product.setSlug(generateSlug(updateDTO.getName()));
+        }
+        if (updateDTO.getIsActive() != null) {
+            product.setActive(updateDTO.getIsActive());
+        }
+        if (updateDTO.getIsFeatured() != null) {
+            product.setFeatured(updateDTO.getIsFeatured());
+        }
+        if (updateDTO.getIsBestseller() != null) {
+            product.setBestseller(updateDTO.getIsBestseller());
+        }
+        if (updateDTO.getIsNewArrival() != null) {
+            product.setNewArrival(updateDTO.getIsNewArrival());
+        }
+        if (updateDTO.getIsOnSale() != null) {
+            product.setOnSale(updateDTO.getIsOnSale());
+        }
+        if (updateDTO.getSalePercentage() != null) {
+            product.setSalePercentage(updateDTO.getSalePercentage());
+        }
+    }
+
+    private void updateProductDetail(Product product, ProductUpdateDTO updateDTO) {
+        ProductDetail detail = product.getProductDetail();
+
+        // Create product detail if it doesn't exist and we have data to set
+        if (detail == null && hasProductDetailData(updateDTO)) {
+            detail = new ProductDetail();
+            detail.setProduct(product);
+            product.setProductDetail(detail);
+        }
+
+        if (detail != null) {
+            if (updateDTO.getFullDescription() != null) {
+                detail.setDescription(updateDTO.getFullDescription());
+            }
+            if (updateDTO.getMetaTitle() != null) {
+                detail.setMetaTitle(updateDTO.getMetaTitle());
+            }
+            if (updateDTO.getMetaDescription() != null) {
+                detail.setMetaDescription(updateDTO.getMetaDescription());
+            }
+            if (updateDTO.getMetaKeywords() != null) {
+                detail.setMetaKeywords(updateDTO.getMetaKeywords());
+            }
+            if (updateDTO.getSearchKeywords() != null) {
+                detail.setSearchKeywords(updateDTO.getSearchKeywords());
+            }
+            if (updateDTO.getDimensionsCm() != null) {
+                detail.setDimensionsCm(updateDTO.getDimensionsCm());
+            }
+            if (updateDTO.getWeightKg() != null) {
+                detail.setWeightKg(updateDTO.getWeightKg());
+            }
+        }
+    }
+
+    private boolean hasProductDetailData(ProductUpdateDTO updateDTO) {
+        return updateDTO.getFullDescription() != null ||
+                updateDTO.getMetaTitle() != null ||
+                updateDTO.getMetaDescription() != null ||
+                updateDTO.getMetaKeywords() != null ||
+                updateDTO.getSearchKeywords() != null ||
+                updateDTO.getDimensionsCm() != null ||
+                updateDTO.getWeightKg() != null;
+    }
+
+    private void processNewVariants(Product product, List<CreateProductVariantDTO> newVariants,
+            List<MultipartFile> newVariantImages, List<ProductUpdateDTO.VariantImageMetadata> imageMetadata) {
+        try {
+            log.info("Processing {} new variants for product ID: {}", newVariants.size(), product.getProductId());
+
+            for (int i = 0; i < newVariants.size(); i++) {
+                CreateProductVariantDTO variantDTO = newVariants.get(i);
+
+                // Validate variant SKU uniqueness
+                if (variantDTO.getVariantSku() != null &&
+                        productVariantRepository.findByVariantSku(variantDTO.getVariantSku()).isPresent()) {
+                    throw new IllegalArgumentException(
+                            "Variant with SKU " + variantDTO.getVariantSku() + " already exists");
+                }
+
+                // Create and save variant
+                ProductVariant variant = createProductVariant(product, variantDTO);
+                ProductVariant savedVariant = productVariantRepository.save(variant);
+
+                // Process variant attributes if any
+                if (variantDTO.getAttributes() != null && !variantDTO.getAttributes().isEmpty()) {
+                    processVariantAttributes(savedVariant, variantDTO.getAttributes());
+                }
+
+                // Process variant images if provided
+                if (newVariantImages != null && !newVariantImages.isEmpty()) {
+                    processNewVariantImages(savedVariant, newVariantImages, imageMetadata, i);
+                }
+            }
+
+            log.info("Successfully processed {} new variants for product ID: {}",
+                    newVariants.size(), product.getProductId());
+        } catch (Exception e) {
+            log.error("Error processing new variants for product ID {}: {}", product.getProductId(), e.getMessage(), e);
+            throw new RuntimeException("Failed to process new variants: " + e.getMessage(), e);
+        }
+    }
+
+    private void processNewVariantImages(ProductVariant variant, List<MultipartFile> images,
+            List<ProductUpdateDTO.VariantImageMetadata> metadata, int variantIndex) {
+        try {
+            log.info("Processing images for new variant ID: {}", variant.getId());
+
+            // Filter images for this specific variant
+            List<MultipartFile> variantImages = new ArrayList<>();
+            List<ProductUpdateDTO.VariantImageMetadata> variantMetadata = new ArrayList<>();
+
+            if (metadata != null) {
+                for (int i = 0; i < metadata.size(); i++) {
+                    ProductUpdateDTO.VariantImageMetadata imgMeta = metadata.get(i);
+                    if (imgMeta.getVariantIndex() != null && imgMeta.getVariantIndex() == variantIndex) {
+                        if (i < images.size()) {
+                            variantImages.add(images.get(i));
+                            variantMetadata.add(imgMeta);
+                        }
+                    }
+                }
+            }
+
+            if (!variantImages.isEmpty()) {
+                // Upload images to Cloudinary
+                List<Map<String, String>> uploadResults = cloudinaryService.uploadMultipleImages(variantImages);
+
+                // Create variant images
+                for (int i = 0; i < uploadResults.size(); i++) {
+                    Map<String, String> uploadResult = uploadResults.get(i);
+
+                    if (uploadResult.containsKey("error")) {
+                        log.error("Failed to upload variant image {}: {}", i, uploadResult.get("error"));
+                        throw new RuntimeException("Failed to upload variant image: " + uploadResult.get("error"));
+                    }
+
+                    ProductVariantImage variantImage = new ProductVariantImage();
+                    variantImage.setProductVariant(variant);
+                    variantImage.setImageUrl(uploadResult.get("url"));
+
+                    // Set extracted metadata from Cloudinary
+                    if (uploadResult.get("width") != null) {
+                        variantImage.setWidth(Integer.valueOf(uploadResult.get("width")));
+                    }
+                    if (uploadResult.get("height") != null) {
+                        variantImage.setHeight(Integer.valueOf(uploadResult.get("height")));
+                    }
+                    if (uploadResult.get("fileSize") != null) {
+                        variantImage.setFileSize(Long.valueOf(uploadResult.get("fileSize")));
+                    }
+                    if (uploadResult.get("mimeType") != null) {
+                        variantImage.setMimeType(uploadResult.get("mimeType"));
+                    }
+
+                    // Set user-provided metadata if available
+                    if (i < variantMetadata.size()) {
+                        ProductUpdateDTO.VariantImageMetadata imgMetadata = variantMetadata.get(i);
+                        variantImage.setAltText(imgMetadata.getAltText());
+                        variantImage.setTitle(imgMetadata.getAltText()); // Use alt text as title
+                        variantImage
+                                .setPrimary(imgMetadata.getIsPrimary() != null ? imgMetadata.getIsPrimary() : false);
+                        variantImage.setSortOrder(imgMetadata.getSortOrder() != null ? imgMetadata.getSortOrder() : i);
+                    } else {
+                        variantImage.setSortOrder(i);
+                        // Set first image as primary if no metadata
+                        if (i == 0) {
+                            variantImage.setPrimary(true);
+                        }
+                    }
+
+                    productVariantImageRepository.save(variantImage);
+                }
+            }
+
+            log.info("Successfully processed {} images for new variant ID: {}", variantImages.size(), variant.getId());
+        } catch (Exception e) {
+            log.error("Error processing images for new variant ID {}: {}", variant.getId(), e.getMessage(), e);
             throw new RuntimeException("Failed to process variant images: " + e.getMessage(), e);
         }
     }

@@ -2,6 +2,8 @@ package com.ecommerce.service;
 
 import com.ecommerce.dto.CreateProductDTO;
 import com.ecommerce.dto.ProductDTO;
+import com.ecommerce.dto.ProductUpdateDTO;
+
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 
@@ -58,7 +60,7 @@ public interface ProductService {
      * @param updateProductDTO The product update data
      * @return The updated product DTO
      */
-    ProductDTO updateProduct(UUID productId, CreateProductDTO updateProductDTO);
+    ProductDTO updateProduct(UUID productId, ProductUpdateDTO updateProductDTO);
 
     /**
      * Delete a product
