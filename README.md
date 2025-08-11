@@ -11,7 +11,7 @@ Welcome to the official backend service for the E-Commerce platform developed by
 - Guest checkout support
 - User profile & address management
 - Password reset & recovery
-
+                  
 ### 2. 🛒 Product Management
 - Product catalog with categories & subcategories
 - Variants (size, color, etc.) with inventory tracking

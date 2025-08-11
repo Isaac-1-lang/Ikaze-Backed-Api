@@ -5,7 +5,7 @@ import com.ecommerce.dto.ManyProductsDto;
 import com.ecommerce.dto.ProductDTO;
 import com.ecommerce.dto.ProductSearchDTO;
 import com.ecommerce.dto.ProductUpdateDTO;
-import com.ecommerce.exception.ProductDeletionException;
+import com.ecommerce.Exception.ProductDeletionException;
 import com.ecommerce.service.ProductService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.media.Content;

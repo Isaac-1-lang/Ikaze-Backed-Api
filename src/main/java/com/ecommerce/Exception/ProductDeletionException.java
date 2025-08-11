@@ -1,4 +1,4 @@
-package com.ecommerce.exception;
+package com.ecommerce.Exception;
 
 /**
  * Exception thrown when a product cannot be deleted due to business rules

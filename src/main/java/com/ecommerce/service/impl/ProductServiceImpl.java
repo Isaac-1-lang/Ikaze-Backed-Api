@@ -9,7 +9,7 @@ import com.ecommerce.dto.ProductUpdateDTO;
 import com.ecommerce.dto.ProductVariantDTO;
 import com.ecommerce.entity.*;
 import com.ecommerce.repository.*;
-import com.ecommerce.exception.ProductDeletionException;
+import com.ecommerce.Exception.ProductDeletionException;
 import com.ecommerce.service.CloudinaryService;
 import com.ecommerce.service.ProductService;
 import jakarta.persistence.EntityNotFoundException;
