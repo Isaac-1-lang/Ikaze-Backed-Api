@@ -1,7 +1,9 @@
 package com.ecommerce.service;
 
 import com.ecommerce.dto.CreateProductDTO;
+import com.ecommerce.dto.ManyProductsDto;
 import com.ecommerce.dto.ProductDTO;
+import com.ecommerce.dto.ProductSearchDTO;
 import com.ecommerce.dto.ProductUpdateDTO;
 
 import org.springframework.data.domain.Page;
@@ -40,18 +42,9 @@ public interface ProductService {
      * Get all products with pagination
      * 
      * @param pageable Pagination information
-     * @return Page of product DTOs
+     * @return Page of ManyProductsDto for card display
      */
-    Page<ProductDTO> getAllProducts(Pageable pageable);
-
-    /**
-     * Get products by category ID
-     * 
-     * @param categoryId The category ID
-     * @param pageable   Pagination information
-     * @return Page of product DTOs
-     */
-    Page<ProductDTO> getProductsByCategory(Long categoryId, Pageable pageable);
+    Page<ManyProductsDto> getAllProducts(Pageable pageable);
 
     /**
      * Update an existing product
@@ -63,51 +56,29 @@ public interface ProductService {
     ProductDTO updateProduct(UUID productId, ProductUpdateDTO updateProductDTO);
 
     /**
-     * Delete a product
+     * Delete a product variant
+     * 
+     * @param productId The product ID
+     * @param variantId The variant ID to delete
+     * @return true if deletion was successful
+     */
+    boolean deleteProductVariant(UUID productId, Long variantId);
+
+    /**
+     * Delete a product with all its variants, images, and videos
+     * Also removes the product from carts and wishlists
      * 
      * @param productId The product ID
      * @return true if deleted successfully
+     * @throws ProductDeletionException if the product cannot be deleted due to pending orders
      */
     boolean deleteProduct(UUID productId);
 
     /**
-     * Search products by keyword
+     * Search products with comprehensive filtering
      * 
-     * @param keyword  The search keyword
-     * @param pageable Pagination information
-     * @return Page of product DTOs
+     * @param searchDTO The search criteria DTO
+     * @return Page of ManyProductsDto for found products
      */
-    Page<ProductDTO> searchProducts(String keyword, Pageable pageable);
-
-    /**
-     * Get featured products
-     * 
-     * @param limit Maximum number of products to return
-     * @return List of product DTOs
-     */
-    List<ProductDTO> getFeaturedProducts(int limit);
-
-    /**
-     * Get bestseller products
-     * 
-     * @param limit Maximum number of products to return
-     * @return List of product DTOs
-     */
-    List<ProductDTO> getBestsellerProducts(int limit);
-
-    /**
-     * Get new arrival products
-     * 
-     * @param limit Maximum number of products to return
-     * @return List of product DTOs
-     */
-    List<ProductDTO> getNewArrivalProducts(int limit);
-
-    /**
-     * Get on sale products
-     * 
-     * @param limit Maximum number of products to return
-     * @return List of product DTOs
-     */
-    List<ProductDTO> getOnSaleProducts(int limit);
+    Page<ManyProductsDto> searchProducts(ProductSearchDTO searchDTO);
 }

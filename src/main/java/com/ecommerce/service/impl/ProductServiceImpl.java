@@ -2,22 +2,32 @@ package com.ecommerce.service.impl;
 
 import com.ecommerce.dto.CreateProductDTO;
 import com.ecommerce.dto.CreateProductVariantDTO;
+import com.ecommerce.dto.ManyProductsDto;
 import com.ecommerce.dto.ProductDTO;
+import com.ecommerce.dto.ProductSearchDTO;
 import com.ecommerce.dto.ProductUpdateDTO;
 import com.ecommerce.dto.ProductVariantDTO;
 import com.ecommerce.entity.*;
 import com.ecommerce.repository.*;
+import com.ecommerce.exception.ProductDeletionException;
 import com.ecommerce.service.CloudinaryService;
 import com.ecommerce.service.ProductService;
 import jakarta.persistence.EntityNotFoundException;
+import jakarta.persistence.criteria.*;
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
+import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.io.IOException;
+import java.math.BigDecimal;
+import java.time.LocalDateTime;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
@@ -40,6 +50,9 @@ public class ProductServiceImpl implements ProductService {
     private final ProductAttributeTypeRepository attributeTypeRepository;
     private final ProductAttributeValueRepository attributeValueRepository;
     private final VariantAttributeValueRepository variantAttributeValueRepository;
+    private final OrderRepository orderRepository;
+    private final CartRepository cartRepository;
+    private final WishlistRepository wishlistRepository;
     private final CloudinaryService cloudinaryService;
 
     // Using thread pool for concurrent image/video uploads
@@ -244,15 +257,9 @@ public class ProductServiceImpl implements ProductService {
     }
 
     @Override
-    public Page<ProductDTO> getAllProducts(Pageable pageable) {
+    public Page<ManyProductsDto> getAllProducts(Pageable pageable) {
         return productRepository.findAll(pageable)
-                .map(this::mapProductToDTO);
-    }
-
-    @Override
-    public Page<ProductDTO> getProductsByCategory(Long categoryId, Pageable pageable) {
-        return productRepository.findByCategoryId(categoryId, pageable)
-                .map(this::mapProductToDTO);
+                .map(this::mapProductToManyProductsDto);
     }
 
     @Override
@@ -313,50 +320,418 @@ public class ProductServiceImpl implements ProductService {
     }
 
     @Override
+    @Transactional
     public boolean deleteProduct(UUID productId) {
-        if (!productRepository.existsById(productId)) {
-            return false;
+        try {
+            log.info("Starting product deletion for ID: {}", productId);
+
+            // Get the product with all its relationships
+            Product product = productRepository.findById(productId)
+                    .orElseThrow(() -> new EntityNotFoundException("Product not found with ID: " + productId));
+
+            log.info("Found product: {} for deletion", product.getProductName());
+
+            // Check if there are any pending orders for this product
+            checkForPendingOrders(product);
+
+            // Remove product from carts and wishlists
+            removeProductFromCartsAndWishlists(product);
+
+            // Delete all product variants (this will cascade to images and attributes)
+            deleteProductVariants(product);
+
+            // Delete main product images and videos
+            deleteProductMedia(product);
+
+            // Delete product detail
+            deleteProductDetail(product);
+
+            // Finally, delete the product itself
+            productRepository.delete(product);
+
+            log.info("Product deleted successfully with ID: {}", productId);
+            return true;
+
+        } catch (EntityNotFoundException e) {
+            log.error("Product not found for deletion with ID {}: {}", productId, e.getMessage());
+            throw e;
+        } catch (ProductDeletionException e) {
+            log.error("Product deletion blocked for ID {}: {}", productId, e.getMessage());
+            throw e;
+        } catch (Exception e) {
+            log.error("Error deleting product with ID {}: {}", productId, e.getMessage(), e);
+            throw new RuntimeException("Failed to delete product: " + e.getMessage(), e);
         }
-        productRepository.deleteById(productId);
-        return true;
+    }
+
+    /**
+     * Check if there are any pending orders for the product variants
+     * that would prevent deletion
+     */
+    private void checkForPendingOrders(Product product) {
+        if (product.getVariants() == null || product.getVariants().isEmpty()) {
+            log.debug("No variants found for product, skipping order check");
+            return;
+        }
+
+        for (ProductVariant variant : product.getVariants()) {
+            if (orderRepository.existsByProductVariantAndNotDelivered(variant.getId())) {
+                String errorMessage = String.format(
+                    "Cannot delete product '%s' because variant '%s' has pending orders that are not yet delivered. " +
+                    "Please ensure all orders are delivered, cancelled, refunded, or returned before deleting the product.",
+                    product.getProductName(), variant.getVariantSku());
+                
+                log.warn("Product deletion blocked due to pending orders for variant: {}", variant.getVariantSku());
+                throw new ProductDeletionException(errorMessage);
+            }
+        }
+
+        log.debug("No pending orders found for product variants, deletion can proceed");
+    }
+
+    /**
+     * Remove product variants from all carts and wishlists
+     */
+    private void removeProductFromCartsAndWishlists(Product product) {
+        if (product.getVariants() == null || product.getVariants().isEmpty()) {
+            log.debug("No variants found for product, skipping cart/wishlist cleanup");
+            return;
+        }
+
+        log.info("Removing product variants from carts and wishlists");
+
+        for (ProductVariant variant : product.getVariants()) {
+            try {
+                // Remove from carts
+                cartRepository.deleteCartItemsByProductVariant(variant.getId());
+                log.debug("Removed variant {} from all carts", variant.getVariantSku());
+
+                // Remove from wishlists
+                wishlistRepository.deleteWishlistProductsByProductVariant(variant.getId());
+                log.debug("Removed variant {} from all wishlists", variant.getVariantSku());
+
+            } catch (Exception e) {
+                log.warn("Failed to remove variant {} from carts/wishlists: {}", variant.getVariantSku(), e.getMessage());
+                // Continue with deletion even if cart/wishlist cleanup fails
+            }
+        }
+
+        log.info("Successfully removed product variants from carts and wishlists");
+    }
+
+    /**
+     * Delete all product variants and their associated data
+     */
+    private void deleteProductVariants(Product product) {
+        if (product.getVariants() == null || product.getVariants().isEmpty()) {
+            log.debug("No variants found for product, skipping variant deletion");
+            return;
+        }
+
+        log.info("Deleting {} product variants", product.getVariants().size());
+
+        for (ProductVariant variant : product.getVariants()) {
+            try {
+                // Delete variant images from Cloudinary and database
+                deleteVariantImages(variant);
+
+                // Delete variant attributes
+                deleteVariantAttributes(variant);
+
+                // Delete the variant itself
+                productVariantRepository.delete(variant);
+
+                log.debug("Successfully deleted variant: {}", variant.getVariantSku());
+
+            } catch (Exception e) {
+                log.error("Error deleting variant {}: {}", variant.getVariantSku(), e.getMessage(), e);
+                throw new RuntimeException("Failed to delete variant: " + variant.getVariantSku(), e);
+            }
+        }
+
+        log.info("Successfully deleted all product variants");
+    }
+
+    /**
+     * Delete main product images and videos
+     */
+    private void deleteProductMedia(Product product) {
+        try {
+            // Delete product images
+            if (product.getImages() != null && !product.getImages().isEmpty()) {
+                log.info("Deleting {} product images", product.getImages().size());
+
+                for (ProductImage image : product.getImages()) {
+                    try {
+                        if (image.getImageUrl() != null && !image.getImageUrl().isEmpty()) {
+                            cloudinaryService.deleteImage(image.getImageUrl());
+                            log.debug("Deleted image from Cloudinary: {}", image.getImageUrl());
+                        }
+                    } catch (Exception e) {
+                        log.warn("Failed to delete image from Cloudinary: {}. Error: {}", 
+                                image.getImageUrl(), e.getMessage());
+                    }
+                }
+
+                productImageRepository.deleteAll(product.getImages());
+                log.info("Successfully deleted {} product images", product.getImages().size());
+            }
+
+            // Delete product videos
+            if (product.getVideos() != null && !product.getVideos().isEmpty()) {
+                log.info("Deleting {} product videos", product.getVideos().size());
+
+                for (ProductVideo video : product.getVideos()) {
+                    try {
+                        if (video.getUrl() != null && !video.getUrl().isEmpty()) {
+                            cloudinaryService.deleteFile(video.getUrl());
+                            log.debug("Deleted video from Cloudinary: {}", video.getUrl());
+                        }
+                    } catch (Exception e) {
+                        log.warn("Failed to delete video from Cloudinary: {}. Error: {}", 
+                                video.getUrl(), e.getMessage());
+                    }
+                }
+
+                productVideoRepository.deleteAll(product.getVideos());
+                log.info("Successfully deleted {} product videos", product.getVideos().size());
+            }
+
+        } catch (Exception e) {
+            log.error("Error deleting product media: {}", e.getMessage(), e);
+            throw new RuntimeException("Failed to delete product media: " + e.getMessage(), e);
+        }
+    }
+
+    /**
+     * Delete product detail
+     */
+    private void deleteProductDetail(Product product) {
+        if (product.getProductDetail() != null) {
+            try {
+                log.debug("Deleting product detail for product: {}", product.getProductName());
+                // ProductDetail will be automatically deleted due to cascade
+                log.debug("Product detail deleted successfully");
+            } catch (Exception e) {
+                log.warn("Failed to delete product detail: {}", e.getMessage());
+                // Continue with deletion even if detail deletion fails
+            }
+        }
     }
 
     @Override
-    public Page<ProductDTO> searchProducts(String keyword, Pageable pageable) {
-        return productRepository.searchProducts(keyword, pageable)
-                .map(this::mapProductToDTO);
+    public Page<ManyProductsDto> searchProducts(ProductSearchDTO searchDTO) {
+        try {
+            log.info("Searching products with criteria: {}", searchDTO);
+
+            // Create a Pageable object from the search DTO
+            int page = searchDTO.getPage() != null ? searchDTO.getPage() : 0;
+            int size = searchDTO.getSize() != null ? searchDTO.getSize() : 10;
+            String sortBy = searchDTO.getSortBy() != null ? searchDTO.getSortBy() : "createdAt";
+            String sortDirection = searchDTO.getSortDirection() != null ? searchDTO.getSortDirection() : "desc";
+
+            Sort.Direction direction = sortDirection.equalsIgnoreCase("asc") ? Sort.Direction.ASC : Sort.Direction.DESC;
+            Pageable pageable = PageRequest.of(page, size, Sort.by(direction, sortBy));
+
+            // Build the search criteria
+            Specification<Product> spec = buildProductSearchSpecification(searchDTO);
+
+            // Execute the search
+            Page<Product> productPage = productRepository.findAll(spec, pageable);
+
+            // Map to ManyProductsDto
+            Page<ManyProductsDto> result = productPage.map(this::mapProductToManyProductsDto);
+
+            log.info("Search completed. Found {} products matching criteria", result.getTotalElements());
+            return result;
+
+        } catch (Exception e) {
+            log.error("Error searching products: {}", e.getMessage(), e);
+            throw new RuntimeException("Failed to search products: " + e.getMessage(), e);
+        }
     }
 
-    @Override
-    public List<ProductDTO> getFeaturedProducts(int limit) {
-        return productRepository.findFeaturedProducts(Pageable.ofSize(limit))
-                .stream()
-                .map(this::mapProductToDTO)
-                .collect(Collectors.toList());
-    }
+    /**
+     * Build a JPA Specification for product search based on the search DTO
+     */
+    private Specification<Product> buildProductSearchSpecification(ProductSearchDTO searchDTO) {
+        return (root, query, criteriaBuilder) -> {
+            List<Predicate> predicates = new ArrayList<>();
 
-    @Override
-    public List<ProductDTO> getBestsellerProducts(int limit) {
-        return productRepository.findBestsellerProducts(Pageable.ofSize(limit))
-                .stream()
-                .map(this::mapProductToDTO)
-                .collect(Collectors.toList());
-    }
+            // Basic product identifiers
+            if (searchDTO.getProductId() != null) {
+                predicates.add(criteriaBuilder.equal(root.get("productId"), searchDTO.getProductId()));
+            }
 
-    @Override
-    public List<ProductDTO> getNewArrivalProducts(int limit) {
-        return productRepository.findNewArrivalProducts(Pageable.ofSize(limit))
-                .stream()
-                .map(this::mapProductToDTO)
-                .collect(Collectors.toList());
-    }
+            if (searchDTO.getName() != null && !searchDTO.getName().trim().isEmpty()) {
+                predicates.add(criteriaBuilder.like(criteriaBuilder.lower(root.get("productName")), 
+                    "%" + searchDTO.getName().toLowerCase() + "%"));
+            }
 
-    @Override
-    public List<ProductDTO> getOnSaleProducts(int limit) {
-        return productRepository.findOnSaleProducts(Pageable.ofSize(limit))
-                .stream()
-                .map(this::mapProductToDTO)
-                .collect(Collectors.toList());
+            if (searchDTO.getDescription() != null && !searchDTO.getDescription().trim().isEmpty()) {
+                Join<Product, ProductDetail> detailJoin = root.join("productDetail", JoinType.LEFT);
+                predicates.add(criteriaBuilder.like(criteriaBuilder.lower(detailJoin.get("description")), 
+                    "%" + searchDTO.getDescription().toLowerCase() + "%"));
+            }
+
+            if (searchDTO.getSku() != null && !searchDTO.getSku().trim().isEmpty()) {
+                predicates.add(criteriaBuilder.like(criteriaBuilder.lower(root.get("sku")), 
+                    "%" + searchDTO.getSku().toLowerCase() + "%"));
+            }
+
+            if (searchDTO.getBarcode() != null && !searchDTO.getBarcode().trim().isEmpty()) {
+                predicates.add(criteriaBuilder.like(criteriaBuilder.lower(root.get("barcode")), 
+                    "%" + searchDTO.getBarcode().toLowerCase() + "%"));
+            }
+
+            if (searchDTO.getSlug() != null && !searchDTO.getSlug().trim().isEmpty()) {
+                predicates.add(criteriaBuilder.like(criteriaBuilder.lower(root.get("slug")), 
+                    "%" + searchDTO.getSlug().toLowerCase() + "%"));
+            }
+
+            if (searchDTO.getModel() != null && !searchDTO.getModel().trim().isEmpty()) {
+                predicates.add(criteriaBuilder.like(criteriaBuilder.lower(root.get("model")), 
+                    "%" + searchDTO.getModel().toLowerCase() + "%"));
+            }
+
+            // Price filters
+            if (searchDTO.getBasePriceMin() != null) {
+                predicates.add(criteriaBuilder.greaterThanOrEqualTo(root.get("price"), searchDTO.getBasePriceMin()));
+            }
+
+            if (searchDTO.getBasePriceMax() != null) {
+                predicates.add(criteriaBuilder.lessThanOrEqualTo(root.get("price"), searchDTO.getBasePriceMax()));
+            }
+
+            if (searchDTO.getSalePriceMin() != null) {
+                predicates.add(criteriaBuilder.greaterThanOrEqualTo(root.get("salePrice"), searchDTO.getSalePriceMin()));
+            }
+
+            if (searchDTO.getSalePriceMax() != null) {
+                predicates.add(criteriaBuilder.lessThanOrEqualTo(root.get("salePrice"), searchDTO.getSalePriceMax()));
+            }
+
+            if (searchDTO.getCompareAtPriceMin() != null) {
+                predicates.add(criteriaBuilder.greaterThanOrEqualTo(root.get("compareAtPrice"), searchDTO.getCompareAtPriceMin()));
+            }
+
+            if (searchDTO.getCompareAtPriceMax() != null) {
+                predicates.add(criteriaBuilder.lessThanOrEqualTo(root.get("compareAtPrice"), searchDTO.getCompareAtPriceMax()));
+            }
+
+            // Stock filters
+            if (searchDTO.getStockQuantityMin() != null) {
+                predicates.add(criteriaBuilder.greaterThanOrEqualTo(root.get("stockQuantity"), searchDTO.getStockQuantityMin()));
+            }
+
+            if (searchDTO.getStockQuantityMax() != null) {
+                predicates.add(criteriaBuilder.lessThanOrEqualTo(root.get("stockQuantity"), searchDTO.getStockQuantityMax()));
+            }
+
+            if (searchDTO.getInStock() != null) {
+                if (searchDTO.getInStock()) {
+                    predicates.add(criteriaBuilder.greaterThan(root.get("stockQuantity"), 0));
+                } else {
+                    predicates.add(criteriaBuilder.equal(root.get("stockQuantity"), 0));
+                }
+            }
+
+            // Category filters
+            if (searchDTO.getCategoryId() != null) {
+                predicates.add(criteriaBuilder.equal(root.get("category").get("id"), searchDTO.getCategoryId()));
+            }
+
+            if (searchDTO.getCategoryIds() != null && !searchDTO.getCategoryIds().isEmpty()) {
+                predicates.add(root.get("category").get("id").in(searchDTO.getCategoryIds()));
+            }
+
+            // Brand filters
+            if (searchDTO.getBrandId() != null) {
+                predicates.add(criteriaBuilder.equal(root.get("brand").get("brandId"), searchDTO.getBrandId()));
+            }
+
+            if (searchDTO.getBrandIds() != null && !searchDTO.getBrandIds().isEmpty()) {
+                predicates.add(root.get("brand").get("brandId").in(searchDTO.getBrandIds()));
+            }
+
+            // Discount filters
+            if (searchDTO.getDiscountId() != null) {
+                predicates.add(criteriaBuilder.equal(root.get("discount").get("discountId"), searchDTO.getDiscountId()));
+            }
+
+            if (searchDTO.getDiscountIds() != null && !searchDTO.getDiscountIds().isEmpty()) {
+                predicates.add(root.get("discount").get("discountId").in(searchDTO.getDiscountIds()));
+            }
+
+            if (searchDTO.getHasDiscount() != null) {
+                if (searchDTO.getHasDiscount()) {
+                    predicates.add(criteriaBuilder.isNotNull(root.get("discount")));
+                } else {
+                    predicates.add(criteriaBuilder.isNull(root.get("discount")));
+                }
+            }
+
+            if (searchDTO.getIsOnSale() != null) {
+                if (searchDTO.getIsOnSale()) {
+                    predicates.add(criteriaBuilder.isNotNull(root.get("discount")));
+                    predicates.add(criteriaBuilder.lessThanOrEqualTo(root.get("discount").get("startDate"), LocalDateTime.now()));
+                    predicates.add(criteriaBuilder.greaterThanOrEqualTo(root.get("discount").get("endDate"), LocalDateTime.now()));
+                }
+            }
+
+            // Feature flags
+            if (searchDTO.getIsFeatured() != null) {
+                predicates.add(criteriaBuilder.equal(root.get("featured"), searchDTO.getIsFeatured()));
+            }
+
+            if (searchDTO.getIsBestseller() != null) {
+                predicates.add(criteriaBuilder.equal(root.get("bestseller"), searchDTO.getIsBestseller()));
+            }
+
+            if (searchDTO.getIsNewArrival() != null) {
+                // New arrivals are products created within the last 30 days
+                if (searchDTO.getIsNewArrival()) {
+                    LocalDateTime thirtyDaysAgo = LocalDateTime.now().minusDays(30);
+                    predicates.add(criteriaBuilder.greaterThanOrEqualTo(root.get("createdAt"), thirtyDaysAgo));
+                }
+            }
+
+            // Date filters
+            if (searchDTO.getCreatedAtMin() != null) {
+                predicates.add(criteriaBuilder.greaterThanOrEqualTo(root.get("createdAt"), searchDTO.getCreatedAtMin()));
+            }
+
+            if (searchDTO.getCreatedAtMax() != null) {
+                predicates.add(criteriaBuilder.lessThanOrEqualTo(root.get("createdAt"), searchDTO.getCreatedAtMax()));
+            }
+
+            if (searchDTO.getUpdatedAtMin() != null) {
+                predicates.add(criteriaBuilder.greaterThanOrEqualTo(root.get("updatedAt"), searchDTO.getUpdatedAtMin()));
+            }
+
+            if (searchDTO.getUpdatedAtMax() != null) {
+                predicates.add(criteriaBuilder.lessThanOrEqualTo(root.get("updatedAt"), searchDTO.getUpdatedAtMax()));
+            }
+
+            // Creator filter
+            if (searchDTO.getCreatedBy() != null) {
+                predicates.add(criteriaBuilder.equal(root.get("createdBy"), searchDTO.getCreatedBy()));
+            }
+
+            // Text search across multiple fields
+            if (searchDTO.getSearchKeyword() != null && !searchDTO.getSearchKeyword().trim().isEmpty()) {
+                String keyword = searchDTO.getSearchKeyword().toLowerCase();
+                Predicate namePredicate = criteriaBuilder.like(criteriaBuilder.lower(root.get("productName")), "%" + keyword + "%");
+                Predicate descPredicate = criteriaBuilder.like(criteriaBuilder.lower(root.get("productDetail").get("description")), "%" + keyword + "%");
+                Predicate skuPredicate = criteriaBuilder.like(criteriaBuilder.lower(root.get("sku")), "%" + keyword + "%");
+                Predicate barcodePredicate = criteriaBuilder.like(criteriaBuilder.lower(root.get("barcode")), "%" + keyword + "%");
+                
+                predicates.add(criteriaBuilder.or(namePredicate, descPredicate, skuPredicate, barcodePredicate));
+            }
+
+            // Combine all predicates with AND
+            return criteriaBuilder.and(predicates.toArray(new Predicate[0]));
+        };
     }
 
     private void processProductImages(Product product, List<MultipartFile> images,
@@ -958,5 +1333,154 @@ public class ProductServiceImpl implements ProductService {
                 .attributeTypeId(attributeType.getAttributeTypeId())
                 .attributeType(attributeType.getName())
                 .build();
+    }
+
+    @Override
+    @Transactional
+    public boolean deleteProductVariant(UUID productId, Long variantId) {
+        try {
+            log.info("Starting deletion of product variant. Product ID: {}, Variant ID: {}", productId, variantId);
+
+            // Verify product exists
+            Product product = productRepository.findById(productId)
+                    .orElseThrow(() -> new EntityNotFoundException("Product not found with ID: " + productId));
+
+            // Verify variant exists and belongs to the product
+            ProductVariant variant = productVariantRepository.findById(variantId)
+                    .orElseThrow(() -> new EntityNotFoundException("Product variant not found with ID: " + variantId));
+
+            if (!variant.getProduct().getProductId().equals(productId)) {
+                throw new IllegalArgumentException("Variant does not belong to the specified product");
+            }
+
+            log.info("Found variant: {} for product: {}", variant.getVariantSku(), product.getProductName());
+
+            // Delete variant images from Cloudinary and database
+            deleteVariantImages(variant);
+
+            // Delete variant attribute values
+            deleteVariantAttributes(variant);
+
+            // Delete the variant itself
+            productVariantRepository.delete(variant);
+
+            log.info("Successfully deleted product variant. Product ID: {}, Variant ID: {}", productId, variantId);
+            return true;
+
+        } catch (Exception e) {
+            log.error("Error deleting product variant. Product ID: {}, Variant ID: {}: {}",
+                    productId, variantId, e.getMessage(), e);
+            throw new RuntimeException("Failed to delete product variant: " + e.getMessage(), e);
+        }
+    }
+
+    /**
+     * Delete all images associated with a product variant
+     * 
+     * @param variant The product variant
+     */
+    private void deleteVariantImages(ProductVariant variant) {
+        try {
+            List<ProductVariantImage> variantImages = productVariantImageRepository
+                    .findByProductVariantId(variant.getId());
+
+            if (variantImages.isEmpty()) {
+                log.debug("No images found for variant ID: {}", variant.getId());
+                return;
+            }
+
+            log.info("Deleting {} images for variant ID: {}", variantImages.size(), variant.getId());
+
+            for (ProductVariantImage image : variantImages) {
+                try {
+                    // Delete from Cloudinary
+                    if (image.getImageUrl() != null && !image.getImageUrl().isEmpty()) {
+                        cloudinaryService.deleteImage(image.getImageUrl());
+                        log.debug("Deleted image from Cloudinary: {}", image.getImageUrl());
+                    }
+                } catch (Exception e) {
+                    log.warn("Failed to delete image from Cloudinary: {}. Error: {}",
+                            image.getImageUrl(), e.getMessage());
+                    // Continue with other images even if one fails
+                }
+            }
+
+            // Delete all variant images from database
+            productVariantImageRepository.deleteAll(variantImages);
+            log.info("Successfully deleted {} variant images from database for variant ID: {}",
+                    variantImages.size(), variant.getId());
+
+        } catch (Exception e) {
+            log.error("Error deleting variant images for variant ID {}: {}", variant.getId(), e.getMessage(), e);
+            throw new RuntimeException("Failed to delete variant images: " + e.getMessage(), e);
+        }
+    }
+
+    /**
+     * Delete all attribute values associated with a product variant
+     * 
+     * @param variant The product variant
+     */
+    private void deleteVariantAttributes(ProductVariant variant) {
+        try {
+            List<VariantAttributeValue> attributeValues = variantAttributeValueRepository
+                    .findByProductVariantId(variant.getId());
+
+            if (attributeValues.isEmpty()) {
+                log.debug("No attribute values found for variant ID: {}", variant.getId());
+                return;
+            }
+
+            log.info("Deleting {} attribute values for variant ID: {}", attributeValues.size(), variant.getId());
+
+            // Delete all variant attribute values from database
+            variantAttributeValueRepository.deleteAll(attributeValues);
+
+            log.info("Successfully deleted {} attribute values from database for variant ID: {}",
+                    attributeValues.size(), variant.getId());
+
+        } catch (Exception e) {
+            log.error("Error deleting variant attributes for variant ID {}: {}", variant.getId(), e.getMessage(), e);
+            throw new RuntimeException("Failed to delete variant attributes: " + e.getMessage(), e);
+        }
+    }
+
+    /**
+     * Map a Product entity to ManyProductsDto for card display
+     * 
+     * @param product The product entity
+     * @return ManyProductsDto with essential fields for card display
+     */
+    private ManyProductsDto mapProductToManyProductsDto(Product product) {
+        try {
+            // Find the primary image for the product
+            ProductImage primaryImage = null;
+            if (product.getImages() != null && !product.getImages().isEmpty()) {
+                primaryImage = product.getImages().stream()
+                        .filter(ProductImage::isPrimary)
+                        .findFirst()
+                        .orElse(product.getImages().get(0)); // Fallback to first image if no primary
+            }
+
+            return ManyProductsDto.builder()
+                    .productId(product.getProductId())
+                    .productName(product.getProductName())
+                    .shortDescription(product.getProductDetail() != null ? product.getProductDetail().getDescription() : null)
+                    .price(product.getPrice())
+                    .compareAtPrice(product.getCompareAtPrice())
+                    .stockQuantity(product.getStockQuantity())
+                    .category(product.getCategory())
+                    .brand(product.getBrand())
+                    .isBestSeller(product.isBestseller())
+                    .isFeatured(product.isFeatured())
+                    .discountInfo(product.getDiscount())
+                    .primaryImage(primaryImage)
+                    .build();
+
+        } catch (Exception e) {
+            log.error("Error mapping product to ManyProductsDto for product ID {}: {}", 
+                    product.getProductId(), e.getMessage(), e);
+            throw new RuntimeException("Failed to map product to ManyProductsDto: " + e.getMessage(), e);
+        }
     }
 }

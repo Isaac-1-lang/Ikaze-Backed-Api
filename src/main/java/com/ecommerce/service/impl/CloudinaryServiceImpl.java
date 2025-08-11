@@ -84,6 +84,73 @@ public class CloudinaryServiceImpl implements CloudinaryService {
                 .generate();
     }
 
+    @Override
+    public Map<String, String> deleteImage(String imageUrl) throws IOException {
+        try {
+            // Extract public ID from Cloudinary URL
+            String publicId = extractPublicIdFromUrl(imageUrl);
+            if (publicId == null) {
+                throw new IllegalArgumentException("Invalid Cloudinary URL format: " + imageUrl);
+            }
+
+            log.debug("Deleting image with public ID: {} from URL: {}", publicId, imageUrl);
+
+            // Use the existing deleteFile method
+            return deleteFile(publicId);
+
+        } catch (Exception e) {
+            log.error("Error deleting image from URL: {}", imageUrl, e);
+            Map<String, String> errorMap = new HashMap<>();
+            errorMap.put("error", "Failed to delete image");
+            errorMap.put("errorMessage", e.getMessage());
+            errorMap.put("imageUrl", imageUrl);
+            return errorMap;
+        }
+    }
+
+    /**
+     * Extract public ID from a Cloudinary URL
+     * 
+     * @param imageUrl The Cloudinary URL
+     * @return The public ID or null if extraction fails
+     */
+    private String extractPublicIdFromUrl(String imageUrl) {
+        if (imageUrl == null || imageUrl.isEmpty()) {
+            return null;
+        }
+
+        try {
+            // Handle different Cloudinary URL formats
+            // Example:
+            // https://res.cloudinary.com/cloud_name/image/upload/v1234567890/folder/image.jpg
+            // or: https://res.cloudinary.com/cloud_name/image/upload/folder/image.jpg
+
+            String[] parts = imageUrl.split("/upload/");
+            if (parts.length < 2) {
+                return null;
+            }
+
+            String afterUpload = parts[1];
+
+            // Remove version if present (v1234567890/)
+            if (afterUpload.startsWith("v") && afterUpload.contains("/")) {
+                afterUpload = afterUpload.substring(afterUpload.indexOf("/") + 1);
+            }
+
+            // Remove file extension
+            int lastDotIndex = afterUpload.lastIndexOf(".");
+            if (lastDotIndex > 0) {
+                afterUpload = afterUpload.substring(0, lastDotIndex);
+            }
+
+            return afterUpload;
+
+        } catch (Exception e) {
+            log.warn("Failed to extract public ID from URL: {}", imageUrl, e);
+            return null;
+        }
+    }
+
     private Map<String, String> uploadFile(MultipartFile file, String resourceType) throws IOException {
         // Validate file before upload
         if ("video".equals(resourceType)) {
