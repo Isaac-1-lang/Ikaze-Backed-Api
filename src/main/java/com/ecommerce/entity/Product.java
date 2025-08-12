@@ -153,11 +153,15 @@ public class Product {
     public BigDecimal getDiscountedPrice() {
         // First check if there's a valid discount entity associated
         if (discount != null && discount.isValid()) {
-            return price.multiply(BigDecimal.valueOf(1 - discount.getPercentage() / 100.0));
+            BigDecimal discountMultiplier = BigDecimal.ONE.subtract(
+                    discount.getPercentage().divide(BigDecimal.valueOf(100.0)));
+            return price.multiply(discountMultiplier);
         }
         // Fall back to the legacy discount method
         else if (isOnSale && salePercentage != null && salePercentage > 0) {
-            return price.multiply(BigDecimal.valueOf(1 - salePercentage / 100.0));
+            BigDecimal discountMultiplier = BigDecimal.ONE.subtract(
+                    BigDecimal.valueOf(salePercentage).divide(BigDecimal.valueOf(100.0)));
+            return price.multiply(discountMultiplier);
         }
         return price;
     }

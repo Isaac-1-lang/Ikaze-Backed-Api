@@ -1,6 +1,7 @@
 package com.ecommerce.service;
 
 import com.ecommerce.dto.CategoryDTO;
+import com.ecommerce.dto.CategorySearchDTO;
 import com.ecommerce.entity.Category;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -65,29 +66,12 @@ public interface CategoryService {
     List<CategoryDTO> getSubCategories(Long parentId);
     
     /**
-     * Search categories by name
+     * Search categories with multiple criteria
      * 
-     * @param name the name to search for
-     * @param pageable pagination information
+     * @param searchDTO the search criteria
      * @return page of categories matching the search criteria
      */
-    Page<CategoryDTO> searchCategoriesByName(String name, Pageable pageable);
-    
-    /**
-     * Get active categories
-     * 
-     * @param pageable pagination information
-     * @return page of active categories
-     */
-    Page<CategoryDTO> getActiveCategories(Pageable pageable);
-    
-    /**
-     * Get featured categories
-     * 
-     * @param pageable pagination information
-     * @return page of featured categories
-     */
-    Page<CategoryDTO> getFeaturedCategories(Pageable pageable);
+    Page<CategoryDTO> searchCategories(CategorySearchDTO searchDTO);
     
     /**
      * Convert a Category entity to a CategoryDTO

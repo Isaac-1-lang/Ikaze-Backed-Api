@@ -70,4 +70,13 @@ public interface CloudinaryService {
      * @return URL of the generated thumbnail
      */
     String createThumbnail(String publicId, int width, int height);
+
+    /**
+     * Delete an image from Cloudinary by its URL
+     * 
+     * @param imageUrl The URL of the image to delete
+     * @return Map containing deletion results
+     * @throws IOException If an error occurs during deletion
+     */
+    Map<String, String> deleteImage(String imageUrl) throws IOException;
 }

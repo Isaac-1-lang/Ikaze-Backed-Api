@@ -24,24 +24,69 @@ public class Brand {
     private UUID brandId;
 
     @NotBlank(message = "Brand name is required")
-    @Size(min = 2, max = 255, message = "Brand name must be between 2 and 255 characters")
-    @Column(name = "brand_name", nullable = false, unique = true)
+    @Size(min = 2, max = 100, message = "Brand name must be between 2 and 100 characters")
+    @Column(nullable = false, unique = true)
     private String brandName;
 
-    @Column(name = "brand_description", columnDefinition = "TEXT")
-    private String brandDescription;
+    @Size(max = 500, message = "Description must not exceed 500 characters")
+    @Column(columnDefinition = "TEXT")
+    private String description;
 
-    @Column(name = "image_url")
-    private String imageUrl;
+    @Column(name = "logo_url")
+    private String logoUrl;
+
+    @Column(name = "website_url")
+    private String websiteUrl;
+
+    @Column(name = "slug", unique = true)
+    private String slug;
+
+    @Column(name = "is_active")
+    private boolean isActive = true;
+
+    @Column(name = "is_featured")
+    private boolean isFeatured = false;
+
+    @Column(name = "sort_order")
+    private Integer sortOrder = 0;
+
+    @Column(name = "meta_title")
+    private String metaTitle;
+
+    @Column(name = "meta_description")
+    private String metaDescription;
+
+    @Column(name = "meta_keywords")
+    private String metaKeywords;
+
+    @OneToMany(mappedBy = "brand", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
+    private List<Product> products = new ArrayList<>();
 
     @Column(name = "created_at")
     private LocalDateTime createdAt;
 
-    @OneToMany(mappedBy = "brand", fetch = FetchType.LAZY)
-    private List<Product> products = new ArrayList<>();
+    @Column(name = "updated_at")
+    private LocalDateTime updatedAt;
 
     @PrePersist
     protected void onCreate() {
         createdAt = LocalDateTime.now();
+        updatedAt = LocalDateTime.now();
+        if (slug == null || slug.trim().isEmpty()) {
+            slug = generateSlug(brandName);
+        }
+    }
+
+    @PreUpdate
+    protected void onUpdate() {
+        updatedAt = LocalDateTime.now();
+    }
+
+    private String generateSlug(String name) {
+        return name.toLowerCase()
+                .replaceAll("[^a-z0-9\\s-]", "")
+                .replaceAll("\\s+", "-")
+                .replaceAll("-+", "-")
+                .trim();
     }
 }

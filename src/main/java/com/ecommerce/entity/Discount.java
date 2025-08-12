@@ -1,13 +1,19 @@
 package com.ecommerce.entity;
 
 import jakarta.persistence.*;
+import jakarta.validation.constraints.DecimalMax;
+import jakarta.validation.constraints.DecimalMin;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.UUID;
 
 @Entity
 @Table(name = "discounts")
@@ -17,69 +23,94 @@ import java.util.List;
 public class Discount {
 
     @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
+    @GeneratedValue(strategy = GenerationType.AUTO)
+    private UUID discountId;
 
-    @Column(name = "discount_name", nullable = false)
-    private String discountName;
+    @NotBlank(message = "Discount name is required")
+    @Column(nullable = false)
+    private String name;
 
-    @Column(name = "discount_description", columnDefinition = "TEXT")
-    private String discountDescription;
+    @Column(columnDefinition = "TEXT")
+    private String description;
 
-    @Column(name = "percentage", nullable = false)
-    private Integer percentage;
+    @NotNull(message = "Discount percentage is required")
+    @DecimalMin(value = "0.0", message = "Discount percentage must be at least 0")
+    @DecimalMax(value = "100.0", message = "Discount percentage cannot exceed 100")
+    @Column(nullable = false, precision = 5, scale = 2)
+    private BigDecimal percentage;
 
+    @Column(name = "discount_code", unique = true)
+    private String discountCode;
+
+    @NotNull(message = "Start date is required")
     @Column(name = "start_date", nullable = false)
     private LocalDateTime startDate;
 
-    @Column(name = "end_date", nullable = false)
+    @Column(name = "end_date")
     private LocalDateTime endDate;
 
-    @Column(name = "active")
-    private boolean active = true;
+    @Column(name = "is_active")
+    private boolean isActive = true;
+
+    @Column(name = "usage_limit")
+    private Integer usageLimit;
+
+    @Column(name = "used_count")
+    private Integer usedCount = 0;
+
+    @Column(name = "minimum_amount", precision = 10, scale = 2)
+    private BigDecimal minimumAmount;
+
+    @Column(name = "maximum_amount", precision = 10, scale = 2)
+    private BigDecimal maximumAmount;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "discount_type")
+    private DiscountType discountType = DiscountType.PERCENTAGE;
+
+    @OneToMany(mappedBy = "discount", fetch = FetchType.LAZY)
+    private List<Product> products = new ArrayList<>();
 
     @Column(name = "created_at")
     private LocalDateTime createdAt;
 
-    @OneToMany(mappedBy = "discount")
-    private List<Product> products = new ArrayList<>();
+    @Column(name = "updated_at")
+    private LocalDateTime updatedAt;
+
+    public enum DiscountType {
+        PERCENTAGE,
+        FIXED_AMOUNT,
+        BUY_ONE_GET_ONE,
+        FREE_SHIPPING
+    }
 
     @PrePersist
     protected void onCreate() {
         createdAt = LocalDateTime.now();
+        updatedAt = LocalDateTime.now();
     }
 
-    /**
-     * Checks if the discount is currently valid based on start and end dates
-     * 
-     * @return true if the current date is between start and end dates
-     */
+    @PreUpdate
+    protected void onUpdate() {
+        updatedAt = LocalDateTime.now();
+    }
+
     public boolean isValid() {
         LocalDateTime now = LocalDateTime.now();
-        return active && now.isAfter(startDate) && now.isBefore(endDate);
+        return isActive &&
+                now.isAfter(startDate) &&
+                (endDate == null || now.isBefore(endDate)) &&
+                (usageLimit == null || usedCount < usageLimit);
     }
 
-    /**
-     * Adds a product to this discount
-     * 
-     * @param product The product to add
-     * @return The updated discount
-     */
-    public Discount addProduct(Product product) {
-        products.add(product);
-        product.setDiscount(this);
-        return this;
+    public boolean canBeUsed() {
+        return isValid() && (usageLimit == null || usedCount < usageLimit);
     }
 
-    /**
-     * Removes a product from this discount
-     * 
-     * @param product The product to remove
-     * @return The updated discount
-     */
-    public Discount removeProduct(Product product) {
-        products.remove(product);
-        product.setDiscount(null);
-        return this;
+    public void incrementUsage() {
+        if (usedCount == null) {
+            usedCount = 0;
+        }
+        usedCount++;
     }
 }
