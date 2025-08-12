@@ -6,6 +6,7 @@ import com.ecommerce.entity.User;
 import com.ecommerce.repository.AdminInvitationRepository;
 import com.ecommerce.repository.UserRepository;
 import com.ecommerce.service.AdminInvitationService;
+import com.ecommerce.service.EmailService;
 import jakarta.persistence.EntityNotFoundException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -28,6 +29,7 @@ public class AdminInvitationServiceImpl implements AdminInvitationService {
     private final AdminInvitationRepository adminInvitationRepository;
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
+    private final EmailService emailService;
 
     private static final int INVITATION_EXPIRY_HOURS = 48;
     private static final String TOKEN_CHARS = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
@@ -80,6 +82,43 @@ public class AdminInvitationServiceImpl implements AdminInvitationService {
 
         AdminInvitation savedInvitation = adminInvitationRepository.save(invitation);
         log.info("Admin invitation created successfully with ID: {}", savedInvitation.getInvitationId());
+
+        // Check if user already exists to determine email type
+        User existingUser = userRepository.findByUserEmail(createInvitationDTO.getEmail()).orElse(null);
+
+        try {
+            if (existingUser != null) {
+                // Send role update email to existing user
+                emailService.sendExistingUserRoleUpdateEmail(
+                        createInvitationDTO.getEmail(),
+                        createInvitationDTO.getFirstName(),
+                        createInvitationDTO.getLastName(),
+                        admin.getFullName(),
+                        assignedRole.name(),
+                        createInvitationDTO.getInvitationMessage(),
+                        createInvitationDTO.getDepartment(),
+                        createInvitationDTO.getPosition());
+                log.info("Role update email sent to existing user: {}", createInvitationDTO.getEmail());
+            } else {
+                // Send invitation email to new user
+                emailService.sendNewUserInvitationEmail(
+                        createInvitationDTO.getEmail(),
+                        createInvitationDTO.getFirstName(),
+                        createInvitationDTO.getLastName(),
+                        invitationToken,
+                        admin.getFullName(),
+                        assignedRole.name(),
+                        createInvitationDTO.getInvitationMessage(),
+                        createInvitationDTO.getDepartment(),
+                        createInvitationDTO.getPosition(),
+                        savedInvitation.getExpiresAt().toString());
+                log.info("Invitation email sent to new user: {}", createInvitationDTO.getEmail());
+            }
+        } catch (Exception e) {
+            log.error("Failed to send email for invitation: {}", e.getMessage(), e);
+            // Don't throw exception here - invitation was created successfully
+            // Email failure shouldn't prevent invitation creation
+        }
 
         return mapToDTO(savedInvitation);
     }
@@ -180,11 +219,34 @@ public class AdminInvitationServiceImpl implements AdminInvitationService {
         }
 
         // Generate new token and extend expiration
-        invitation.setInvitationToken(generateUniqueInvitationToken());
-        invitation.setExpiresAt(LocalDateTime.now().plusHours(INVITATION_EXPIRY_HOURS));
+        String newToken = generateUniqueInvitationToken();
+        LocalDateTime newExpiration = LocalDateTime.now().plusHours(INVITATION_EXPIRY_HOURS);
+
+        invitation.setInvitationToken(newToken);
+        invitation.setExpiresAt(newExpiration);
 
         adminInvitationRepository.save(invitation);
         log.info("Admin invitation resent successfully with ID: {}", invitationId);
+
+        // Send resend email
+        try {
+            emailService.sendInvitationResendEmail(
+                    invitation.getEmail(),
+                    invitation.getFirstName(),
+                    invitation.getLastName(),
+                    newToken,
+                    invitation.getInvitedBy().getFullName(),
+                    invitation.getAssignedRole().name(),
+                    invitation.getInvitationMessage(),
+                    invitation.getDepartment(),
+                    invitation.getPosition(),
+                    newExpiration.toString());
+            log.info("Invitation resend email sent to: {}", invitation.getEmail());
+        } catch (Exception e) {
+            log.error("Failed to send resend email for invitation: {}", e.getMessage(), e);
+            // Don't throw exception here - invitation was resent successfully
+            // Email failure shouldn't prevent invitation resend
+        }
 
         return true;
     }
@@ -299,9 +361,14 @@ public class AdminInvitationServiceImpl implements AdminInvitationService {
             // Update existing user's role
             log.info("Updating existing user role for email: {}", invitation.getEmail());
             existingUser.setRole(invitation.getAssignedRole());
-            existingUser.setPhoneNumber(acceptInvitationDTO.getPhoneNumber());
+            if (acceptInvitationDTO.getPhoneNumber() != null
+                    && !acceptInvitationDTO.getPhoneNumber().trim().isEmpty()) {
+                existingUser.setPhoneNumber(acceptInvitationDTO.getPhoneNumber());
+            }
             userRepository.save(existingUser);
             invitation.accept(existingUser);
+
+            log.info("Existing user role updated successfully for email: {}", invitation.getEmail());
         } else {
             // Create new user
             log.info("Creating new user for email: {}", invitation.getEmail());
@@ -317,6 +384,8 @@ public class AdminInvitationServiceImpl implements AdminInvitationService {
 
             User savedUser = userRepository.save(newUser);
             invitation.accept(savedUser);
+
+            log.info("New user created successfully for email: {}", invitation.getEmail());
         }
 
         AdminInvitation savedInvitation = adminInvitationRepository.save(invitation);
