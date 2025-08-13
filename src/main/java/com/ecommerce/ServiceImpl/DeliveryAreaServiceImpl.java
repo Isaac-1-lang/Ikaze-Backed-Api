@@ -34,6 +34,9 @@ public class DeliveryAreaServiceImpl implements DeliveryAreaService {
                 .orElseThrow(() -> new EntityNotFoundException("Delivery area not found with id: " + id));
 
         existingDeliveryArea.setDeliveryAreaName(deliveryAreaDTO.getDeliveryAreaName());
+        existingDeliveryArea.setDeliveryCost(deliveryAreaDTO.getDeliveryCost());
+        existingDeliveryArea.setExpectedDeliveryMinDays(deliveryAreaDTO.getExpectedDeliveryMinDays());
+        existingDeliveryArea.setExpectedDeliveryMaxDays(deliveryAreaDTO.getExpectedDeliveryMaxDays());
 
         // Update parent if changed
         if (deliveryAreaDTO.getParentId() != null) {
@@ -102,6 +105,9 @@ public class DeliveryAreaServiceImpl implements DeliveryAreaService {
         dto.setDeliveryAreaName(deliveryArea.getDeliveryAreaName());
         dto.setCreatedAt(deliveryArea.getCreatedAt());
         dto.setLevel(deliveryArea.getLevel());
+        dto.setDeliveryCost(deliveryArea.getDeliveryCost());
+        dto.setExpectedDeliveryMinDays(deliveryArea.getExpectedDeliveryMinDays());
+        dto.setExpectedDeliveryMaxDays(deliveryArea.getExpectedDeliveryMaxDays());
 
         if (deliveryArea.getParent() != null) {
             dto.setParentId(deliveryArea.getParent().getDeliveryAreaId());
@@ -118,6 +124,9 @@ public class DeliveryAreaServiceImpl implements DeliveryAreaService {
                     childDTO.setParentId(deliveryArea.getDeliveryAreaId());
                     childDTO.setParentName(deliveryArea.getDeliveryAreaName());
                     childDTO.setLevel(child.getLevel());
+                    childDTO.setDeliveryCost(child.getDeliveryCost());
+                    childDTO.setExpectedDeliveryMinDays(child.getExpectedDeliveryMinDays());
+                    childDTO.setExpectedDeliveryMaxDays(child.getExpectedDeliveryMaxDays());
                     return childDTO;
                 })
                 .collect(Collectors.toList());
@@ -131,6 +140,9 @@ public class DeliveryAreaServiceImpl implements DeliveryAreaService {
     public DeliveryArea convertToEntity(DeliveryAreaDTO deliveryAreaDTO) {
         DeliveryArea deliveryArea = new DeliveryArea();
         deliveryArea.setDeliveryAreaName(deliveryAreaDTO.getDeliveryAreaName());
+        deliveryArea.setDeliveryCost(deliveryAreaDTO.getDeliveryCost());
+        deliveryArea.setExpectedDeliveryMinDays(deliveryAreaDTO.getExpectedDeliveryMinDays());
+        deliveryArea.setExpectedDeliveryMaxDays(deliveryAreaDTO.getExpectedDeliveryMaxDays());
 
         if (deliveryAreaDTO.getDeliveryAreaId() != null) {
             deliveryArea.setDeliveryAreaId(deliveryAreaDTO.getDeliveryAreaId());
