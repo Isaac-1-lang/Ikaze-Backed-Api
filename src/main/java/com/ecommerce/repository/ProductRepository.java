@@ -5,6 +5,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
+import org.springframework.data.jpa.repository.Query;
 import org.springframework.stereotype.Repository;
 
 import java.util.Optional;
@@ -16,4 +17,10 @@ public interface ProductRepository extends JpaRepository<Product, UUID>, JpaSpec
     Optional<Product> findBySlug(String slug);
 
     Optional<Product> findBySku(String sku);
+
+    @Query("select count(p) from Product p where p.stockQuantity > 0 and p.stockQuantity <= p.lowStockThreshold")
+    long countLowStock();
+
+    @Query("select count(p) from Product p where p.isActive = true")
+    long countActive();
 }

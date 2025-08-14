@@ -37,6 +37,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.stream.Collectors;
+import java.security.SecureRandom;
 
 @Service
 @RequiredArgsConstructor
@@ -71,8 +72,7 @@ public class ProductServiceImpl implements ProductService {
             // Validate category exists and is active
             Category category = validateAndGetCategory(createProductDTO.getCategoryId());
 
-            // Validate SKU uniqueness
-            validateSkuUniqueness(createProductDTO.getSku());
+            // SKU resolution will happen after brand/discount validation
 
             // Validate brand if provided
             Brand brand = null;
@@ -87,7 +87,15 @@ public class ProductServiceImpl implements ProductService {
             }
 
             // Create and save product entity
+            // Resolve or generate SKU now that we know category and brand
+            String resolvedSku = resolveOrGenerateSku(
+                    createProductDTO.getSku(),
+                    createProductDTO.getName(),
+                    category,
+                    brand);
+
             Product product = createProductEntity(createProductDTO, category, brand, discount);
+            product.setSku(resolvedSku);
             Product savedProduct = productRepository.save(product);
             log.info("Product saved with ID: {}", savedProduct.getProductId());
 
@@ -149,9 +157,66 @@ public class ProductServiceImpl implements ProductService {
     }
 
     private void validateSkuUniqueness(String sku) {
+        if (sku == null || sku.trim().isEmpty()) {
+            return;
+        }
         if (productRepository.findBySku(sku).isPresent()) {
             throw new IllegalArgumentException("Product with SKU " + sku + " already exists");
         }
+    }
+
+    private String resolveOrGenerateSku(String requestedSku, String productName, Category category, Brand brand) {
+        if (requestedSku != null && !requestedSku.trim().isEmpty()) {
+            validateSkuUniqueness(requestedSku);
+            return requestedSku.trim().toUpperCase();
+        }
+
+        // Build a base SKU: CAT-Brand-Name + 6 random alphanumerics
+        String categoryPart = category != null && category.getName() != null
+                ? abbreviate(category.getName(), 3)
+                : "GEN";
+
+        String brandPart = brand != null && brand.getBrandName() != null
+                ? abbreviate(brand.getBrandName(), 3)
+                : "NON";
+
+        String namePart = productName != null ? abbreviate(productName, 4) : "PRD";
+
+        String base = String.join("-", categoryPart, brandPart, namePart);
+
+        String candidate;
+        int attempts = 0;
+        do {
+            String suffix = randomAlphaNum(6);
+            candidate = (base + "-" + suffix).toUpperCase();
+            attempts++;
+            if (attempts > 10) {
+                // fallback to a timestamp-based suffix to avoid rare collisions
+                candidate = (base + "-" + System.currentTimeMillis()).toUpperCase();
+                break;
+            }
+        } while (productRepository.findBySku(candidate).isPresent());
+
+        return candidate;
+    }
+
+    private String abbreviate(String input, int maxLen) {
+        String cleaned = input.replaceAll("[^A-Za-z0-9]", "");
+        if (cleaned.isEmpty())
+            return "X".repeat(Math.max(1, maxLen)).substring(0, maxLen);
+        cleaned = cleaned.toUpperCase();
+        return cleaned.length() <= maxLen ? cleaned : cleaned.substring(0, maxLen);
+    }
+
+    private static final char[] ALPHANUM = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789".toCharArray();
+    private static final SecureRandom RANDOM = new SecureRandom();
+
+    private String randomAlphaNum(int len) {
+        StringBuilder sb = new StringBuilder(len);
+        for (int i = 0; i < len; i++) {
+            sb.append(ALPHANUM[RANDOM.nextInt(ALPHANUM.length)]);
+        }
+        return sb.toString();
     }
 
     private Brand validateAndGetBrand(UUID brandId) {
@@ -181,7 +246,7 @@ public class ProductServiceImpl implements ProductService {
         Product product = new Product();
         product.setProductName(createProductDTO.getName());
         product.setShortDescription(createProductDTO.getDescription());
-        product.setSku(createProductDTO.getSku());
+        // SKU set externally before save using resolved logic
         product.setBarcode(createProductDTO.getBarcode());
         product.setPrice(createProductDTO.getBasePrice());
         product.setCompareAtPrice(createProductDTO.getSalePrice());
@@ -381,10 +446,11 @@ public class ProductServiceImpl implements ProductService {
         for (ProductVariant variant : product.getVariants()) {
             if (orderRepository.existsByProductVariantAndNotDelivered(variant.getId())) {
                 String errorMessage = String.format(
-                    "Cannot delete product '%s' because variant '%s' has pending orders that are not yet delivered. " +
-                    "Please ensure all orders are delivered, cancelled, refunded, or returned before deleting the product.",
-                    product.getProductName(), variant.getVariantSku());
-                
+                        "Cannot delete product '%s' because variant '%s' has pending orders that are not yet delivered. "
+                                +
+                                "Please ensure all orders are delivered, cancelled, refunded, or returned before deleting the product.",
+                        product.getProductName(), variant.getVariantSku());
+
                 log.warn("Product deletion blocked due to pending orders for variant: {}", variant.getVariantSku());
                 throw new ProductDeletionException(errorMessage);
             }
@@ -415,7 +481,8 @@ public class ProductServiceImpl implements ProductService {
                 log.debug("Removed variant {} from all wishlists", variant.getVariantSku());
 
             } catch (Exception e) {
-                log.warn("Failed to remove variant {} from carts/wishlists: {}", variant.getVariantSku(), e.getMessage());
+                log.warn("Failed to remove variant {} from carts/wishlists: {}", variant.getVariantSku(),
+                        e.getMessage());
                 // Continue with deletion even if cart/wishlist cleanup fails
             }
         }
@@ -472,7 +539,7 @@ public class ProductServiceImpl implements ProductService {
                             log.debug("Deleted image from Cloudinary: {}", image.getImageUrl());
                         }
                     } catch (Exception e) {
-                        log.warn("Failed to delete image from Cloudinary: {}. Error: {}", 
+                        log.warn("Failed to delete image from Cloudinary: {}. Error: {}",
                                 image.getImageUrl(), e.getMessage());
                     }
                 }
@@ -492,7 +559,7 @@ public class ProductServiceImpl implements ProductService {
                             log.debug("Deleted video from Cloudinary: {}", video.getUrl());
                         }
                     } catch (Exception e) {
-                        log.warn("Failed to delete video from Cloudinary: {}. Error: {}", 
+                        log.warn("Failed to delete video from Cloudinary: {}. Error: {}",
                                 video.getUrl(), e.getMessage());
                     }
                 }
@@ -568,34 +635,34 @@ public class ProductServiceImpl implements ProductService {
             }
 
             if (searchDTO.getName() != null && !searchDTO.getName().trim().isEmpty()) {
-                predicates.add(criteriaBuilder.like(criteriaBuilder.lower(root.get("productName")), 
-                    "%" + searchDTO.getName().toLowerCase() + "%"));
+                predicates.add(criteriaBuilder.like(criteriaBuilder.lower(root.get("productName")),
+                        "%" + searchDTO.getName().toLowerCase() + "%"));
             }
 
             if (searchDTO.getDescription() != null && !searchDTO.getDescription().trim().isEmpty()) {
                 Join<Product, ProductDetail> detailJoin = root.join("productDetail", JoinType.LEFT);
-                predicates.add(criteriaBuilder.like(criteriaBuilder.lower(detailJoin.get("description")), 
-                    "%" + searchDTO.getDescription().toLowerCase() + "%"));
+                predicates.add(criteriaBuilder.like(criteriaBuilder.lower(detailJoin.get("description")),
+                        "%" + searchDTO.getDescription().toLowerCase() + "%"));
             }
 
             if (searchDTO.getSku() != null && !searchDTO.getSku().trim().isEmpty()) {
-                predicates.add(criteriaBuilder.like(criteriaBuilder.lower(root.get("sku")), 
-                    "%" + searchDTO.getSku().toLowerCase() + "%"));
+                predicates.add(criteriaBuilder.like(criteriaBuilder.lower(root.get("sku")),
+                        "%" + searchDTO.getSku().toLowerCase() + "%"));
             }
 
             if (searchDTO.getBarcode() != null && !searchDTO.getBarcode().trim().isEmpty()) {
-                predicates.add(criteriaBuilder.like(criteriaBuilder.lower(root.get("barcode")), 
-                    "%" + searchDTO.getBarcode().toLowerCase() + "%"));
+                predicates.add(criteriaBuilder.like(criteriaBuilder.lower(root.get("barcode")),
+                        "%" + searchDTO.getBarcode().toLowerCase() + "%"));
             }
 
             if (searchDTO.getSlug() != null && !searchDTO.getSlug().trim().isEmpty()) {
-                predicates.add(criteriaBuilder.like(criteriaBuilder.lower(root.get("slug")), 
-                    "%" + searchDTO.getSlug().toLowerCase() + "%"));
+                predicates.add(criteriaBuilder.like(criteriaBuilder.lower(root.get("slug")),
+                        "%" + searchDTO.getSlug().toLowerCase() + "%"));
             }
 
             if (searchDTO.getModel() != null && !searchDTO.getModel().trim().isEmpty()) {
-                predicates.add(criteriaBuilder.like(criteriaBuilder.lower(root.get("model")), 
-                    "%" + searchDTO.getModel().toLowerCase() + "%"));
+                predicates.add(criteriaBuilder.like(criteriaBuilder.lower(root.get("model")),
+                        "%" + searchDTO.getModel().toLowerCase() + "%"));
             }
 
             // Price filters
@@ -608,7 +675,8 @@ public class ProductServiceImpl implements ProductService {
             }
 
             if (searchDTO.getSalePriceMin() != null) {
-                predicates.add(criteriaBuilder.greaterThanOrEqualTo(root.get("salePrice"), searchDTO.getSalePriceMin()));
+                predicates
+                        .add(criteriaBuilder.greaterThanOrEqualTo(root.get("salePrice"), searchDTO.getSalePriceMin()));
             }
 
             if (searchDTO.getSalePriceMax() != null) {
@@ -616,20 +684,24 @@ public class ProductServiceImpl implements ProductService {
             }
 
             if (searchDTO.getCompareAtPriceMin() != null) {
-                predicates.add(criteriaBuilder.greaterThanOrEqualTo(root.get("compareAtPrice"), searchDTO.getCompareAtPriceMin()));
+                predicates.add(criteriaBuilder.greaterThanOrEqualTo(root.get("compareAtPrice"),
+                        searchDTO.getCompareAtPriceMin()));
             }
 
             if (searchDTO.getCompareAtPriceMax() != null) {
-                predicates.add(criteriaBuilder.lessThanOrEqualTo(root.get("compareAtPrice"), searchDTO.getCompareAtPriceMax()));
+                predicates.add(criteriaBuilder.lessThanOrEqualTo(root.get("compareAtPrice"),
+                        searchDTO.getCompareAtPriceMax()));
             }
 
             // Stock filters
             if (searchDTO.getStockQuantityMin() != null) {
-                predicates.add(criteriaBuilder.greaterThanOrEqualTo(root.get("stockQuantity"), searchDTO.getStockQuantityMin()));
+                predicates.add(criteriaBuilder.greaterThanOrEqualTo(root.get("stockQuantity"),
+                        searchDTO.getStockQuantityMin()));
             }
 
             if (searchDTO.getStockQuantityMax() != null) {
-                predicates.add(criteriaBuilder.lessThanOrEqualTo(root.get("stockQuantity"), searchDTO.getStockQuantityMax()));
+                predicates.add(
+                        criteriaBuilder.lessThanOrEqualTo(root.get("stockQuantity"), searchDTO.getStockQuantityMax()));
             }
 
             if (searchDTO.getInStock() != null) {
@@ -660,7 +732,8 @@ public class ProductServiceImpl implements ProductService {
 
             // Discount filters
             if (searchDTO.getDiscountId() != null) {
-                predicates.add(criteriaBuilder.equal(root.get("discount").get("discountId"), searchDTO.getDiscountId()));
+                predicates
+                        .add(criteriaBuilder.equal(root.get("discount").get("discountId"), searchDTO.getDiscountId()));
             }
 
             if (searchDTO.getDiscountIds() != null && !searchDTO.getDiscountIds().isEmpty()) {
@@ -678,8 +751,10 @@ public class ProductServiceImpl implements ProductService {
             if (searchDTO.getIsOnSale() != null) {
                 if (searchDTO.getIsOnSale()) {
                     predicates.add(criteriaBuilder.isNotNull(root.get("discount")));
-                    predicates.add(criteriaBuilder.lessThanOrEqualTo(root.get("discount").get("startDate"), LocalDateTime.now()));
-                    predicates.add(criteriaBuilder.greaterThanOrEqualTo(root.get("discount").get("endDate"), LocalDateTime.now()));
+                    predicates.add(criteriaBuilder.lessThanOrEqualTo(root.get("discount").get("startDate"),
+                            LocalDateTime.now()));
+                    predicates.add(criteriaBuilder.greaterThanOrEqualTo(root.get("discount").get("endDate"),
+                            LocalDateTime.now()));
                 }
             }
 
@@ -702,7 +777,8 @@ public class ProductServiceImpl implements ProductService {
 
             // Date filters
             if (searchDTO.getCreatedAtMin() != null) {
-                predicates.add(criteriaBuilder.greaterThanOrEqualTo(root.get("createdAt"), searchDTO.getCreatedAtMin()));
+                predicates
+                        .add(criteriaBuilder.greaterThanOrEqualTo(root.get("createdAt"), searchDTO.getCreatedAtMin()));
             }
 
             if (searchDTO.getCreatedAtMax() != null) {
@@ -710,7 +786,8 @@ public class ProductServiceImpl implements ProductService {
             }
 
             if (searchDTO.getUpdatedAtMin() != null) {
-                predicates.add(criteriaBuilder.greaterThanOrEqualTo(root.get("updatedAt"), searchDTO.getUpdatedAtMin()));
+                predicates
+                        .add(criteriaBuilder.greaterThanOrEqualTo(root.get("updatedAt"), searchDTO.getUpdatedAtMin()));
             }
 
             if (searchDTO.getUpdatedAtMax() != null) {
@@ -725,11 +802,15 @@ public class ProductServiceImpl implements ProductService {
             // Text search across multiple fields
             if (searchDTO.getSearchKeyword() != null && !searchDTO.getSearchKeyword().trim().isEmpty()) {
                 String keyword = searchDTO.getSearchKeyword().toLowerCase();
-                Predicate namePredicate = criteriaBuilder.like(criteriaBuilder.lower(root.get("productName")), "%" + keyword + "%");
-                Predicate descPredicate = criteriaBuilder.like(criteriaBuilder.lower(root.get("productDetail").get("description")), "%" + keyword + "%");
-                Predicate skuPredicate = criteriaBuilder.like(criteriaBuilder.lower(root.get("sku")), "%" + keyword + "%");
-                Predicate barcodePredicate = criteriaBuilder.like(criteriaBuilder.lower(root.get("barcode")), "%" + keyword + "%");
-                
+                Predicate namePredicate = criteriaBuilder.like(criteriaBuilder.lower(root.get("productName")),
+                        "%" + keyword + "%");
+                Predicate descPredicate = criteriaBuilder
+                        .like(criteriaBuilder.lower(root.get("productDetail").get("description")), "%" + keyword + "%");
+                Predicate skuPredicate = criteriaBuilder.like(criteriaBuilder.lower(root.get("sku")),
+                        "%" + keyword + "%");
+                Predicate barcodePredicate = criteriaBuilder.like(criteriaBuilder.lower(root.get("barcode")),
+                        "%" + keyword + "%");
+
                 predicates.add(criteriaBuilder.or(namePredicate, descPredicate, skuPredicate, barcodePredicate));
             }
 
@@ -1550,7 +1631,8 @@ public class ProductServiceImpl implements ProductService {
             return ManyProductsDto.builder()
                     .productId(product.getProductId())
                     .productName(product.getProductName())
-                    .shortDescription(product.getProductDetail() != null ? product.getProductDetail().getDescription() : null)
+                    .shortDescription(
+                            product.getProductDetail() != null ? product.getProductDetail().getDescription() : null)
                     .price(product.getPrice())
                     .compareAtPrice(product.getCompareAtPrice())
                     .stockQuantity(product.getStockQuantity())
@@ -1563,7 +1645,7 @@ public class ProductServiceImpl implements ProductService {
                     .build();
 
         } catch (Exception e) {
-            log.error("Error mapping product to ManyProductsDto for product ID {}: {}", 
+            log.error("Error mapping product to ManyProductsDto for product ID {}: {}",
                     product.getProductId(), e.getMessage(), e);
             throw new RuntimeException("Failed to map product to ManyProductsDto: " + e.getMessage(), e);
         }

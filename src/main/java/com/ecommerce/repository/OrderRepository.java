@@ -1,11 +1,14 @@
 package com.ecommerce.repository;
 
 import com.ecommerce.entity.Order;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -18,11 +21,10 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
         */
        List<Order> findByUserId(UUID userId);
 
-       Optional<Order> findByOrderCode(String orderCode);
 
-       Optional<Order> findByOrderTransaction_StripeSessionId(String sessionId);
 
-       /**
+
+      /**
         * Find orders by status
         */
        List<Order> findByOrderStatus(Order.OrderStatus orderStatus);
@@ -49,4 +51,5 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
                      "JOIN o.orderItems oi " +
                      "WHERE oi.productVariant.id = :variantId")
        List<Order> findByProductVariant(@Param("variantId") Long variantId);
+
 }

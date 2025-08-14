@@ -5,6 +5,7 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 import java.time.LocalDateTime;
+import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -20,6 +21,11 @@ public class DeliveryAreaDTO {
     private LocalDateTime createdAt;
     private List<DeliveryAreaDTO> children = new ArrayList<>();
     private int level;
+
+    // Delivery metadata
+    private BigDecimal deliveryCost;
+    private Integer expectedDeliveryMinDays;
+    private Integer expectedDeliveryMaxDays;
 
     /**
      * Simplified constructor for creating a new delivery area
