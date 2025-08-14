@@ -25,4 +25,16 @@ public class CartDTO {
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
     private boolean isEmpty;
+    public Long getProductVariantId() {
+        // TODO Auto-generated method stub
+        throw new UnsupportedOperationException("Unimplemented method 'getProductVariantId'");
+    }
+    public int getQuantity() {
+        // TODO Auto-generated method stub
+        throw new UnsupportedOperationException("Unimplemented method 'getQuantity'");
+    }
+    public BigDecimal getUnitPrice() {
+        // TODO Auto-generated method stub
+        throw new UnsupportedOperationException("Unimplemented method 'getUnitPrice'");
+    }
 }

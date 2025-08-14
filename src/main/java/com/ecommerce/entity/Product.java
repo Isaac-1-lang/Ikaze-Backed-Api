@@ -216,7 +216,133 @@ public class Product {
                 .orElse(0.0);
     }
 
+    /**
+     * Gets the product ID
+     * 
+     * @return The product ID
+     */
+    public UUID getProductId() {
+        return productId;
+    }
+
     public int getReviewCount() {
         return reviews != null ? reviews.size() : 0;
+    }
+
+    /**
+     * Sets the stock quantity
+     * 
+     * @param stockQuantity The stock quantity to set
+     */
+    public void setStockQuantity(Integer stockQuantity) {
+        this.stockQuantity = stockQuantity;
+    }
+
+    /**
+     * Sets the low stock threshold
+     * 
+     * @param lowStockThreshold The low stock threshold to set
+     */
+    public void setLowStockThreshold(Integer lowStockThreshold) {
+        this.lowStockThreshold = lowStockThreshold;
+    }
+
+    /**
+     * Sets the category
+     * 
+     * @param category The category to set
+     */
+    public void setCategory(Category category) {
+        this.category = category;
+    }
+
+    /**
+     * Sets the brand
+     * 
+     * @param brand The brand to set
+     */
+    public void setBrand(Brand brand) {
+        this.brand = brand;
+    }
+
+    /**
+     * Sets the discount
+     * 
+     * @param discount The discount to set
+     */
+    public void setDiscount(Discount discount) {
+        this.discount = discount;
+    }
+
+    /**
+     * Sets the model
+     * 
+     * @param model The model to set
+     */
+    public void setModel(String model) {
+        this.model = model;
+    }
+
+    /**
+     * Sets the slug
+     * 
+     * @param slug The slug to set
+     */
+    public void setSlug(String slug) {
+        this.slug = slug;
+    }
+
+    /**
+     * Sets the active status
+     * 
+     * @param isActive The active status to set
+     */
+    public void setActive(boolean isActive) {
+        this.isActive = isActive;
+    }
+
+    /**
+     * Sets the featured status
+     * 
+     * @param isFeatured The featured status to set
+     */
+    public void setFeatured(boolean isFeatured) {
+        this.isFeatured = isFeatured;
+    }
+
+    /**
+     * Sets the bestseller status
+     * 
+     * @param isBestseller The bestseller status to set
+     */
+    public void setBestseller(boolean isBestseller) {
+        this.isBestseller = isBestseller;
+    }
+
+    /**
+     * Sets the new arrival status
+     * 
+     * @param isNewArrival The new arrival status to set
+     */
+    public void setNewArrival(boolean isNewArrival) {
+        this.isNewArrival = isNewArrival;
+    }
+
+    /**
+     * Sets the on sale status
+     * 
+     * @param isOnSale The on sale status to set
+     */
+    public void setOnSale(boolean isOnSale) {
+        this.isOnSale = isOnSale;
+    }
+
+    /**
+     * Sets the product detail
+     * 
+     * @param productDetail The product detail to set
+     */
+    public void setProductDetail(ProductDetail productDetail) {
+        this.productDetail = productDetail;
     }
 }

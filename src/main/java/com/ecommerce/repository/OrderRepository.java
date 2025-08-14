@@ -10,6 +10,7 @@ import org.springframework.stereotype.Repository;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 @Repository
@@ -20,7 +21,10 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
         */
        List<Order> findByUserId(UUID userId);
 
-       /**
+
+
+
+      /**
         * Find orders by status
         */
        List<Order> findByOrderStatus(Order.OrderStatus orderStatus);
@@ -48,9 +52,4 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
                      "WHERE oi.productVariant.id = :variantId")
        List<Order> findByProductVariant(@Param("variantId") Long variantId);
 
-       @Query("select o from Order o where o.createdAt >= :from and o.createdAt < :to")
-       List<Order> findAllBetween(@Param("from") LocalDateTime from,
-                     @Param("to") LocalDateTime to);
-
-       Page<Order> findAll(Pageable pageable);
 }

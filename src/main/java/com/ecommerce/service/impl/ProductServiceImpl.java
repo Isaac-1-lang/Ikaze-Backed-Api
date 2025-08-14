@@ -2,11 +2,15 @@ package com.ecommerce.service.impl;
 
 import com.ecommerce.dto.CreateProductDTO;
 import com.ecommerce.dto.CreateProductVariantDTO;
+import com.ecommerce.dto.ImageMetadata;
 import com.ecommerce.dto.ManyProductsDto;
 import com.ecommerce.dto.ProductDTO;
 import com.ecommerce.dto.ProductSearchDTO;
 import com.ecommerce.dto.ProductUpdateDTO;
 import com.ecommerce.dto.ProductVariantDTO;
+import com.ecommerce.dto.VariantAttributeDTO;
+import com.ecommerce.dto.VariantImageMetadata;
+import com.ecommerce.dto.VideoMetadata;
 import com.ecommerce.entity.*;
 import com.ecommerce.repository.*;
 import com.ecommerce.Exception.ProductDeletionException;
@@ -815,8 +819,43 @@ public class ProductServiceImpl implements ProductService {
         };
     }
 
+    private void processProductImages(Product product, List<String> imageUrls,
+            String imageMetadataJson) {
+        // Parse metadata from JSON string if provided
+        List<ImageMetadata> metadata = null;
+        if (imageMetadataJson != null && !imageMetadataJson.trim().isEmpty()) {
+            try {
+                // For now, we'll create a simple metadata object
+                // In a real implementation, you'd parse the JSON
+                metadata = new ArrayList<>();
+                // TODO: Implement JSON parsing for metadata
+            } catch (Exception e) {
+                log.warn("Failed to parse image metadata JSON: {}", e.getMessage());
+            }
+        }
+        
+        // Process image URLs directly (assuming they're already uploaded)
+        for (int i = 0; i < imageUrls.size(); i++) {
+            String imageUrl = imageUrls.get(i);
+            
+            ProductImage productImage = new ProductImage();
+            productImage.setProduct(product);
+            productImage.setImageUrl(imageUrl);
+            productImage.setSortOrder(i);
+            
+            // Set first image as primary
+            if (i == 0) {
+                productImage.setPrimary(true);
+            }
+            
+            productImageRepository.save(productImage);
+        }
+        
+        log.info("Successfully processed {} product images from URLs", imageUrls.size());
+    }
+
     private void processProductImages(Product product, List<MultipartFile> images,
-            List<CreateProductDTO.ImageMetadata> metadata) {
+            List<ImageMetadata> metadata) {
         try {
             log.info("Processing {} product images", images.size());
 
@@ -852,7 +891,7 @@ public class ProductServiceImpl implements ProductService {
 
                 // Set user-provided metadata if available
                 if (metadata != null && i < metadata.size()) {
-                    CreateProductDTO.ImageMetadata imgMetadata = metadata.get(i);
+                    ImageMetadata imgMetadata = metadata.get(i);
                     productImage.setAltText(imgMetadata.getAltText());
                     productImage.setTitle(imgMetadata.getAltText()); // Use alt text as title
                     productImage.setPrimary(imgMetadata.getIsPrimary() != null ? imgMetadata.getIsPrimary() : false);
@@ -875,19 +914,48 @@ public class ProductServiceImpl implements ProductService {
         }
     }
 
+    private void processProductVideos(Product product, List<String> videoUrls,
+            String videoMetadataJson) {
+        // Parse metadata from JSON string if provided
+        List<VideoMetadata> metadata = null;
+        if (videoMetadataJson != null && !videoMetadataJson.trim().isEmpty()) {
+            try {
+                // For now, we'll create a simple metadata object
+                // In a real implementation, you'd parse the JSON
+                metadata = new ArrayList<>();
+                // TODO: Implement JSON parsing for metadata
+            } catch (Exception e) {
+                log.warn("Failed to parse video metadata JSON: {}", e.getMessage());
+            }
+        }
+        
+        // Process video URLs directly (assuming they're already uploaded)
+        for (int i = 0; i < videoUrls.size(); i++) {
+            String videoUrl = videoUrls.get(i);
+            
+            ProductVideo productVideo = new ProductVideo();
+            productVideo.setProduct(product);
+            productVideo.setUrl(videoUrl);
+            
+            productVideoRepository.save(productVideo);
+        }
+        
+        log.info("Successfully processed {} product videos from URLs", videoUrls.size());
+    }
+
     private void processProductVideos(Product product, List<MultipartFile> videos,
-            List<CreateProductDTO.VideoMetadata> metadata) {
+            List<VideoMetadata> metadata) {
         try {
             log.info("Processing {} product videos", videos.size());
 
             // Validate video duration (max 30 seconds) if metadata provided
             if (metadata != null) {
                 for (int i = 0; i < metadata.size() && i < videos.size(); i++) {
-                    CreateProductDTO.VideoMetadata videoMetadata = metadata.get(i);
-                    if (videoMetadata.getDurationSeconds() != null && videoMetadata.getDurationSeconds() > 30) {
+                    VideoMetadata videoMetadata = metadata.get(i);
+                    if (videoMetadata.getDuration() != null && videoMetadata.getDuration() > 30) {
                         throw new IllegalArgumentException(
                                 String.format("Video '%s' duration (%d seconds) exceeds maximum allowed (30 seconds)",
-                                        videos.get(i).getOriginalFilename(), videoMetadata.getDurationSeconds()));
+                                        videos.get(i).getOriginalFilename(), videoMetadata.getDuration()));
                     }
                 }
             }
@@ -913,7 +981,7 @@ public class ProductServiceImpl implements ProductService {
 
                 // Set metadata if available
                 if (metadata != null && i < metadata.size()) {
-                    CreateProductDTO.VideoMetadata vidMetadata = metadata.get(i);
+                    VideoMetadata vidMetadata = metadata.get(i);
                     productVideo.setTitle(vidMetadata.getTitle());
                     productVideo.setDescription(vidMetadata.getDescription());
                     productVideo.setSortOrder(vidMetadata.getSortOrder() != null ? vidMetadata.getSortOrder() : i);
@@ -953,9 +1021,9 @@ public class ProductServiceImpl implements ProductService {
 
             // Process variant images if any (this also uses concurrent processing
             // internally)
-            if (variantDTO.getVariantImages() != null && !variantDTO.getVariantImages().isEmpty()) {
-                processVariantImages(savedVariant, variantDTO.getVariantImages(), variantDTO.getImageMetadata());
-            }
+            // if (variantDTO.getVariantImages() != null && !variantDTO.getVariantImages().isEmpty()) {
+            //     processVariantImages(savedVariant, variantDTO.getVariantImages(), variantDTO.getImageMetadata());
+            // }
         }
 
         log.info("Successfully processed {} product variants", variantDTOs.size());
@@ -978,26 +1046,43 @@ public class ProductServiceImpl implements ProductService {
     }
 
     private void processVariantAttributes(ProductVariant variant,
-            List<CreateProductVariantDTO.VariantAttributeDTO> attributeDTOs) {
-        for (CreateProductVariantDTO.VariantAttributeDTO attributeDTO : attributeDTOs) {
-            // Validate attribute value exists
-            ProductAttributeValue attributeValue = attributeValueRepository.findById(attributeDTO.getAttributeValueId())
+            Map<String, String> attributes) {
+        if (attributes == null || attributes.isEmpty()) {
+            return;
+        }
+        
+        for (Map.Entry<String, String> entry : attributes.entrySet()) {
+            String attributeName = entry.getKey();
+            String attributeValue = entry.getValue();
+            
+            // Find the attribute type by name
+            ProductAttributeType attributeType = attributeTypeRepository.findByNameIgnoreCase(attributeName)
                     .orElseThrow(() -> new EntityNotFoundException(
-                            "Attribute value not found with ID: " + attributeDTO.getAttributeValueId()));
+                            "Attribute type not found with name: " + attributeName));
+            
+            // Find or create the attribute value
+            ProductAttributeValue productAttributeValue = attributeValueRepository
+                    .findByValueIgnoreCaseAndAttributeType(attributeValue, attributeType)
+                    .orElseGet(() -> {
+                        ProductAttributeValue newValue = new ProductAttributeValue();
+                        newValue.setAttributeType(attributeType);
+                        newValue.setValue(attributeValue);
+                        return attributeValueRepository.save(newValue);
+                    });
 
             // Create variant attribute value
             VariantAttributeValue variantAttributeValue = new VariantAttributeValue();
             variantAttributeValue.setId(new VariantAttributeValue.VariantAttributeValueId(
-                    variant.getId(), attributeValue.getAttributeValueId()));
+                    variant.getId(), productAttributeValue.getAttributeValueId()));
             variantAttributeValue.setProductVariant(variant);
-            variantAttributeValue.setAttributeValue(attributeValue);
+            variantAttributeValue.setAttributeValue(productAttributeValue);
 
             variantAttributeValueRepository.save(variantAttributeValue);
         }
     }
 
     private void processVariantImages(ProductVariant variant, List<MultipartFile> images,
-            List<CreateProductVariantDTO.VariantImageMetadata> metadata) {
+            List<VariantImageMetadata> metadata) {
         try {
             log.info("Processing {} variant images for variant {}", images.size(), variant.getId());
 
@@ -1033,7 +1118,7 @@ public class ProductServiceImpl implements ProductService {
 
                 // Set user-provided metadata if available
                 if (metadata != null && i < metadata.size()) {
-                    CreateProductVariantDTO.VariantImageMetadata imgMetadata = metadata.get(i);
+                    VariantImageMetadata imgMetadata = metadata.get(i);
                     variantImage.setAltText(imgMetadata.getAltText());
                     variantImage.setTitle(imgMetadata.getAltText()); // Use alt text as title
                     variantImage.setPrimary(imgMetadata.getIsPrimary() != null ? imgMetadata.getIsPrimary() : false);

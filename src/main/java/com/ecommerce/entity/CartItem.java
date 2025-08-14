@@ -49,4 +49,31 @@ public class CartItem {
         }
         this.quantity = quantity;
     }
+
+    /**
+     * Sets the cart for this item
+     * 
+     * @param cart The cart to set
+     */
+    public void setCart(Cart cart) {
+        this.cart = cart;
+    }
+
+    /**
+     * Gets the quantity of this cart item
+     * 
+     * @return The quantity
+     */
+    public int getQuantity() {
+        return quantity;
+    }
+
+    /**
+     * Gets the product variant of this cart item
+     * 
+     * @return The product variant
+     */
+    public ProductVariant getProductVariant() {
+        return productVariant;
+    }
 }

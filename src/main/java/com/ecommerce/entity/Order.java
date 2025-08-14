@@ -76,6 +76,15 @@ public class Order {
     }
 
     /**
+     * Sets the ready for delivery group
+     * 
+     * @param readyForDeliveryGroup The ready for delivery group to set
+     */
+    public void setReadyForDeliveryGroup(ReadyForDeliveryGroup readyForDeliveryGroup) {
+        this.readyForDeliveryGroup = readyForDeliveryGroup;
+    }
+
+    /**
      * Adds an item to the order
      * 
      * @param item The order item to add

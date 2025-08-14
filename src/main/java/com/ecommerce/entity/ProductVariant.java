@@ -60,13 +60,13 @@ public class ProductVariant {
 
     @OneToMany(mappedBy = "productVariant", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
     private java.util.List<VariantAttributeValue> attributeValues;
-    
+
     @OneToMany(mappedBy = "productVariant", fetch = FetchType.LAZY)
     private java.util.List<CartItem> cartItems;
-    
+
     @OneToMany(mappedBy = "productVariant", fetch = FetchType.LAZY)
     private java.util.List<OrderItem> orderItems;
-    
+
     @OneToMany(mappedBy = "productVariant", fetch = FetchType.LAZY)
     private java.util.List<WishlistProduct> wishlistProducts;
 
@@ -87,6 +87,24 @@ public class ProductVariant {
         updatedAt = LocalDateTime.now();
     }
 
+    /**
+     * Gets the stock quantity
+     * 
+     * @return The stock quantity
+     */
+    public Integer getStockQuantity() {
+        return stockQuantity;
+    }
+
+    /**
+     * Gets the price
+     * 
+     * @return The price
+     */
+    public BigDecimal getPrice() {
+        return price;
+    }
+
     public boolean isInStock() {
         return stockQuantity > 0;
     }
@@ -103,19 +121,27 @@ public class ProductVariant {
         if (attributeValues == null || attributeValues.isEmpty()) {
             return "";
         }
-        
+
         StringBuilder name = new StringBuilder();
-        
+
         // Get all attribute values and build a name from them
         attributeValues.stream()
-            .map(varAttr -> varAttr.getAttributeValue())
-            .forEach(attrValue -> {
-                if (name.length() > 0) {
-                    name.append(" - ");
-                }
-                name.append(attrValue.getValue());
-            });
-            
+                .map(varAttr -> varAttr.getAttributeValue())
+                .forEach(attrValue -> {
+                    if (name.length() > 0) {
+                        name.append(" - ");
+                    }
+                    name.append(attrValue.getValue());
+                });
+
         return name.toString();
+    }
+
+    public Product getProduct() {
+        return product;
+    }
+
+    public void setStockQuantity(Integer stockQuantity) {
+        this.stockQuantity = stockQuantity;
     }
 }

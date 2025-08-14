@@ -25,18 +25,27 @@ public class WishlistProduct {
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "variant_id")
     private ProductVariant productVariant;
-    
+
     @Column(name = "notes")
     private String notes;
-    
+
     @Column(name = "priority")
     private Integer priority = 0;
-    
+
     @Column(name = "added_at")
     private LocalDateTime addedAt;
-    
+
     @PrePersist
     protected void onCreate() {
         addedAt = LocalDateTime.now();
+    }
+
+    /**
+     * Sets the wishlist for this product
+     * 
+     * @param wishlist The wishlist to set
+     */
+    public void setWishlist(Wishlist wishlist) {
+        this.wishlist = wishlist;
     }
 }

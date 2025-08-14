@@ -107,4 +107,13 @@ public class Review {
     public enum ReviewStatus {
         PENDING, APPROVED, REJECTED
     }
+
+    /**
+     * Gets the rating
+     * 
+     * @return The rating
+     */
+    public Integer getRating() {
+        return rating;
+    }
 }

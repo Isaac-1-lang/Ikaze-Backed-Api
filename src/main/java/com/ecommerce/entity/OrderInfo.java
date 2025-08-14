@@ -64,19 +64,28 @@ public class OrderInfo {
     @Transient
     public BigDecimal getFinalAmount() {
         BigDecimal finalAmount = totalAmount;
-        
+
         if (taxAmount != null) {
             finalAmount = finalAmount.add(taxAmount);
         }
-        
+
         if (discountAmount != null) {
             finalAmount = finalAmount.subtract(discountAmount);
         }
-        
+
         if (shippingCost != null) {
             finalAmount = finalAmount.add(shippingCost);
         }
-        
+
         return finalAmount;
+    }
+
+    /**
+     * Sets the order for this info
+     * 
+     * @param order The order to set
+     */
+    public void setOrder(Order order) {
+        this.order = order;
     }
 }

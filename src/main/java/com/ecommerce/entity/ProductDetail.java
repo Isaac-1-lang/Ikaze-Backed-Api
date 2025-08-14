@@ -75,4 +75,76 @@ public class ProductDetail {
     protected void onUpdate() {
         updatedAt = LocalDateTime.now();
     }
+
+    /**
+     * Gets the description
+     * 
+     * @return The description
+     */
+    public String getDescription() {
+        return description;
+    }
+
+    /**
+     * Gets the meta title
+     * 
+     * @return The meta title
+     */
+    public String getMetaTitle() {
+        return metaTitle;
+    }
+
+    /**
+     * Gets the meta description
+     * 
+     * @return The meta description
+     */
+    public String getMetaDescription() {
+        return metaDescription;
+    }
+
+    /**
+     * Gets the meta keywords
+     * 
+     * @return The meta keywords
+     */
+    public String getMetaKeywords() {
+        return metaKeywords;
+    }
+
+    /**
+     * Gets the search keywords
+     * 
+     * @return The search keywords
+     */
+    public String getSearchKeywords() {
+        return searchKeywords;
+    }
+
+    /**
+     * Gets the dimensions in cm
+     * 
+     * @return The dimensions
+     */
+    public String getDimensionsCm() {
+        return dimensionsCm;
+    }
+
+    /**
+     * Gets the weight in kg
+     * 
+     * @return The weight
+     */
+    public BigDecimal getWeightKg() {
+        return weightKg;
+    }
+
+    /**
+     * Sets the product
+     * 
+     * @param product The product to set
+     */
+    public void setProduct(Product product) {
+        this.product = product;
+    }
 }

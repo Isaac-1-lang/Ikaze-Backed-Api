@@ -79,4 +79,31 @@ public class OrderItem {
         orderItem.setPrice(cartItem.getProductVariant().getPrice());
         return orderItem;
     }
+
+    /**
+     * Sets the order for this item
+     * 
+     * @param order The order to set
+     */
+    public void setOrder(Order order) {
+        this.order = order;
+    }
+
+    /**
+     * Sets the product variant
+     * 
+     * @param productVariant The product variant to set
+     */
+    public void setProductVariant(ProductVariant productVariant) {
+        this.productVariant = productVariant;
+    }
+
+    /**
+     * Sets the quantity
+     * 
+     * @param quantity The quantity to set
+     */
+    public void setQuantity(int quantity) {
+        this.quantity = quantity;
+    }
 }

@@ -113,4 +113,13 @@ public class Discount {
         }
         usedCount++;
     }
+
+    /**
+     * Gets the percentage
+     * 
+     * @return The percentage
+     */
+    public BigDecimal getPercentage() {
+        return percentage;
+    }
 }

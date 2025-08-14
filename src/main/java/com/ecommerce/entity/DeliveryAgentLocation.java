@@ -40,7 +40,7 @@ public class DeliveryAgentLocation {
     /**
      * Updates the location coordinates
      * 
-     * @param latitude The new latitude
+     * @param latitude  The new latitude
      * @param longitude The new longitude
      */
     public void updateLocation(Double latitude, Double longitude) {
@@ -52,9 +52,9 @@ public class DeliveryAgentLocation {
     /**
      * Updates the location coordinates and area name
      * 
-     * @param latitude The new latitude
+     * @param latitude  The new latitude
      * @param longitude The new longitude
-     * @param areaName The new area name
+     * @param areaName  The new area name
      */
     public void updateLocation(Double latitude, Double longitude, String areaName) {
         this.latitude = latitude;
@@ -64,25 +64,35 @@ public class DeliveryAgentLocation {
     }
 
     /**
-     * Calculates the distance between this location and another location using the Haversine formula
+     * Calculates the distance between this location and another location using the
+     * Haversine formula
      * 
-     * @param otherLatitude The latitude of the other location
+     * @param otherLatitude  The latitude of the other location
      * @param otherLongitude The longitude of the other location
      * @return The distance in kilometers
      */
     @Transient
     public double calculateDistance(Double otherLatitude, Double otherLongitude) {
         final int R = 6371; // Radius of the earth in km
-        
+
         double latDistance = Math.toRadians(otherLatitude - latitude);
         double lonDistance = Math.toRadians(otherLongitude - longitude);
-        
+
         double a = Math.sin(latDistance / 2) * Math.sin(latDistance / 2)
                 + Math.cos(Math.toRadians(latitude)) * Math.cos(Math.toRadians(otherLatitude))
-                * Math.sin(lonDistance / 2) * Math.sin(lonDistance / 2);
-        
+                        * Math.sin(lonDistance / 2) * Math.sin(lonDistance / 2);
+
         double c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-        
+
         return R * c;
+    }
+
+    /**
+     * Sets the ready for delivery group for this location
+     * 
+     * @param readyForDeliveryGroup The ready for delivery group to set
+     */
+    public void setReadyForDeliveryGroup(ReadyForDeliveryGroup readyForDeliveryGroup) {
+        this.readyForDeliveryGroup = readyForDeliveryGroup;
     }
 }

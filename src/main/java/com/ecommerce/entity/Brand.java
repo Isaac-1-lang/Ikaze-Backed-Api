@@ -82,6 +82,15 @@ public class Brand {
         updatedAt = LocalDateTime.now();
     }
 
+    /**
+     * Checks if the brand is active
+     * 
+     * @return True if active, false otherwise
+     */
+    public boolean isActive() {
+        return isActive;
+    }
+
     private String generateSlug(String name) {
         return name.toLowerCase()
                 .replaceAll("[^a-z0-9\\s-]", "")

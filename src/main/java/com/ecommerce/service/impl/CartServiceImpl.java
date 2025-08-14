@@ -220,7 +220,9 @@ public class CartServiceImpl implements CartService {
                 .inStock(variant.isInStock())
                 .availableStock(variant.getStockQuantity())
                 .build();
-    }
+       
+
+        }
 
     private BigDecimal calculateSubtotal(List<CartItem> cartItems) {
         return cartItems.stream()

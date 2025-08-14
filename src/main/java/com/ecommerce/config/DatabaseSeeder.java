@@ -69,12 +69,25 @@ public class DatabaseSeeder implements CommandLineRunner {
     public void seedUsers() {
         log.info("Seeding users...");
 
-        if (userRepository.findByUserEmail("abayohirwajovin@gmail.com").isEmpty()) {
+        String adminEmail = System.getenv("ADMIN_EMAIL");
+        String adminPassword = System.getenv("ADMIN_PASSWORD");
+        String adminFirstName = System.getenv("ADMIN_FIRST_NAME");
+        String adminLastName = System.getenv("ADMIN_LAST_NAME");
+        String adminPhone = System.getenv("ADMIN_PHONE");
+
+        // Use default values if environment variables are not set
+        if (adminEmail == null) adminEmail = "admin@example.com";
+        if (adminPassword == null) adminPassword = "admin123";
+        if (adminFirstName == null) adminFirstName = "Admin";
+        if (adminLastName == null) adminLastName = "User";
+        if (adminPhone == null) adminPhone = "+1234567890";
+
+        if (userRepository.findByUserEmail(adminEmail).isEmpty()) {
             User adminUser = new User();
-            adminUser.setFirstName("Jovin");
-            adminUser.setLastName("ABAYO HIRWA");
-            adminUser.setUserEmail("abayohirwajovin@gmail.com");
-            adminUser.setPassword(passwordEncoder.encode("JOVIN19"));
+            adminUser.setFirstName(adminFirstName);
+            adminUser.setLastName(adminLastName);
+            adminUser.setUserEmail(adminEmail);
+            adminUser.setPassword(passwordEncoder.encode(adminPassword));
             adminUser.setRole(User.UserRole.ADMIN);
             adminUser.setAuthProvider(User.AuthProvider.LOCAL);
             adminUser.setEmailVerified(true);
@@ -82,7 +95,7 @@ public class DatabaseSeeder implements CommandLineRunner {
             adminUser.setAccountNonLocked(true);
             adminUser.setCredentialsNonExpired(true);
             adminUser.setAccountNonExpired(true);
-            adminUser.setPhoneNumber("+250788123456");
+            adminUser.setPhoneNumber(adminPhone);
 
             userRepository.save(adminUser);
             log.info("Admin user created: {}", adminUser.getUserEmail());
