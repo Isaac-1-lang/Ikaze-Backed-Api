@@ -41,6 +41,15 @@ public class OrderTransaction {
     @Column(name = "receipt_url")
     private String receiptUrl;
 
+    @Column(name = "stripe_session_id")
+    private String stripeSessionId;
+
+    @Column(name = "stripe_payment_intent_id")
+    private String stripePaymentIntentId;
+
+    @Column(name = "payment_date")
+    private LocalDateTime paymentDate;
+
     @Column(name = "created_at")
     private LocalDateTime createdAt;
 
@@ -100,5 +109,14 @@ public class OrderTransaction {
     @Transient
     public boolean hasFailed() {
         return status == TransactionStatus.FAILED || status == TransactionStatus.CANCELLED;
+    }
+
+    /**
+     * Sets the order for this transaction
+     * 
+     * @param order The order to set
+     */
+    public void setOrder(Order order) {
+        this.order = order;
     }
 }

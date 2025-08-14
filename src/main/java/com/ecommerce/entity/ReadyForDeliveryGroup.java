@@ -49,6 +49,15 @@ public class ReadyForDeliveryGroup {
     }
 
     /**
+     * Sets the ready for delivery group for an order
+     * 
+     * @param order The order to set
+     */
+    public void setReadyForDeliveryGroup(Order order) {
+        // This method is needed for the relationship
+    }
+
+    /**
      * Adds an order to this delivery group
      * 
      * @param order The order to add

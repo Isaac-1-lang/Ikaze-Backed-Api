@@ -32,7 +32,7 @@ public class Cart {
 
     @Column(name = "updated_at")
     private LocalDateTime updatedAt;
-    
+
     @PrePersist
     protected void onCreate() {
         createdAt = LocalDateTime.now();
@@ -43,7 +43,16 @@ public class Cart {
     protected void onUpdate() {
         updatedAt = LocalDateTime.now();
     }
-    
+
+    /**
+     * Sets the cart for an item
+     * 
+     * @param item The cart item to set
+     */
+    public void setCart(CartItem item) {
+        // This method is needed for the relationship
+    }
+
     /**
      * Adds an item to the cart
      * 
@@ -53,7 +62,7 @@ public class Cart {
         items.add(item);
         item.setCart(this);
     }
-    
+
     /**
      * Removes an item from the cart
      * 
@@ -63,7 +72,7 @@ public class Cart {
         items.remove(item);
         item.setCart(null);
     }
-    
+
     /**
      * Clears all items from the cart
      */

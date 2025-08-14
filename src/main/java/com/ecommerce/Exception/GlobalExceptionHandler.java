@@ -35,7 +35,10 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(Exception.class)
     public ResponseEntity<String> handleGeneralException(Exception ex) {
-        return new ResponseEntity<>("An unexpected error occurred: " + ex.getMessage(),
+        // Log the full exception for debugging but don't expose it to the client
+        System.err.println("Unexpected error: " + ex.getMessage());
+        ex.printStackTrace();
+        return new ResponseEntity<>("An unexpected error occurred. Please try again later.",
                 HttpStatus.INTERNAL_SERVER_ERROR);
     }
 }

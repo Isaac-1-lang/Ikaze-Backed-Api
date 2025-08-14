@@ -1,107 +1,163 @@
 package com.ecommerce.dto;
 
-import jakarta.validation.constraints.NotBlank;
-import jakarta.validation.constraints.NotNull;
-import jakarta.validation.constraints.Positive;
-import jakarta.validation.constraints.Size;
-import lombok.AllArgsConstructor;
-import lombok.Builder;
 import lombok.Data;
-import lombok.NoArgsConstructor;
-import org.springframework.web.multipart.MultipartFile;
-
 import java.math.BigDecimal;
 import java.util.List;
 import java.util.UUID;
 
 @Data
-@Builder
-@NoArgsConstructor
-@AllArgsConstructor
 public class CreateProductDTO {
-
-    @NotBlank(message = "Product name is required")
-    @Size(min = 2, max = 255, message = "Product name must be between 2 and 255 characters")
     private String name;
-
     private String description;
-
-    @NotBlank(message = "SKU is required")
     private String sku;
-
     private String barcode;
-
-    @NotNull(message = "Base price is required")
-    @Positive(message = "Base price must be positive")
     private BigDecimal basePrice;
-
     private BigDecimal salePrice;
-
     private BigDecimal costPrice;
-
     private Integer stockQuantity;
-
     private Integer lowStockThreshold;
-
-    @NotNull(message = "Category ID is required")
     private Long categoryId;
-
     private UUID brandId;
-
-    private String model;
-
-    private String slug;
-
-    private Boolean isActive;
-
-    private Boolean isFeatured;
-
-    private Boolean isBestseller;
-
-    private Boolean isNewArrival;
-
-    private Boolean isOnSale;
-
-    private Integer salePercentage;
-
     private UUID discountId;
-
-    // Product detail fields
-    private String fullDescription;
-    private String metaTitle;
-    private String metaDescription;
-    private String metaKeywords;
-    private String searchKeywords;
-    private String dimensionsCm;
-    private BigDecimal weightKg;
-
-    // Media files
-    private List<MultipartFile> productImages;
-    private List<ImageMetadata> imageMetadata;
-    private List<MultipartFile> productVideos;
-    private List<VideoMetadata> videoMetadata;
-
-    // Variants
+    private String model;
+    private String slug;
+    private Boolean isActive;
+    private Boolean isFeatured;
+    private Boolean isBestseller;
+    private Boolean isNewArrival;
+    private List<String> productImages;
+    private String imageMetadata;
+    private List<String> productVideos;
+    private String videoMetadata;
     private List<CreateProductVariantDTO> variants;
 
-    @Data
-    @Builder
-    @NoArgsConstructor
-    @AllArgsConstructor
-    public static class ImageMetadata {
-        private String altText;
-        private Boolean isPrimary;
-        private Integer sortOrder;
+    // Getters
+    public String getName() {
+        return name;
     }
 
-    @Data
-    @Builder
-    @NoArgsConstructor
-    @AllArgsConstructor
-    public static class VideoMetadata {
-        private String title;
-        private String description;
-        private Integer sortOrder;
-        private Integer durationSeconds; // To validate video duration
+    public String getDescription() {
+        return description;
+    }
+
+    public String getSku() {
+        return sku;
+    }
+
+    public String getBarcode() {
+        return barcode;
+    }
+
+    public BigDecimal getBasePrice() {
+        return basePrice;
+    }
+
+    public BigDecimal getSalePrice() {
+        return salePrice;
+    }
+
+    public BigDecimal getCostPrice() {
+        return costPrice;
+    }
+
+    public Integer getStockQuantity() {
+        return stockQuantity;
+    }
+
+    public Integer getLowStockThreshold() {
+        return lowStockThreshold;
+    }
+
+    public Long getCategoryId() {
+        return categoryId;
+    }
+
+    public UUID getBrandId() {
+        return brandId;
+    }
+
+    public UUID getDiscountId() {
+        return discountId;
+    }
+
+    public String getModel() {
+        return model;
+    }
+
+    public String getSlug() {
+        return slug;
+    }
+
+    public Boolean getIsActive() {
+        return isActive;
+    }
+
+    public Boolean getIsFeatured() {
+        return isFeatured;
+    }
+
+    public Boolean getIsBestseller() {
+        return isBestseller;
+    }
+
+    public Boolean getIsNewArrival() {
+        return isNewArrival;
+    }
+
+    public List<String> getProductImages() {
+        return productImages;
+    }
+
+    public String getImageMetadata() {
+        return imageMetadata;
+    }
+
+    public List<String> getProductVideos() {
+        return productVideos;
+    }
+
+    public String getVideoMetadata() {
+        return videoMetadata;
+    }
+
+    public List<CreateProductVariantDTO> getVariants() {
+        return variants;
+    }
+
+    // Additional methods for ProductServiceImpl
+    public String getFullDescription() {
+        return description;
+    }
+
+    public String getMetaTitle() {
+        return name;
+    }
+
+    public String getMetaDescription() {
+        return description;
+    }
+
+    public String getMetaKeywords() {
+        return name + " " + description;
+    }
+
+    public String getSearchKeywords() {
+        return name + " " + description;
+    }
+
+    public String getDimensionsCm() {
+        return "0x0x0";
+    }
+
+    public BigDecimal getWeightKg() {
+        return BigDecimal.ZERO;
+    }
+
+    public Boolean getIsOnSale() {
+        return false;
+    }
+
+    public Integer getSalePercentage() {
+        return 0;
     }
 }

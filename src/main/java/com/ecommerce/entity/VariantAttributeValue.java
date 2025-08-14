@@ -39,4 +39,13 @@ public class VariantAttributeValue {
         @Column(name = "attribute_value_id")
         private Long attributeValueId;
     }
+
+    /**
+     * Gets the attribute value
+     * 
+     * @return The attribute value
+     */
+    public ProductAttributeValue getAttributeValue() {
+        return attributeValue;
+    }
 }

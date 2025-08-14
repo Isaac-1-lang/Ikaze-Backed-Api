@@ -77,4 +77,13 @@ public class OrderAddress {
         }
         this.regions = String.join(",", regionsArray);
     }
+
+    /**
+     * Sets the order for this address
+     * 
+     * @param order The order to set
+     */
+    public void setOrder(Order order) {
+        this.order = order;
+    }
 }

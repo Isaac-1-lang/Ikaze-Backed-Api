@@ -85,6 +85,15 @@ public class Category {
         updatedAt = LocalDateTime.now();
     }
 
+    /**
+     * Checks if the category is active
+     * 
+     * @return True if active, false otherwise
+     */
+    public boolean isActive() {
+        return isActive;
+    }
+
     private String generateSlug(String name) {
         return name.toLowerCase()
                 .replaceAll("[^a-z0-9\\s-]", "")

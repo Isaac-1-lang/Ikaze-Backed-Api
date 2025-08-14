@@ -61,6 +61,15 @@ public class OrderCustomerInfo {
     }
 
     /**
+     * Sets the order for this customer info
+     * 
+     * @param order The order to set
+     */
+    public void setOrder(Order order) {
+        this.order = order;
+    }
+
+    /**
      * Gets the full name of the customer
      * 
      * @return The full name

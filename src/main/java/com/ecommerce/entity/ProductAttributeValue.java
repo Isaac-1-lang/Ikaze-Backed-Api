@@ -32,4 +32,13 @@ public class ProductAttributeValue {
 
     @OneToMany(mappedBy = "attributeValue")
     private Set<VariantAttributeValue> variantAttributeValues = new HashSet<>();
+
+    /**
+     * Gets the value
+     * 
+     * @return The value
+     */
+    public String getValue() {
+        return value;
+    }
 }
