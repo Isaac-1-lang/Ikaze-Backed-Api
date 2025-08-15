@@ -8,6 +8,7 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 import java.time.LocalDateTime;
+import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -34,6 +35,15 @@ public class DeliveryArea {
 
     @OneToMany(mappedBy = "parent", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
     private List<DeliveryArea> children = new ArrayList<>();
+
+    @Column(name = "delivery_cost", precision = 10, scale = 2)
+    private BigDecimal deliveryCost;
+
+    @Column(name = "expected_min_days")
+    private Integer expectedDeliveryMinDays;
+
+    @Column(name = "expected_max_days")
+    private Integer expectedDeliveryMaxDays;
 
     @Column(name = "created_at")
     private LocalDateTime createdAt;
