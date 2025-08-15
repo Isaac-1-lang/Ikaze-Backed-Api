@@ -8,6 +8,7 @@ import org.springframework.security.core.Authentication;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
+import com.ecommerce.Enum.UserRole;
 import com.ecommerce.Exception.CustomException;
 import com.ecommerce.dto.UserRegistrationDTO;
 import com.ecommerce.entity.User;
@@ -51,7 +52,7 @@ public class AuthServiceImpl implements AuthService {
         user.setUserEmail(registrationDTO.getEmail());
         user.setPassword(hashedPassword);
         user.setPhoneNumber(registrationDTO.getPhoneNumber());
-        user.setRole(registrationDTO.getRole());
+        user.setRole(UserRole.CUSTOMER);
 
         User savedUser = userRepository.save(user);
 
@@ -125,7 +126,7 @@ public class AuthServiceImpl implements AuthService {
 
     @Override
     public String logoutUser(String token) {
-        jwtService.invalidateToken(token); // Pass the token to invalidate
+        jwtService.invalidateToken(token);
         return "User logged out successfully";
     }
 }

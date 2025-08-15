@@ -1,5 +1,6 @@
 package com.ecommerce.entity;
 
+import com.ecommerce.Enum.UserRole;
 import jakarta.persistence.*;
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
@@ -41,7 +42,7 @@ public class AdminInvitation {
     @NotNull(message = "Role is required")
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
-    private User.UserRole assignedRole;
+    private UserRole assignedRole;
 
     @Column(name = "invitation_token", unique = true, nullable = false)
     private String invitationToken;

@@ -1,5 +1,6 @@
 package com.ecommerce.service.impl;
 
+import com.ecommerce.Enum.UserRole;
 import com.ecommerce.ServiceImpl.JwtService;
 import com.ecommerce.dto.*;
 import com.ecommerce.entity.Order;
@@ -165,7 +166,7 @@ public class AnalyticsServiceImpl implements AnalyticsService {
         String username = jwtService.extractUsername(token);
         return userRepository.findByUserEmail(username)
                 .map(User::getRole)
-                .map(r -> r == User.UserRole.ADMIN)
+                .map(r -> r == UserRole.ADMIN)
                 .orElse(false);
     }
 
