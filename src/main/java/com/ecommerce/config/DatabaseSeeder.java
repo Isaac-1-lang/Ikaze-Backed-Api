@@ -1,5 +1,6 @@
 package com.ecommerce.config;
 
+import com.ecommerce.Enum.UserRole;
 import com.ecommerce.entity.*;
 import com.ecommerce.repository.*;
 import lombok.RequiredArgsConstructor;
@@ -88,7 +89,7 @@ public class DatabaseSeeder implements CommandLineRunner {
             adminUser.setLastName(adminLastName);
             adminUser.setUserEmail(adminEmail);
             adminUser.setPassword(passwordEncoder.encode(adminPassword));
-            adminUser.setRole(User.UserRole.ADMIN);
+            adminUser.setRole(UserRole.ADMIN);
             adminUser.setAuthProvider(User.AuthProvider.LOCAL);
             adminUser.setEmailVerified(true);
             adminUser.setEnabled(true);

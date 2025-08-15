@@ -71,11 +71,11 @@ public class StripeWebhookController {
                     return; // already processed
                 }
 
-                // Process payment inside transaction
+               
                 processSuccessfulPayment(tx, session);
             });
         }
-        // handle other events: payment_failed, charge.refunded, etc.
+        
 
         return ResponseEntity.ok("received");
     }

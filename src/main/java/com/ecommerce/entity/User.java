@@ -1,5 +1,6 @@
 package com.ecommerce.entity;
 
+import com.ecommerce.Enum.UserRole;
 import jakarta.persistence.*;
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
@@ -163,10 +164,6 @@ public class User implements UserDetails {
 
     public String getFullName() {
         return firstName + " " + lastName;
-    }
-
-    public enum UserRole {
-        CUSTOMER, ADMIN, EMPLOYEE, DELIVERY_AGENT
     }
 
     public enum AuthProvider {
