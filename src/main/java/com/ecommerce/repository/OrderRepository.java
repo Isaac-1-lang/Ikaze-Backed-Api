@@ -49,8 +49,10 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
                      "WHERE oi.productVariant.id = :variantId")
        List<Order> findByProductVariant(@Param("variantId") Long variantId);
 
-       @Query("select o from Order o where o.createdAt >= :from and o.createdAt < :to")
-       List<Order> findAllBetween(@Param("from") LocalDateTime from,
-                     @Param("to") LocalDateTime to);
+       /**
+        * Find all orders between two dates
+        */
+       @Query("SELECT o FROM Order o WHERE o.createdAt >= :startDate AND o.createdAt < :endDate")
+       List<Order> findAllBetween(@Param("startDate") LocalDateTime startDate, @Param("endDate") LocalDateTime endDate);
 
 }

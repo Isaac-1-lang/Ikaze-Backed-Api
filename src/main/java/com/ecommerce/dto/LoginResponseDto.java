@@ -3,7 +3,7 @@ package com.ecommerce.dto;
 
 import java.util.UUID;
 
-import com.ecommerce.entity.User.UserRole;
+import com.ecommerce.Enum.UserRole;
 
 import lombok.AllArgsConstructor;
 import lombok.Data;

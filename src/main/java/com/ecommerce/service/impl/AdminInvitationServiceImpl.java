@@ -1,5 +1,6 @@
 package com.ecommerce.service.impl;
 
+import com.ecommerce.Enum.UserRole;
 import com.ecommerce.dto.*;
 import com.ecommerce.entity.AdminInvitation;
 import com.ecommerce.entity.User;
@@ -51,9 +52,9 @@ public class AdminInvitationServiceImpl implements AdminInvitationService {
         }
 
         // Validate role
-        User.UserRole assignedRole;
+        UserRole assignedRole;
         try {
-            assignedRole = User.UserRole.valueOf(createInvitationDTO.getAssignedRole().toUpperCase());
+            assignedRole = UserRole.valueOf(createInvitationDTO.getAssignedRole().toUpperCase());
         } catch (IllegalArgumentException e) {
             throw new IllegalArgumentException("Invalid role: " + createInvitationDTO.getAssignedRole());
         }
@@ -144,7 +145,7 @@ public class AdminInvitationServiceImpl implements AdminInvitationService {
         }
         if (updateInvitationDTO.getAssignedRole() != null) {
             try {
-                User.UserRole assignedRole = User.UserRole.valueOf(updateInvitationDTO.getAssignedRole().toUpperCase());
+                UserRole assignedRole = UserRole.valueOf(updateInvitationDTO.getAssignedRole().toUpperCase());
                 invitation.setAssignedRole(assignedRole);
             } catch (IllegalArgumentException e) {
                 throw new IllegalArgumentException("Invalid role: " + updateInvitationDTO.getAssignedRole());

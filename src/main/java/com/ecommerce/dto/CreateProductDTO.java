@@ -1,5 +1,9 @@
 package com.ecommerce.dto;
 
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Positive;
+import jakarta.validation.constraints.Size;
 import lombok.Data;
 import java.math.BigDecimal;
 import java.util.List;
@@ -7,20 +11,49 @@ import java.util.UUID;
 
 @Data
 public class CreateProductDTO {
+
+    @NotBlank(message = "Product name is required")
+    @Size(min = 2, max = 255, message = "Product name must be between 2 and 255 characters")
     private String name;
+
+    @Size(max = 1000, message = "Description must not exceed 1000 characters")
     private String description;
+
+    @NotBlank(message = "SKU is required")
+    @Size(min = 3, max = 50, message = "SKU must be between 3 and 50 characters")
     private String sku;
+
+    @Size(max = 50, message = "Barcode must not exceed 50 characters")
     private String barcode;
+
+    @NotNull(message = "Base price is required")
+    @Positive(message = "Base price must be positive")
     private BigDecimal basePrice;
+
+    @Positive(message = "Sale price must be positive")
     private BigDecimal salePrice;
+
+    @Positive(message = "Cost price must be positive")
     private BigDecimal costPrice;
+
+    @Positive(message = "Stock quantity must be positive")
     private Integer stockQuantity;
+
+    @Positive(message = "Low stock threshold must be positive")
     private Integer lowStockThreshold;
+
+    @NotNull(message = "Category ID is required")
     private Long categoryId;
+
     private UUID brandId;
     private UUID discountId;
+
+    @Size(max = 100, message = "Model must not exceed 100 characters")
     private String model;
+
+    @Size(max = 255, message = "Slug must not exceed 255 characters")
     private String slug;
+
     private Boolean isActive;
     private Boolean isFeatured;
     private Boolean isBestseller;

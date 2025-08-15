@@ -1,5 +1,6 @@
 package com.ecommerce.service.impl;
 
+import com.ecommerce.Enum.UserRole;
 import com.ecommerce.ServiceImpl.JwtService;
 import com.ecommerce.dto.AlertsDTO;
 import com.ecommerce.dto.DashboardResponseDTO;
@@ -35,7 +36,7 @@ public class DashboardServiceImpl implements DashboardService {
     public DashboardResponseDTO getDashboardData(String bearerToken) {
         String token = extractToken(bearerToken);
         String username = token != null ? jwtService.extractUsername(token) : null;
-        User.UserRole role = null;
+        UserRole role = null;
         if (username != null) {
             role = userRepository.findByUserEmail(username)
                     .map(User::getRole)
@@ -49,7 +50,7 @@ public class DashboardServiceImpl implements DashboardService {
         long lowStock = productRepository.countLowStock();
 
         BigDecimal revenue = null;
-        if (role == User.UserRole.ADMIN) {
+        if (role == UserRole.ADMIN) {
             revenue = orderTransactionRepository.sumCompletedRevenue();
         }
 
