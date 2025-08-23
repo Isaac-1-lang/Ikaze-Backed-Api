@@ -35,19 +35,32 @@ public class JwtAuthFilter extends OncePerRequestFilter {
         String authHeader = req.getHeader("Authorization");
         String token = null;
         String username = null;
-        if (authHeader != null && authHeader.startsWith("Bearer ")) {
-            token = authHeader.substring(7);
-            username = jwtService.extractUsername(token);
-        }
-
-        if (username != null && SecurityContextHolder.getContext().getAuthentication() == null) {
-            UserDetails userDetails = userDetailsService.loadUserByUsername(username);
-            if (jwtService.validateToken(token, userDetails)) {
-                UsernamePasswordAuthenticationToken authToken = new UsernamePasswordAuthenticationToken(userDetails,
-                        null, userDetails.getAuthorities());
-                authToken.setDetails(new WebAuthenticationDetailsSource().buildDetails(req));
-                SecurityContextHolder.getContext().setAuthentication(authToken);
+        try {
+            if (authHeader != null && authHeader.startsWith("Bearer ")) {
+                token = authHeader.substring(7);
+                try {
+                    username = jwtService.extractUsername(token);
+                } catch (Exception e) {
+                    // Invalid token; proceed without authentication
+                    username = null;
+                }
             }
+
+            if (username != null && SecurityContextHolder.getContext().getAuthentication() == null) {
+                try {
+                    UserDetails userDetails = userDetailsService.loadUserByUsername(username);
+                    if (jwtService.validateToken(token, userDetails)) {
+                        UsernamePasswordAuthenticationToken authToken = new UsernamePasswordAuthenticationToken(userDetails,
+                                null, userDetails.getAuthorities());
+                        authToken.setDetails(new WebAuthenticationDetailsSource().buildDetails(req));
+                        SecurityContextHolder.getContext().setAuthentication(authToken);
+                    }
+                } catch (Exception e) {
+                    // On any auth error, skip setting authentication and continue chain
+                }
+            }
+        } catch (Exception e) {
+            // Ensure filter chain continues even if unexpected errors occur
         }
 
         filterChain.doFilter(req, res);

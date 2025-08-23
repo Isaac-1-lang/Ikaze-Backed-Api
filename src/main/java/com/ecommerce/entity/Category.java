@@ -48,10 +48,10 @@ public class Category {
     private Integer sortOrder = 0;
 
     @Column(name = "is_active")
-    private boolean isActive = true;
+    private Boolean isActive = true;
 
     @Column(name = "is_featured")
-    private boolean isFeatured = false;
+    private Boolean isFeatured = false;
 
     @Column(name = "meta_title")
     private String metaTitle;
@@ -91,7 +91,16 @@ public class Category {
      * @return True if active, false otherwise
      */
     public boolean isActive() {
-        return isActive;
+        return isActive != null ? isActive : true;
+    }
+
+    /**
+     * Checks if the category is featured
+     * 
+     * @return True if featured, false otherwise
+     */
+    public boolean isFeatured() {
+        return isFeatured != null ? isFeatured : false;
     }
 
     private String generateSlug(String name) {

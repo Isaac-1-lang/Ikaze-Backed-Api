@@ -192,7 +192,7 @@ GET /api/v1/products?page=999&size=100
 ### 4. Environment Variables
 
 ```
-baseUrl: http://localhost:8095/api/v1
+baseUrl: http://localhost:8081/api/v1
 ```
 
 ## Validation Rules

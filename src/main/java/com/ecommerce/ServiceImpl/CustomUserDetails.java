@@ -11,12 +11,12 @@ import com.ecommerce.Enum.UserRole;
 
 public class CustomUserDetails implements UserDetails {
 
-    private String name;
+    private String username;
     private String password;
     private UserRole role;
 
     public CustomUserDetails(User user) {
-        this.name = user.getFirstName();
+        this.username = user.getUserEmail();
         this.password = user.getPassword();
         this.role = user.getRole();
     }
@@ -33,7 +33,7 @@ public class CustomUserDetails implements UserDetails {
 
     @Override
     public String getUsername() {
-        return this.name;
+        return this.username;
     }
 
     @Override

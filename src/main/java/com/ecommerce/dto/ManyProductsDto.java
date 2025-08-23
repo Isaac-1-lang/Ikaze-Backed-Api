@@ -1,9 +1,5 @@
 package com.ecommerce.dto;
 
-import com.ecommerce.entity.Brand;
-import com.ecommerce.entity.Category;
-import com.ecommerce.entity.Discount;
-import com.ecommerce.entity.ProductImage;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -28,10 +24,38 @@ public class ManyProductsDto {
     private BigDecimal price;
     private BigDecimal compareAtPrice;
     private Integer stockQuantity;
-    private Category category;
-    private Brand brand;
+    private CategorySummary category;
+    private BrandSummary brand;
     private Boolean isBestSeller;
     private Boolean isFeatured;
-    private Discount discountInfo;
-    private ProductImage primaryImage;
+    private Object discountInfo;
+    private ImageSummary primaryImage;
+
+    @Data
+    @AllArgsConstructor
+    @NoArgsConstructor
+    public static class CategorySummary {
+        private Long id;
+        private String name;
+        private String slug;
+    }
+
+    @Data
+    @AllArgsConstructor
+    @NoArgsConstructor
+    public static class BrandSummary {
+        private UUID brandId;
+        private String brandName;
+    }
+
+    @Data
+    @AllArgsConstructor
+    @NoArgsConstructor
+    public static class ImageSummary {
+        private Long id;
+        private String imageUrl;
+        private String altText;
+        private boolean isPrimary;
+        private Integer sortOrder;
+    }
 }

@@ -17,7 +17,7 @@ The cart service provides the following functionality:
 ## Base URL
 
 ```
-http://localhost:8095/api/v1/cart
+http://localhost:8081/api/v1/cart
 ```
 
 ## Authentication
@@ -300,7 +300,7 @@ Authorization: Bearer <your_jwt_token>
 
 Set up these environment variables in Postman:
 
-- `base_url`: `http://localhost:8095`
+- `base_url`: `http://localhost:8081`
 - `jwt_token`: Your JWT authentication token
 - `user_id`: A valid user UUID for testing
 

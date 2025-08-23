@@ -49,8 +49,8 @@ public class CategoryServiceImpl implements CategoryService {
         existingCategory.setDescription(categoryDTO.getDescription());
         existingCategory.setImageUrl(categoryDTO.getImageUrl());
         existingCategory.setSortOrder(categoryDTO.getSortOrder());
-        existingCategory.setActive(categoryDTO.isActive());
-        existingCategory.setFeatured(categoryDTO.isFeatured());
+        existingCategory.setIsActive(categoryDTO.isActive());
+        existingCategory.setIsFeatured(categoryDTO.isFeatured());
         existingCategory.setMetaTitle(categoryDTO.getMetaTitle());
         existingCategory.setMetaDescription(categoryDTO.getMetaDescription());
         existingCategory.setMetaKeywords(categoryDTO.getMetaKeywords());
@@ -288,8 +288,8 @@ public class CategoryServiceImpl implements CategoryService {
         category.setImageUrl(categoryDTO.getImageUrl());
         category.setSlug(categoryDTO.getSlug());
         category.setSortOrder(categoryDTO.getSortOrder());
-        category.setActive(categoryDTO.isActive());
-        category.setFeatured(categoryDTO.isFeatured());
+        category.setIsActive(categoryDTO.isActive());
+        category.setIsFeatured(categoryDTO.isFeatured());
         category.setMetaTitle(categoryDTO.getMetaTitle());
         category.setMetaDescription(categoryDTO.getMetaDescription());
         category.setMetaKeywords(categoryDTO.getMetaKeywords());
