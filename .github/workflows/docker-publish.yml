@@ -14,17 +14,17 @@ jobs:
       packages: write
 
     steps:
-      # 1️⃣ Checkout code
+      # 1️⃣ Checkout repository
       - name: Checkout repository
         uses: actions/checkout@v3
 
-      # 2️⃣ Log in to GHCR
-      - name: Log in to GHCR
+      # 2️⃣ Log in to GHCR using PAT
+      - name: Log in to GitHub Container Registry
         uses: docker/login-action@v2
         with:
           registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+          username: ashrafutuyu
+          password: ${{ secrets.DEV_TEAMMM_PAT }}
 
       # 3️⃣ Build & push Docker image
       - name: Build and push Docker image
@@ -32,4 +32,4 @@ jobs:
         with:
           context: .
           push: true
-          tags: ghcr.io/dev-teammm/ecommerce:latest
+          tags: ghcr.io/ashrafutuyu/ecommerce:latest
