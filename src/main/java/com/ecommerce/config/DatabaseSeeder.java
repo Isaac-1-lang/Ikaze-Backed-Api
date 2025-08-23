@@ -77,11 +77,16 @@ public class DatabaseSeeder implements CommandLineRunner {
         String adminPhone = System.getenv("ADMIN_PHONE");
 
         // Use default values if environment variables are not set
-        if (adminEmail == null) adminEmail = "admin@example.com";
-        if (adminPassword == null) adminPassword = "admin123";
-        if (adminFirstName == null) adminFirstName = "Admin";
-        if (adminLastName == null) adminLastName = "User";
-        if (adminPhone == null) adminPhone = "+1234567890";
+        if (adminEmail == null)
+            adminEmail = "admin@example.com";
+        if (adminPassword == null)
+            adminPassword = "admin123";
+        if (adminFirstName == null)
+            adminFirstName = "Admin";
+        if (adminLastName == null)
+            adminLastName = "User";
+        if (adminPhone == null)
+            adminPhone = "+1234567890";
 
         if (userRepository.findByUserEmail(adminEmail).isEmpty()) {
             User adminUser = new User();
