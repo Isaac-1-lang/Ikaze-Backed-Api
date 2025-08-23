@@ -57,6 +57,6 @@ public class UserController {
     
     @GetMapping("/welcome")
     public ResponseEntity<String> welcomeUser(@RequestHeader("Authorization") String token) {
-            return ResponseEntity.ok("Welcome back ");
+            return ResponseEntity.ok("Welcome back.this is E-commerce backend api");
     }
 }
