@@ -58,5 +58,6 @@ Thumbs.db
 
 ### Application Specific ###
 uploads/
+application-dev.properties
 temp/
 *.tmp

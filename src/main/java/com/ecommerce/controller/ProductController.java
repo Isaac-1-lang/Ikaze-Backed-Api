@@ -41,8 +41,8 @@ public class ProductController {
 
     private final ProductService productService;
 
-    @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    @PreAuthorize("hasAnyRole('ADMIN', 'EMPLOYEE')")
+    @PostMapping("/add")
+    // @PreAuthorize("hasAnyRole('ADMIN', 'EMPLOYEE')")
     @Operation(summary = "Create a new product", description = "Create a new product with variants, images, and videos", responses = {
             @ApiResponse(responseCode = "201", description = "Product created successfully", content = @Content(schema = @Schema(implementation = ProductDTO.class))),
             @ApiResponse(responseCode = "400", description = "Invalid input data"),
@@ -50,7 +50,7 @@ public class ProductController {
             @ApiResponse(responseCode = "403", description = "Forbidden"),
             @ApiResponse(responseCode = "500", description = "Internal server error")
     })
-    public ResponseEntity<?> createProduct(@Valid @ModelAttribute CreateProductDTO createProductDTO) {
+    public ResponseEntity<?> createProduct(CreateProductDTO createProductDTO) {
         try {
             log.info("Creating product with name: {}", createProductDTO.getName());
             ProductDTO createdProduct = productService.createProduct(createProductDTO);
@@ -117,7 +117,7 @@ public class ProductController {
         }
     }
 
-    @GetMapping
+    @GetMapping()
     @Operation(summary = "Get all products", description = "Retrieve all products with pagination for card display", responses = {
             @ApiResponse(responseCode = "200", description = "Products retrieved successfully", content = @Content(schema = @Schema(implementation = ManyProductsDto.class)))
     })
