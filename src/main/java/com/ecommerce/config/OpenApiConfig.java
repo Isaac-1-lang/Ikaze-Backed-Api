@@ -25,7 +25,7 @@ public class OpenApiConfig {
         public OpenAPI customOpenAPI() {
                 return new OpenAPI()
                                 .info(new io.swagger.v3.oas.models.info.Info()
-                                                .title("E-Commerce API")
+                                                .title("E-Commerce Backend API")
                                                 .version("1.0")
                                                 .description("API for E-Commerce platform")
                                                 .license(new License().name("Apache 2.0")
