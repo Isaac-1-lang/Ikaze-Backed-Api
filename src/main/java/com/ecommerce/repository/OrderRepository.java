@@ -66,15 +66,20 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
                "WHERE o.user.id = :userId")
        List<Order> findAllForUserWithDetails(@Param("userId") UUID userId);
 
-       @Query("SELECT o FROM Order o " +
-               "LEFT JOIN FETCH o.user u " +
-               "LEFT JOIN FETCH o.orderItems oi " +
-               "LEFT JOIN FETCH oi.productVariant v " +
-               "LEFT JOIN FETCH v.product p " +
-               "LEFT JOIN FETCH o.orderInfo info " +
-               "LEFT JOIN FETCH o.orderAddress addr " +
-               "LEFT JOIN FETCH o.orderTransaction tx " +
-               "WHERE o.user.id = :userId AND o.orderId = :orderId")
-       Optional<Order> findByIdForUserWithDetails(@Param("userId") UUID userId, @Param("orderId") Long orderId);
+               @Query("SELECT o FROM Order o " +
+                "LEFT JOIN FETCH o.user u " +
+                "LEFT JOIN FETCH o.orderItems oi " +
+                "LEFT JOIN FETCH oi.productVariant v " +
+                "LEFT JOIN FETCH v.product p " +
+                "LEFT JOIN FETCH o.orderInfo info " +
+                "LEFT JOIN FETCH o.orderAddress addr " +
+                "LEFT JOIN FETCH o.orderTransaction tx " +
+                "WHERE o.user.id = :userId AND o.orderId = :orderId")
+        Optional<Order> findByIdForUserWithDetails(@Param("userId") UUID userId, @Param("orderId") Long orderId);
+
+        /**
+         * Find order by order code and user ID
+         */
+        Optional<Order> findByOrderCodeAndUser_Id(String orderCode, UUID userId);
 
 }
