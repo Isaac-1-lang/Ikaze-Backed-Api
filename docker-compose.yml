@@ -4,7 +4,7 @@ services:
   ecommerce:
     image: ghcr.io/dev-teammm/ecommerce:latest
     container_name: ecommerce_app
-    build: .   # 👈 add this so it builds locally from your Dockerfile
+    build: .
     restart: always
     ports:
       - "8081:8081"

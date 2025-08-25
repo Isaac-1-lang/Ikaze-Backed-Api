@@ -16,7 +16,6 @@ import java.time.LocalDateTime;
 import java.util.Arrays;
 import java.util.List;
 
-
 @Component
 @Order(1)
 @RequiredArgsConstructor
@@ -64,9 +63,11 @@ public class DatabaseSeeder implements CommandLineRunner {
             seedCategories();
         } else {
             // Check if we have the correct categories, if not, replace them
-            List<String> expectedCategoryNames = Arrays.asList("Electronics", "Fashion", "Home & Garden", "Sports & Outdoors", "Beauty & Health");
-            
-            // Use a safer approach to check existing categories without loading full entities
+            List<String> expectedCategoryNames = Arrays.asList("Electronics", "Fashion", "Home & Garden",
+                    "Sports & Outdoors", "Beauty & Health");
+
+            // Use a safer approach to check existing categories without loading full
+            // entities
             boolean needsUpdate = false;
             for (String expectedName : expectedCategoryNames) {
                 if (categoryRepository.findByName(expectedName).isEmpty()) {
@@ -74,7 +75,7 @@ public class DatabaseSeeder implements CommandLineRunner {
                     break;
                 }
             }
-            
+
             if (needsUpdate) {
                 log.info("Categories exist but don't match expected ones. Replacing categories...");
                 // Delete only the categories we want to replace
@@ -237,6 +238,7 @@ public class DatabaseSeeder implements CommandLineRunner {
 
         List<Category> categories = Arrays.asList(
                 createCategory("Electronics", "Latest gadgets and electronic devices", "electronics"),
+                createCategory("Audio", "Headphones, earbuds, and audio devices", "audio"),
                 createCategory("Fashion", "Trendy clothing and accessories", "fashion"),
                 createCategory("Home & Garden", "Everything for your home and outdoor space", "home-garden"),
                 createCategory("Sports & Outdoors", "Equipment and gear for active lifestyles", "sports-outdoors"),
@@ -323,15 +325,22 @@ public class DatabaseSeeder implements CommandLineRunner {
         log.info("Seeding warehouses...");
 
         List<Warehouse> warehouses = Arrays.asList(
-                createWarehouse("Main Distribution Center", "123 Industrial Blvd, New York, NY 10001", "+1-555-0101", "main.warehouse@company.com"),
-                createWarehouse("West Coast Hub", "456 Commerce Way, Los Angeles, CA 90210", "+1-555-0102", "west.warehouse@company.com"),
-                createWarehouse("Central Distribution", "789 Logistics Ave, Chicago, IL 60601", "+1-555-0103", "central.warehouse@company.com"),
-                createWarehouse("Southern Regional", "321 Warehouse Dr, Houston, TX 77001", "+1-555-0104", "south.warehouse@company.com"),
-                createWarehouse("Northeast Branch", "654 Storage St, Boston, MA 02101", "+1-555-0105", "northeast.warehouse@company.com"),
-                createWarehouse("Pacific Northwest", "987 Harbor Blvd, Seattle, WA 98101", "+1-555-0106", "pacific.warehouse@company.com"),
-                createWarehouse("Midwest Hub", "147 Distribution Rd, Detroit, MI 48201", "+1-555-0107", "midwest.warehouse@company.com"),
-                createWarehouse("Southeast Center", "258 Logistics Ln, Atlanta, GA 30301", "+1-555-0108", "southeast.warehouse@company.com")
-        );
+                createWarehouse("Main Distribution Center", "123 Industrial Blvd, New York, NY 10001", "+1-555-0101",
+                        "main.warehouse@company.com"),
+                createWarehouse("West Coast Hub", "456 Commerce Way, Los Angeles, CA 90210", "+1-555-0102",
+                        "west.warehouse@company.com"),
+                createWarehouse("Central Distribution", "789 Logistics Ave, Chicago, IL 60601", "+1-555-0103",
+                        "central.warehouse@company.com"),
+                createWarehouse("Southern Regional", "321 Warehouse Dr, Houston, TX 77001", "+1-555-0104",
+                        "south.warehouse@company.com"),
+                createWarehouse("Northeast Branch", "654 Storage St, Boston, MA 02101", "+1-555-0105",
+                        "northeast.warehouse@company.com"),
+                createWarehouse("Pacific Northwest", "987 Harbor Blvd, Seattle, WA 98101", "+1-555-0106",
+                        "pacific.warehouse@company.com"),
+                createWarehouse("Midwest Hub", "147 Distribution Rd, Detroit, MI 48201", "+1-555-0107",
+                        "midwest.warehouse@company.com"),
+                createWarehouse("Southeast Center", "258 Logistics Ln, Atlanta, GA 30301", "+1-555-0108",
+                        "southeast.warehouse@company.com"));
 
         warehouseRepository.saveAll(warehouses);
         log.info("Created {} warehouses", warehouses.size());
@@ -342,16 +351,32 @@ public class DatabaseSeeder implements CommandLineRunner {
         log.info("Seeding products...");
 
         // Get required entities
-        Category audioCategory = categoryRepository.findByName("Audio").orElseThrow();
-        Brand appleBrand = brandRepository.findByBrandName("Apple").orElseThrow();
+        Category audioCategory = categoryRepository.findByName("Audio")
+                .orElseThrow(() -> new IllegalStateException(
+                        "Category 'Audio' not found. Please ensure it is seeded before seeding products."));
+        Brand appleBrand = brandRepository.findByBrandName("Apple")
+                .orElseThrow(() -> new IllegalStateException(
+                        "Brand 'Apple' not found. Please ensure it is seeded before seeding products."));
 
         // Get attribute values
-        ProductAttributeValue blueColor = attributeValueRepository.findByValue("Blue").orElseThrow();
-        ProductAttributeValue redColor = attributeValueRepository.findByValue("Red").orElseThrow();
-        ProductAttributeValue blackColor = attributeValueRepository.findByValue("Black").orElseThrow();
-        ProductAttributeValue lgSize = attributeValueRepository.findByValue("LG").orElseThrow();
-        ProductAttributeValue smSize = attributeValueRepository.findByValue("SM").orElseThrow();
-        ProductAttributeValue mdSize = attributeValueRepository.findByValue("MD").orElseThrow();
+        ProductAttributeValue blueColor = attributeValueRepository.findByValue("Blue")
+                .orElseThrow(() -> new IllegalStateException(
+                        "Attribute value 'Blue' not found. Please ensure it is seeded before seeding products."));
+        ProductAttributeValue redColor = attributeValueRepository.findByValue("Red")
+                .orElseThrow(() -> new IllegalStateException(
+                        "Attribute value 'Red' not found. Please ensure it is seeded before seeding products."));
+        ProductAttributeValue blackColor = attributeValueRepository.findByValue("Black")
+                .orElseThrow(() -> new IllegalStateException(
+                        "Attribute value 'Black' not found. Please ensure it is seeded before seeding products."));
+        ProductAttributeValue lgSize = attributeValueRepository.findByValue("LG")
+                .orElseThrow(() -> new IllegalStateException(
+                        "Attribute value 'LG' not found. Please ensure it is seeded before seeding products."));
+        ProductAttributeValue smSize = attributeValueRepository.findByValue("SM")
+                .orElseThrow(() -> new IllegalStateException(
+                        "Attribute value 'SM' not found. Please ensure it is seeded before seeding products."));
+        ProductAttributeValue mdSize = attributeValueRepository.findByValue("MD")
+                .orElseThrow(() -> new IllegalStateException(
+                        "Attribute value 'MD' not found. Please ensure it is seeded before seeding products."));
 
         // Create AirPods Pro product
         Product airpods = createAirPodsProduct(audioCategory, appleBrand);
@@ -541,7 +566,8 @@ public class DatabaseSeeder implements CommandLineRunner {
         category.setSlug(slug);
         category.setIsActive(true);
         // Set featured based on the category (matching frontend data)
-        category.setIsFeatured(name.equals("Electronics") || name.equals("Fashion") || name.equals("Home & Garden") || name.equals("Sports & Outdoors"));
+        category.setIsFeatured(name.equals("Electronics") || name.equals("Fashion") || name.equals("Home & Garden")
+                || name.equals("Sports & Outdoors"));
         category.setSortOrder(0);
         category.setMetaTitle(name);
         category.setMetaDescription(description);

@@ -44,32 +44,108 @@ import java.util.UUID;
 @Tag(name = "Order Management", description = "APIs for viewing user orders")
 public class OrderController {
 
-    private final OrderService orderService;
-
-    @GetMapping
-    @PreAuthorize("hasAnyRole('CUSTOMER','ADMIN','EMPLOYEE')")
-    public ResponseEntity<?> listUserOrders(@RequestParam(name = "userId", required = false) String userId) {
+    /**
+     * Get all orders (admin/employee only)
+     */
+    @GetMapping("/all")
+    // @PreAuthorize("hasAnyRole('ADMIN','EMPLOYEE')")
+    @Operation(summary = "Get all orders", description = "Retrieve all orders (admin/employee only)", responses = {
+            @ApiResponse(responseCode = "200", description = "Orders retrieved successfully", content = @Content(schema = @Schema(implementation = OrderResponseDTO.class)))
+    })
+    public ResponseEntity<?> getAllOrders() {
         try {
-            UUID effectiveUserId = resolveUserId(userId);
-            if (effectiveUserId == null) {
-                // Return empty list for invalid/missing userId to avoid 500s during dev/hardcoded logins
-                Map<String,Object> res = new HashMap<>();
-                res.put("success", true);
-                res.put("data", List.of());
-                return ResponseEntity.ok(res);
-            }
-            List<Order> orders = orderService.getOrdersForUser(effectiveUserId);
+            List<Order> orders = orderService.getAllOrders();
             List<OrderResponseDTO> dtoList = orders.stream().map(this::toDto).toList();
-            Map<String,Object> res = new HashMap<>();
+            Map<String, Object> res = new HashMap<>();
             res.put("success", true);
             res.put("data", dtoList);
             return ResponseEntity.ok(res);
         } catch (Exception e) {
+            log.error("Failed to fetch all orders", e);
+            return ResponseEntity.internalServerError().body(Map.of(
+                    "success", false,
+                    "message", "Failed to fetch all orders"));
+        }
+    }
+
+    
+    @GetMapping("/by-user/{userId}")
+    // @PreAuthorize("hasAnyRole('ADMIN','EMPLOYEE')")
+    @Operation(summary = "Get orders by userId", description = "Retrieve all orders for a specific user (admin/employee only)", responses = {
+            @ApiResponse(responseCode = "200", description = "Orders retrieved successfully", content = @Content(schema = @Schema(implementation = OrderResponseDTO.class)))
+    })
+    public ResponseEntity<?> getOrdersByUserId(@PathVariable String userId) {
+        try {
+            UUID uuid = UUID.fromString(userId);
+            List<Order> orders = orderService.getOrdersForUser(uuid);
+            List<OrderResponseDTO> dtoList = orders.stream().map(this::toDto).toList();
+            Map<String, Object> res = new HashMap<>();
+            res.put("success", true);
+            res.put("data", dtoList);
+            return ResponseEntity.ok(res);
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body(Map.of(
+                    "success", false,
+                    "message", "Invalid userId format"));
+        } catch (Exception e) {
+            log.error("Failed to fetch orders by userId", e);
+            return ResponseEntity.internalServerError().body(Map.of(
+                    "success", false,
+                    "message", "Failed to fetch orders by userId"));
+        }
+    }
+
+    
+    @GetMapping("/id/{orderId}")
+    // @PreAuthorize("hasAnyRole('ADMIN','EMPLOYEE')")
+    @Operation(summary = "Get order by orderId", description = "Retrieve an order by its orderId (admin/employee only)", responses = {
+            @ApiResponse(responseCode = "200", description = "Order found", content = @Content(schema = @Schema(implementation = OrderResponseDTO.class))),
+            @ApiResponse(responseCode = "404", description = "Order not found")
+    })
+    public ResponseEntity<?> getOrderById(@PathVariable Long orderId) {
+        try {
+            Order order = orderService.getOrderById(orderId);
+            if (order == null) {
+                return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of(
+                        "success", false,
+                        "message", "Order not found"));
+            }
+            return ResponseEntity.ok(Map.of("success", true, "data", toDto(order)));
+        } catch (Exception e) {
+            log.error("Failed to fetch order by id", e);
+            return ResponseEntity.internalServerError().body(Map.of(
+                    "success", false,
+                    "message", "Failed to fetch order by id"));
+        }
+    }
+
+    private final OrderService orderService;
+
+    @GetMapping
+    // @PreAuthorize("hasAnyRole('CUSTOMER','ADMIN','EMPLOYEE')")
+    public ResponseEntity<?> listUserOrders(@RequestParam(name = "userId") String userId) {
+        try {
+            if (userId == null || userId.isBlank()) {
+                return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of(
+                        "success", false,
+                        "message", "User ID is required as a request parameter"));
+            }
+            UUID uuid = UUID.fromString(userId);
+            List<Order> orders = orderService.getOrdersForUser(uuid);
+            List<OrderResponseDTO> dtoList = orders.stream().map(this::toDto).toList();
+            Map<String, Object> res = new HashMap<>();
+            res.put("success", true);
+            res.put("data", dtoList);
+            return ResponseEntity.ok(res);
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body(Map.of(
+                    "success", false,
+                    "message", "Invalid userId format"));
+        } catch (Exception e) {
             log.error("Failed to fetch orders", e);
             return ResponseEntity.internalServerError().body(Map.of(
-                "success", false,
-                "message", "Failed to fetch orders"
-            ));
+                    "success", false,
+                    "message", "Failed to fetch orders"));
         }
     }
 
@@ -85,27 +161,23 @@ public class OrderController {
     public ResponseEntity<?> createOrder(@Valid @RequestBody CreateOrderDTO createOrderDTO) {
         try {
             log.info("Creating new order");
-            
-            // Get current user ID from authentication context
-            UUID userId = getCurrentUserId();
-            if (userId == null) {
-                return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(Map.of(
-                    "success", false,
-                    "message", "User not authenticated"
-                ));
+            if (createOrderDTO.getUserId() == null || createOrderDTO.getUserId().isBlank()) {
+                return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of(
+                        "success", false,
+                        "message", "User ID is required in the request body"));
             }
-            
+            UUID userId = java.util.UUID.fromString(createOrderDTO.getUserId());
             Order order = orderService.createOrder(userId, createOrderDTO);
             OrderResponseDTO orderResponse = toDto(order);
-            
+
             Map<String, Object> response = new HashMap<>();
             response.put("success", true);
             response.put("message", "Order created successfully");
             response.put("data", orderResponse);
-            
+
             log.info("Order created successfully with ID: {}", order.getOrderId());
             return ResponseEntity.status(HttpStatus.CREATED).body(response);
-            
+
         } catch (IllegalArgumentException e) {
             log.warn("Invalid request for order creation: {}", e.getMessage());
             Map<String, Object> response = new HashMap<>();
@@ -113,7 +185,7 @@ public class OrderController {
             response.put("message", e.getMessage());
             response.put("error", "VALIDATION_ERROR");
             return ResponseEntity.badRequest().body(response);
-            
+
         } catch (Exception e) {
             log.error("Error creating order: {}", e.getMessage(), e);
             Map<String, Object> response = new HashMap<>();
@@ -125,59 +197,68 @@ public class OrderController {
     }
 
     @GetMapping("/number/{orderNumber}")
-    @PreAuthorize("hasAnyRole('CUSTOMER','ADMIN','EMPLOYEE')")
+    // @PreAuthorize("hasAnyRole('CUSTOMER','ADMIN','EMPLOYEE')")
     @Operation(summary = "Get order by order number", description = "Retrieve an order by its order number", responses = {
             @ApiResponse(responseCode = "200", description = "Order found", content = @Content(schema = @Schema(implementation = OrderResponseDTO.class))),
             @ApiResponse(responseCode = "404", description = "Order not found")
     })
-    public ResponseEntity<?> getOrderByNumber(@PathVariable String orderNumber) {
+    public ResponseEntity<?> getOrderByNumber(@PathVariable String orderNumber,
+            @RequestParam(name = "userId") String userId) {
         try {
-            UUID userId = getCurrentUserId();
-            if (userId == null) {
-                return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(Map.of(
-                    "success", false,
-                    "message", "User not authenticated"
-                ));
+            if (userId == null || userId.isBlank()) {
+                return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of(
+                        "success", false,
+                        "message", "User ID is required as a request parameter"));
             }
-            
-            Order order = orderService.getOrderByNumber(userId, orderNumber);
+            UUID uuid = UUID.fromString(userId);
+            Order order = orderService.getOrderByNumber(uuid, orderNumber);
             OrderResponseDTO orderResponse = toDto(order);
-            
+
             Map<String, Object> response = new HashMap<>();
             response.put("success", true);
             response.put("data", orderResponse);
-            
+
             return ResponseEntity.ok(response);
-            
+
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body(Map.of(
+                    "success", false,
+                    "message", "Invalid userId format"));
         } catch (EntityNotFoundException e) {
             return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of(
-                "success", false,
-                "message", "Order not found"
-            ));
+                    "success", false,
+                    "message", "Order not found"));
         } catch (Exception e) {
             log.error("Error fetching order by number: {}", e.getMessage(), e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(Map.of(
-                "success", false,
-                "message", "Failed to fetch order"
-            ));
+                    "success", false,
+                    "message", "Failed to fetch order"));
         }
     }
 
     @GetMapping("/{orderId}")
     @PreAuthorize("hasAnyRole('CUSTOMER','ADMIN','EMPLOYEE')")
-    public ResponseEntity<?> getOrder(@RequestParam(name = "userId", required = false) String userId, @PathVariable Long orderId) {
+    public ResponseEntity<?> getOrder(@RequestParam(name = "userId") String userId,
+            @PathVariable Long orderId) {
         try {
-            UUID effectiveUserId = resolveUserId(userId);
-            if (effectiveUserId == null) {
-                return ResponseEntity.status(404).body(Map.of("success", false, "message", "Order not found"));
+            if (userId == null || userId.isBlank()) {
+                return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of(
+                        "success", false,
+                        "message", "User ID is required as a request parameter"));
             }
-            Order order = orderService.getOrderByIdForUser(effectiveUserId, orderId);
+            UUID uuid = UUID.fromString(userId);
+            Order order = orderService.getOrderByIdForUser(uuid, orderId);
             return ResponseEntity.ok(Map.of("success", true, "data", toDto(order)));
         } catch (jakarta.persistence.EntityNotFoundException e) {
             return ResponseEntity.status(404).body(Map.of("success", false, "message", "Order not found"));
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body(Map.of(
+                    "success", false,
+                    "message", "Invalid userId format"));
         } catch (Exception e) {
             log.error("Failed to fetch order", e);
-            return ResponseEntity.internalServerError().body(Map.of("success", false, "message", "Failed to fetch order"));
+            return ResponseEntity.internalServerError()
+                    .body(Map.of("success", false, "message", "Failed to fetch order"));
         }
     }
 
@@ -189,47 +270,42 @@ public class OrderController {
             @ApiResponse(responseCode = "404", description = "Order not found"),
             @ApiResponse(responseCode = "500", description = "Internal server error")
     })
-    public ResponseEntity<?> cancelOrder(@PathVariable Long orderId) {
+    public ResponseEntity<?> cancelOrder(@PathVariable Long orderId, @RequestParam(name = "userId") String userId) {
         try {
-            UUID userId = getCurrentUserId();
-            if (userId == null) {
-                return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(Map.of(
-                    "success", false,
-                    "message", "User not authenticated"
-                ));
+            if (userId == null || userId.isBlank()) {
+                return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of(
+                        "success", false,
+                        "message", "User ID is required as a request parameter"));
             }
-            
-            Order order = orderService.cancelOrder(userId, orderId);
+            UUID uuid = UUID.fromString(userId);
+            Order order = orderService.cancelOrder(uuid, orderId);
             OrderResponseDTO orderResponse = toDto(order);
-            
+
             Map<String, Object> response = new HashMap<>();
             response.put("success", true);
             response.put("message", "Order cancelled successfully");
             response.put("data", orderResponse);
-            
+
             return ResponseEntity.ok(response);
-            
-        } catch (EntityNotFoundException e) {
-            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of(
-                "success", false,
-                "message", "Order not found"
-            ));
+
         } catch (IllegalArgumentException e) {
             return ResponseEntity.badRequest().body(Map.of(
-                "success", false,
-                "message", e.getMessage()
-            ));
+                    "success", false,
+                    "message", e.getMessage()));
+        } catch (EntityNotFoundException e) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of(
+                    "success", false,
+                    "message", "Order not found"));
         } catch (Exception e) {
             log.error("Error cancelling order: {}", e.getMessage(), e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(Map.of(
-                "success", false,
-                "message", "Failed to cancel order"
-            ));
+                    "success", false,
+                    "message", "Failed to cancel order"));
         }
     }
 
     @PutMapping("/{orderId}/status")
-    @PreAuthorize("hasAnyRole('ADMIN','EMPLOYEE')")
+    // @PreAuthorize("hasAnyRole('ADMIN','EMPLOYEE')")
     @Operation(summary = "Update order status", description = "Update the status of an order", responses = {
             @ApiResponse(responseCode = "200", description = "Order status updated successfully"),
             @ApiResponse(responseCode = "400", description = "Invalid status"),
@@ -241,37 +317,33 @@ public class OrderController {
             String status = request.get("status");
             if (status == null) {
                 return ResponseEntity.badRequest().body(Map.of(
-                    "success", false,
-                    "message", "Status is required"
-                ));
+                        "success", false,
+                        "message", "Status is required"));
             }
-            
+
             Order order = orderService.updateOrderStatus(orderId, status);
             OrderResponseDTO orderResponse = toDto(order);
-            
+
             Map<String, Object> response = new HashMap<>();
             response.put("success", true);
             response.put("message", "Order status updated successfully");
             response.put("data", orderResponse);
-            
+
             return ResponseEntity.ok(response);
-            
+
         } catch (EntityNotFoundException e) {
             return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of(
-                "success", false,
-                "message", "Order not found"
-            ));
+                    "success", false,
+                    "message", "Order not found"));
         } catch (IllegalArgumentException e) {
             return ResponseEntity.badRequest().body(Map.of(
-                "success", false,
-                "message", e.getMessage()
-            ));
+                    "success", false,
+                    "message", e.getMessage()));
         } catch (Exception e) {
             log.error("Error updating order status: {}", e.getMessage(), e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(Map.of(
-                "success", false,
-                "message", "Failed to update order status"
-            ));
+                    "success", false,
+                    "message", "Failed to update order status"));
         }
     }
 
@@ -282,62 +354,37 @@ public class OrderController {
             @ApiResponse(responseCode = "404", description = "Order not found"),
             @ApiResponse(responseCode = "500", description = "Internal server error")
     })
-    public ResponseEntity<?> getOrderTracking(@PathVariable Long orderId) {
+    public ResponseEntity<?> getOrderTracking(@PathVariable Long orderId,
+            @RequestParam(name = "userId") String userId) {
         try {
-            UUID userId = getCurrentUserId();
-            if (userId == null) {
-                return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(Map.of(
-                    "success", false,
-                    "message", "User not authenticated"
-                ));
+            if (userId == null || userId.isBlank()) {
+                return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of(
+                        "success", false,
+                        "message", "User ID is required as a request parameter"));
             }
-            
-            Map<String, Object> trackingInfo = orderService.getOrderTracking(userId, orderId);
-            
+            UUID uuid = UUID.fromString(userId);
+            Map<String, Object> trackingInfo = orderService.getOrderTracking(uuid, orderId);
+
             Map<String, Object> response = new HashMap<>();
             response.put("success", true);
             response.put("data", trackingInfo);
-            
+
             return ResponseEntity.ok(response);
-            
+
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body(Map.of(
+                    "success", false,
+                    "message", e.getMessage()));
         } catch (EntityNotFoundException e) {
             return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of(
-                "success", false,
-                "message", "Order not found"
-            ));
+                    "success", false,
+                    "message", "Order not found"));
         } catch (Exception e) {
             log.error("Error getting order tracking: {}", e.getMessage(), e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(Map.of(
-                "success", false,
-                "message", "Failed to get order tracking"
-            ));
+                    "success", false,
+                    "message", "Failed to get order tracking"));
         }
-    }
-
-    private UUID getCurrentUserId() {
-        try {
-            Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-            if (auth != null && auth.getPrincipal() instanceof com.ecommerce.entity.User u && u.getId() != null) {
-                return u.getId();
-            }
-        } catch (Exception ignored) { }
-        return null;
-    }
-
-    private UUID resolveUserId(String userIdParam) {
-        try {
-            if (userIdParam != null && !userIdParam.isBlank()) {
-                return java.util.UUID.fromString(userIdParam);
-            }
-        } catch (IllegalArgumentException ignored) { }
-
-        try {
-            Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-            if (auth != null && auth.getPrincipal() instanceof com.ecommerce.entity.User u && u.getId() != null) {
-                return u.getId();
-            }
-        } catch (Exception ignored) { }
-        return null;
     }
 
     private OrderResponseDTO toDto(Order order) {
@@ -347,7 +394,8 @@ public class OrderController {
 
         OrderResponseDTO dto = new OrderResponseDTO();
         dto.setId(order.getOrderId() != null ? order.getOrderId().toString() : null);
-        dto.setUserId(order.getUser() != null && order.getUser().getId() != null ? order.getUser().getId().toString() : null);
+        dto.setUserId(
+                order.getUser() != null && order.getUser().getId() != null ? order.getUser().getId().toString() : null);
         dto.setOrderNumber(order.getOrderCode());
         dto.setStatus(order.getOrderStatus() != null ? order.getOrderStatus().name() : null);
         dto.setCreatedAt(order.getCreatedAt());
@@ -368,8 +416,8 @@ public class OrderController {
             ad.setStreet(addr.getStreet());
             ad.setZipCode(addr.getZipcode());
             ad.setCountry(addr.getCountry());
-            
-            // Extract city and state from regions field
+
+           
             if (addr.getRegions() != null && !addr.getRegions().isEmpty()) {
                 String[] regions = addr.getRegions().split(",");
                 if (regions.length >= 2) {
@@ -379,68 +427,8 @@ public class OrderController {
                     ad.setCity(regions[0].trim());
                     ad.setState("");
                 }
-            } else {
-                ad.setCity("");
-                ad.setState("");
             }
-            
-            // Get phone from customer info
-            if (order.getOrderCustomerInfo() != null) {
-                ad.setPhone(order.getOrderCustomerInfo().getPhoneNumber());
-            } else {
-                ad.setPhone("");
-            }
-            
-            dto.setShippingAddress(ad);
-            dto.setBillingAddress(ad);
         }
-
-        if (tx != null) {
-            dto.setPaymentMethod(tx.getPaymentMethod() != null ? tx.getPaymentMethod().name() : null);
-            dto.setPaymentStatus(tx.getStatus() != null ? tx.getStatus().name() : null);
-        }
-
-        List<OrderItemDTO> items = (order.getOrderItems() != null ? order.getOrderItems() : Collections.<OrderItem>emptyList())
-            .stream().map(this::toItemDto).toList();
-        dto.setItems(items);
-
-        // estimatedDelivery / trackingNumber not present in current schema
-        dto.setEstimatedDelivery(null);
-        dto.setTrackingNumber(null);
-        return dto;
-    }
-
-    private OrderItemDTO toItemDto(OrderItem item) {
-        OrderItemDTO dto = new OrderItemDTO();
-        dto.setId(item.getOrderItemId() != null ? item.getOrderItemId().toString() : null);
-        ProductVariant variant = item.getProductVariant();
-        if (variant != null) {
-            Product product = variant.getProduct();
-            dto.setProductId(product != null && product.getProductId() != null ? product.getProductId().toString() : null);
-            SimpleProductDTO sp = new SimpleProductDTO();
-            if (product != null) {
-                sp.setProductId(product.getProductId() != null ? product.getProductId().toString() : null);
-                sp.setName(product.getProductName());
-                sp.setDescription(product.getDescription());
-                sp.setPrice(product.getPrice() != null ? product.getPrice().doubleValue() : null);
-                // Collect primary product image and any others
-                java.util.List<String> imgs = new java.util.ArrayList<>();
-                // Avoid lazy loading issues for images here; set empty list or main image elsewhere if needed
-                sp.setImages(imgs.toArray(new String[0]));
-            }
-            dto.setProduct(sp);
-        }
-        dto.setQuantity(item.getQuantity());
-        dto.setPrice(item.getPrice());
-        BigDecimal price = item.getPrice();
-        Integer qty = item.getQuantity();
-        BigDecimal total = BigDecimal.ZERO;
-        if (price != null && qty != null) {
-            total = price.multiply(BigDecimal.valueOf(qty.longValue()));
-        } else if (price != null) {
-            total = price;
-        }
-        dto.setTotalPrice(total);
         return dto;
     }
 }
