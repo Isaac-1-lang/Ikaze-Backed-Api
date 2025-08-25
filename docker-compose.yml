@@ -1,0 +1,22 @@
+version: "3.9"
+
+services:
+  ecommerce:
+    image: ghcr.io/dev-teammm/ecommerce:latest
+    container_name: ecommerce_app
+    build: .   # 👈 add this so it builds locally from your Dockerfile
+    restart: always
+    ports:
+      - "8081:8081"
+    env_file:
+      - .env
+    labels:
+      - "com.centurylinklabs.watchtower.enable=true"
+
+  watchtower:
+    image: containrrr/watchtower:latest
+    container_name: watchtower
+    restart: always
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    command: --interval 30 --cleanup
