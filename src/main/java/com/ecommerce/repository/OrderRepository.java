@@ -19,7 +19,7 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
        /**
         * Find orders by user ID
         */
-       List<Order> findByUserId(UUID userId);
+       List<Order> findByUser_Id(UUID userId);
 
        /**
         * Find orders by status
@@ -29,7 +29,7 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
        /**
         * Find orders by user ID and status
         */
-       List<Order> findByUserIdAndOrderStatus(UUID userId, Order.OrderStatus orderStatus);
+       List<Order> findByUser_IdAndOrderStatus(UUID userId, Order.OrderStatus orderStatus);
 
        /**
         * Check if there are any orders with the given product variant that are not
@@ -54,5 +54,57 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
         */
        @Query("SELECT o FROM Order o WHERE o.createdAt >= :startDate AND o.createdAt < :endDate")
        List<Order> findAllBetween(@Param("startDate") LocalDateTime startDate, @Param("endDate") LocalDateTime endDate);
+
+       /**
+        * Find orders by status
+        */
+       List<Order> findByOrderStatusIn(List<String> statuses);
+
+       /**
+        * Find orders by date range and status
+        */
+       @Query("SELECT o FROM Order o WHERE o.createdAt BETWEEN :startDate AND :endDate AND o.orderStatus IN :statuses")
+       List<Order> findByCreatedAtBetweenAndStatusIn(@Param("startDate") LocalDateTime startDate, 
+                                                     @Param("endDate") LocalDateTime endDate, 
+                                                     @Param("statuses") List<String> statuses);
+
+       /**
+        * Find orders by date range
+        */
+       @Query("SELECT o FROM Order o WHERE o.createdAt BETWEEN :startDate AND :endDate")
+       List<Order> findByCreatedAtBetween(@Param("startDate") LocalDateTime startDate, 
+                                         @Param("endDate") LocalDateTime endDate);
+
+       @Query("SELECT DISTINCT o FROM Order o " +
+               "LEFT JOIN FETCH o.user u " +
+               "LEFT JOIN FETCH o.orderItems oi " +
+               "LEFT JOIN FETCH oi.productVariant v " +
+               "LEFT JOIN FETCH v.product p " +
+               "LEFT JOIN FETCH o.orderInfo info " +
+               "LEFT JOIN FETCH o.orderAddress addr " +
+               "LEFT JOIN FETCH o.orderTransaction tx " +
+               "WHERE o.user.id = :userId")
+       List<Order> findAllForUserWithDetails(@Param("userId") UUID userId);
+
+               @Query("SELECT o FROM Order o " +
+                "LEFT JOIN FETCH o.user u " +
+                "LEFT JOIN FETCH o.orderItems oi " +
+                "LEFT JOIN FETCH oi.productVariant v " +
+                "LEFT JOIN FETCH v.product p " +
+                "LEFT JOIN FETCH o.orderInfo info " +
+                "LEFT JOIN FETCH o.orderAddress addr " +
+                "LEFT JOIN FETCH o.orderTransaction tx " +
+                "WHERE o.user.id = :userId AND o.orderId = :orderId")
+        Optional<Order> findByIdForUserWithDetails(@Param("userId") UUID userId, @Param("orderId") Long orderId);
+
+        /**
+         * Find order by order code and user ID
+         */
+        Optional<Order> findByOrderCodeAndUser_Id(String orderCode, UUID userId);
+
+        /**
+         * Find order by order code
+         */
+        Optional<Order> findByOrderCode(String orderCode);
 
 }

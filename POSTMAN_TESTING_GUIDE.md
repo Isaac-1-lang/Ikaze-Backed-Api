@@ -11,7 +11,7 @@
 ### Login Request
 
 ```
-POST http://localhost:8095/api/v1/auth/users/login
+POST http://localhost:8081/api/v1/auth/users/login
 Content-Type: application/json
 
 {
@@ -27,7 +27,7 @@ Content-Type: application/json
 ### Create a Category
 
 ```
-POST http://localhost:8095/api/v1/categories
+POST http://localhost:8081/api/v1/categories
 Authorization: Bearer YOUR_JWT_TOKEN
 Content-Type: application/json
 

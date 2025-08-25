@@ -24,6 +24,8 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.HashMap;
@@ -41,8 +43,8 @@ public class ProductController {
 
     private final ProductService productService;
 
-    @PostMapping("/add")
-    // @PreAuthorize("hasAnyRole('ADMIN', 'EMPLOYEE')")
+    @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    @PreAuthorize("hasAnyRole('ADMIN','EMPLOYEE') or hasAnyAuthority('ROLE_ADMIN','ROLE_EMPLOYEE')")
     @Operation(summary = "Create a new product", description = "Create a new product with variants, images, and videos", responses = {
             @ApiResponse(responseCode = "201", description = "Product created successfully", content = @Content(schema = @Schema(implementation = ProductDTO.class))),
             @ApiResponse(responseCode = "400", description = "Invalid input data"),
@@ -52,6 +54,12 @@ public class ProductController {
     })
     public ResponseEntity<?> createProduct(CreateProductDTO createProductDTO) {
         try {
+            Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+            if (auth != null) {
+                log.info("CreateProduct auth user={}, authorities={}", auth.getName(), auth.getAuthorities());
+            } else {
+                log.warn("CreateProduct called without authentication context");
+            }
             log.info("Creating product with name: {}", createProductDTO.getName());
             ProductDTO createdProduct = productService.createProduct(createProductDTO);
             log.info("Product created successfully with ID: {}", createdProduct.getProductId());
@@ -186,7 +194,7 @@ public class ProductController {
     }
 
     @PutMapping(value = "/{productId}", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    @PreAuthorize("hasAnyRole('ADMIN', 'EMPLOYEE')")
+    @PreAuthorize("hasAnyRole('ADMIN','EMPLOYEE') or hasAnyAuthority('ROLE_ADMIN','ROLE_EMPLOYEE')")
     @Operation(summary = "Update a product", description = "Update an existing product with optional new variants and images", responses = {
             @ApiResponse(responseCode = "200", description = "Product updated successfully", content = @Content(schema = @Schema(implementation = ProductDTO.class))),
             @ApiResponse(responseCode = "400", description = "Invalid input data"),
@@ -222,7 +230,7 @@ public class ProductController {
     }
 
     @DeleteMapping("/{productId}/variants/{variantId}")
-    @PreAuthorize("hasAnyRole('ADMIN', 'EMPLOYEE')")
+    @PreAuthorize("hasAnyRole('ADMIN','EMPLOYEE') or hasAnyAuthority('ROLE_ADMIN','ROLE_EMPLOYEE')")
     @Operation(summary = "Delete a product variant", description = "Delete a specific variant from a product, including all associated images and attributes", responses = {
             @ApiResponse(responseCode = "200", description = "Product variant deleted successfully"),
             @ApiResponse(responseCode = "400", description = "Invalid request"),
@@ -272,7 +280,7 @@ public class ProductController {
     }
 
     @DeleteMapping("/{productId}")
-    @PreAuthorize("hasAnyRole('ADMIN', 'EMPLOYEE')")
+    @PreAuthorize("hasAnyRole('ADMIN','EMPLOYEE') or hasAnyAuthority('ROLE_ADMIN','ROLE_EMPLOYEE')")
     @Operation(summary = "Delete a product", description = "Delete a product with all its variants, images, and videos. Also removes the product from carts and wishlists. Cannot delete if there are pending orders.", responses = {
             @ApiResponse(responseCode = "204", description = "Product deleted successfully"),
             @ApiResponse(responseCode = "400", description = "Product cannot be deleted due to pending orders"),

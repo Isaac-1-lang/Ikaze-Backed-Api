@@ -11,6 +11,7 @@ import com.ecommerce.dto.ProductVariantDTO;
 import com.ecommerce.dto.VariantAttributeDTO;
 import com.ecommerce.dto.VariantImageMetadata;
 import com.ecommerce.dto.VideoMetadata;
+import com.ecommerce.dto.WarehouseStockDTO;
 import com.ecommerce.entity.*;
 import com.ecommerce.repository.*;
 import com.ecommerce.Exception.ProductDeletionException;
@@ -59,6 +60,8 @@ public class ProductServiceImpl implements ProductService {
     private final CartRepository cartRepository;
     private final WishlistRepository wishlistRepository;
     private final CloudinaryService cloudinaryService;
+    private final WarehouseRepository warehouseRepository;
+    private final StockRepository stockRepository;
 
     // Using thread pool for concurrent image/video uploads
     private final ExecutorService executorService = Executors.newFixedThreadPool(10);
@@ -99,38 +102,28 @@ public class ProductServiceImpl implements ProductService {
             Product savedProduct = productRepository.save(product);
             log.info("Product saved with ID: {}", savedProduct.getProductId());
 
-            // Process media and variants concurrently for better performance
-            List<CompletableFuture<Void>> futures = new ArrayList<>();
+            // Ensure the product is flushed to the database before inserting children
+            productRepository.flush();
 
-            // Process product images concurrently
+            // Process warehouse stock assignment
+            if (createProductDTO.getWarehouseStock() != null && !createProductDTO.getWarehouseStock().isEmpty()) {
+                processWarehouseStock(savedProduct, createProductDTO.getWarehouseStock());
+            }
+
+            // Process media and variants synchronously within the same transaction/thread
             if (createProductDTO.getProductImages() != null && !createProductDTO.getProductImages().isEmpty()) {
-                CompletableFuture<Void> imagesFuture = CompletableFuture.runAsync(
-                        () -> processProductImages(savedProduct, createProductDTO.getProductImages(),
-                                createProductDTO.getImageMetadata()),
-                        executorService);
-                futures.add(imagesFuture);
+                processProductImages(savedProduct, createProductDTO.getProductImages(),
+                        createProductDTO.getImageMetadata());
             }
 
-            // Process product videos concurrently
             if (createProductDTO.getProductVideos() != null && !createProductDTO.getProductVideos().isEmpty()) {
-                CompletableFuture<Void> videosFuture = CompletableFuture.runAsync(
-                        () -> processProductVideos(savedProduct, createProductDTO.getProductVideos(),
-                                createProductDTO.getVideoMetadata()),
-                        executorService);
-                futures.add(videosFuture);
+                processProductVideos(savedProduct, createProductDTO.getProductVideos(),
+                        createProductDTO.getVideoMetadata());
             }
 
-            // Process variants (this includes variant images which also use concurrent
-            // processing)
             if (createProductDTO.getVariants() != null && !createProductDTO.getVariants().isEmpty()) {
-                CompletableFuture<Void> variantsFuture = CompletableFuture.runAsync(
-                        () -> processProductVariants(savedProduct, createProductDTO.getVariants()),
-                        executorService);
-                futures.add(variantsFuture);
+                processProductVariants(savedProduct, createProductDTO.getVariants());
             }
-
-            // Wait for all concurrent operations to complete
-            CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).join();
 
             // Refresh product from database to get all relationships
             Product refreshedProduct = productRepository.findById(savedProduct.getProductId())
@@ -267,12 +260,10 @@ public class ProductServiceImpl implements ProductService {
         product.setOnSale(createProductDTO.getIsOnSale() != null ? createProductDTO.getIsOnSale() : false);
         product.setSalePercentage(createProductDTO.getSalePercentage());
 
-        // Create product detail if needed
-        if (hasProductDetailData(createProductDTO)) {
-            ProductDetail productDetail = createProductDetail(createProductDTO);
-            productDetail.setProduct(product);
-            product.setProductDetail(productDetail);
-        }
+        // Create product detail with enhanced information
+        ProductDetail productDetail = createProductDetail(createProductDTO);
+        productDetail.setProduct(product);
+        product.setProductDetail(productDetail);
 
         return product;
     }
@@ -283,31 +274,48 @@ public class ProductServiceImpl implements ProductService {
                 createProductDTO.getMetaDescription() != null ||
                 createProductDTO.getMetaKeywords() != null ||
                 createProductDTO.getSearchKeywords() != null ||
-                createProductDTO.getDimensionsCm() != null ||
-                createProductDTO.getWeightKg() != null;
+                createProductDTO.getHeightCm() != null ||
+                createProductDTO.getWidthCm() != null ||
+                createProductDTO.getLengthCm() != null ||
+                createProductDTO.getWeightKg() != null ||
+                createProductDTO.getMaterial() != null ||
+                createProductDTO.getCareInstructions() != null ||
+                createProductDTO.getWarrantyInfo() != null ||
+                createProductDTO.getShippingInfo() != null ||
+                createProductDTO.getReturnPolicy() != null;
     }
 
     private ProductDetail createProductDetail(CreateProductDTO createProductDTO) {
         ProductDetail productDetail = new ProductDetail();
-        productDetail.setDescription(createProductDTO.getFullDescription());
-        if (createProductDTO.getMetaTitle() != null) {
-            productDetail.setMetaTitle(createProductDTO.getMetaTitle());
+        
+        // Set description (use full description if available, fallback to short description)
+        productDetail.setDescription(createProductDTO.getFullDescription() != null ? 
+                createProductDTO.getFullDescription() : createProductDTO.getDescription());
+        
+        // Set meta information
+        productDetail.setMetaTitle(createProductDTO.getMetaTitle());
+        productDetail.setMetaDescription(createProductDTO.getMetaDescription());
+        productDetail.setMetaKeywords(createProductDTO.getMetaKeywords());
+        productDetail.setSearchKeywords(createProductDTO.getSearchKeywords());
+        
+        // Set physical dimensions and weight
+        if (createProductDTO.getHeightCm() != null || createProductDTO.getWidthCm() != null || createProductDTO.getLengthCm() != null) {
+            String dimensions = String.format("%sx%sx%s", 
+                createProductDTO.getHeightCm() != null ? createProductDTO.getHeightCm() : "0",
+                createProductDTO.getWidthCm() != null ? createProductDTO.getWidthCm() : "0",
+                createProductDTO.getLengthCm() != null ? createProductDTO.getLengthCm() : "0");
+            productDetail.setDimensionsCm(dimensions);
         }
-        if (createProductDTO.getMetaDescription() != null) {
-            productDetail.setMetaDescription(createProductDTO.getMetaDescription());
-        }
-        if (createProductDTO.getMetaKeywords() != null) {
-            productDetail.setMetaKeywords(createProductDTO.getMetaKeywords());
-        }
-        if (createProductDTO.getSearchKeywords() != null) {
-            productDetail.setSearchKeywords(createProductDTO.getSearchKeywords());
-        }
-        if (createProductDTO.getDimensionsCm() != null) {
-            productDetail.setDimensionsCm(createProductDTO.getDimensionsCm());
-        }
-        if (createProductDTO.getWeightKg() != null) {
-            productDetail.setWeightKg(createProductDTO.getWeightKg());
-        }
+        
+        productDetail.setWeightKg(createProductDTO.getWeightKg());
+        
+        // Set product specifications
+        productDetail.setMaterial(createProductDTO.getMaterial());
+        productDetail.setCareInstructions(createProductDTO.getCareInstructions());
+        productDetail.setWarrantyInfo(createProductDTO.getWarrantyInfo());
+        productDetail.setShippingInfo(createProductDTO.getShippingInfo());
+        productDetail.setReturnPolicy(createProductDTO.getReturnPolicy());
+        
         return productDetail;
     }
 
@@ -819,6 +827,37 @@ public class ProductServiceImpl implements ProductService {
         };
     }
 
+    private void processWarehouseStock(Product product, List<WarehouseStockDTO> warehouseStockDTOs) {
+        log.info("Processing warehouse stock for product: {}", product.getProductId());
+        
+        for (WarehouseStockDTO warehouseStockDTO : warehouseStockDTOs) {
+            try {
+                // Validate warehouse exists
+                Warehouse warehouse = warehouseRepository.findById(warehouseStockDTO.getWarehouseId())
+                        .orElseThrow(() -> new EntityNotFoundException(
+                                "Warehouse not found with ID: " + warehouseStockDTO.getWarehouseId()));
+                
+                // Create stock entry for the main product
+                Stock stock = new Stock();
+                stock.setWarehouse(warehouse);
+                stock.setProduct(product);
+                stock.setVariant(null); // Main product stock
+                stock.setQuantity(warehouseStockDTO.getStockQuantity());
+                stock.setLowStockThreshold(warehouseStockDTO.getLowStockThreshold());
+                
+                stockRepository.save(stock);
+                
+                log.info("Created stock entry for product {} in warehouse {} with quantity {}", 
+                        product.getProductId(), warehouse.getName(), warehouseStockDTO.getStockQuantity());
+                
+            } catch (Exception e) {
+                log.error("Failed to process warehouse stock for warehouse ID: {}", 
+                        warehouseStockDTO.getWarehouseId(), e);
+                throw new RuntimeException("Failed to process warehouse stock: " + e.getMessage(), e);
+            }
+        }
+    }
+
     private void processProductImages(Product product, List<String> imageUrls,
             String imageMetadataJson) {
         // Parse metadata from JSON string if provided
@@ -1019,6 +1058,11 @@ public class ProductServiceImpl implements ProductService {
                 processVariantAttributes(savedVariant, variantDTO.getAttributes());
             }
 
+            // Process variant warehouse stock if any
+            if (variantDTO.getWarehouseStock() != null && !variantDTO.getWarehouseStock().isEmpty()) {
+                processVariantWarehouseStock(savedVariant, variantDTO.getWarehouseStock());
+            }
+
             // Process variant images if any (this also uses concurrent processing
             // internally)
             // if (variantDTO.getVariantImages() != null && !variantDTO.getVariantImages().isEmpty()) {
@@ -1042,6 +1086,11 @@ public class ProductServiceImpl implements ProductService {
                 : product.getLowStockThreshold());
         variant.setActive(variantDTO.getIsActive() != null ? variantDTO.getIsActive() : true);
         variant.setSortOrder(variantDTO.getSortOrder() != null ? variantDTO.getSortOrder() : 0);
+        
+        // Set variant-specific properties if available
+        // Note: These fields might need to be added to the ProductVariant entity
+        // For now, we'll handle them through attributes or store them in a separate table
+        
         return variant;
     }
 
@@ -1078,6 +1127,37 @@ public class ProductServiceImpl implements ProductService {
             variantAttributeValue.setAttributeValue(productAttributeValue);
 
             variantAttributeValueRepository.save(variantAttributeValue);
+        }
+    }
+
+    private void processVariantWarehouseStock(ProductVariant variant, List<WarehouseStockDTO> warehouseStockDTOs) {
+        log.info("Processing warehouse stock for variant: {}", variant.getId());
+        
+        for (WarehouseStockDTO warehouseStockDTO : warehouseStockDTOs) {
+            try {
+                // Validate warehouse exists
+                Warehouse warehouse = warehouseRepository.findById(warehouseStockDTO.getWarehouseId())
+                        .orElseThrow(() -> new EntityNotFoundException(
+                                "Warehouse not found with ID: " + warehouseStockDTO.getWarehouseId()));
+                
+                // Create stock entry for the variant
+                Stock stock = new Stock();
+                stock.setWarehouse(warehouse);
+                stock.setProduct(variant.getProduct()); // Set the main product
+                stock.setVariant(variant); // Set the specific variant
+                stock.setQuantity(warehouseStockDTO.getStockQuantity());
+                stock.setLowStockThreshold(warehouseStockDTO.getLowStockThreshold());
+                
+                stockRepository.save(stock);
+                
+                log.info("Created stock entry for variant {} in warehouse {} with quantity {}", 
+                        variant.getId(), warehouse.getName(), warehouseStockDTO.getStockQuantity());
+                
+            } catch (Exception e) {
+                log.error("Failed to process warehouse stock for variant {} in warehouse ID: {}", 
+                        variant.getId(), warehouseStockDTO.getWarehouseId(), e);
+                throw new RuntimeException("Failed to process variant warehouse stock: " + e.getMessage(), e);
+            }
         }
     }
 
@@ -1636,12 +1716,28 @@ public class ProductServiceImpl implements ProductService {
                     .price(product.getPrice())
                     .compareAtPrice(product.getCompareAtPrice())
                     .stockQuantity(product.getStockQuantity())
-                    .category(product.getCategory())
-                    .brand(product.getBrand())
+                    .category(product.getCategory() != null ?
+                            new ManyProductsDto.CategorySummary(
+                                    product.getCategory().getId(),
+                                    product.getCategory().getName(),
+                                    product.getCategory().getSlug()
+                            ) : null)
+                    .brand(product.getBrand() != null ?
+                            new ManyProductsDto.BrandSummary(
+                                    product.getBrand().getBrandId(),
+                                    product.getBrand().getBrandName()
+                            ) : null)
                     .isBestSeller(product.isBestseller())
                     .isFeatured(product.isFeatured())
-                    .discountInfo(product.getDiscount())
-                    .primaryImage(primaryImage)
+                    .discountInfo(null)
+                    .primaryImage(primaryImage != null ?
+                            new ManyProductsDto.ImageSummary(
+                                    primaryImage.getId(),
+                                    primaryImage.getImageUrl(),
+                                    primaryImage.getAltText(),
+                                    primaryImage.isPrimary(),
+                                    primaryImage.getSortOrder()
+                            ) : null)
                     .build();
 
         } catch (Exception e) {

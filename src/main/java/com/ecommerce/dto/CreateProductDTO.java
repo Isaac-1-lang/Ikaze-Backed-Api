@@ -5,6 +5,7 @@ import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Positive;
 import jakarta.validation.constraints.Size;
 import lombok.Data;
+import org.springframework.web.multipart.MultipartFile;
 import java.math.BigDecimal;
 import java.util.List;
 import java.util.UUID;
@@ -58,10 +59,64 @@ public class CreateProductDTO {
     private Boolean isFeatured;
     private Boolean isBestseller;
     private Boolean isNewArrival;
-    private List<String> productImages;
-    private String imageMetadata;
+    private Boolean isOnSale;
+    private Integer salePercentage;
+
+    // Product Details
+    @Size(max = 2000, message = "Full description must not exceed 2000 characters")
+    private String fullDescription;
+    
+    @Size(max = 255, message = "Meta title must not exceed 255 characters")
+    private String metaTitle;
+    
+    @Size(max = 500, message = "Meta description must not exceed 500 characters")
+    private String metaDescription;
+    
+    @Size(max = 500, message = "Meta keywords must not exceed 500 characters")
+    private String metaKeywords;
+    
+    @Size(max = 500, message = "Search keywords must not exceed 500 characters")
+    private String searchKeywords;
+
+    // Physical Dimensions and Weight
+    @Positive(message = "Height must be positive")
+    private BigDecimal heightCm;
+    
+    @Positive(message = "Width must be positive")
+    private BigDecimal widthCm;
+    
+    @Positive(message = "Length must be positive")
+    private BigDecimal lengthCm;
+    
+    @Positive(message = "Weight must be positive")
+    private BigDecimal weightKg;
+
+    // Product Specifications
+    @Size(max = 100, message = "Material must not exceed 100 characters")
+    private String material;
+    
+    @Size(max = 500, message = "Care instructions must not exceed 500 characters")
+    private String careInstructions;
+    
+    @Size(max = 500, message = "Warranty info must not exceed 500 characters")
+    private String warrantyInfo;
+    
+    @Size(max = 500, message = "Shipping info must not exceed 500 characters")
+    private String shippingInfo;
+    
+    @Size(max = 500, message = "Return policy must not exceed 500 characters")
+    private String returnPolicy;
+
+    // Warehouse Assignment
+    private List<WarehouseStockDTO> warehouseStock;
+
+    // Media
+    private List<MultipartFile> productImages;
+    private List<ImageMetadata> imageMetadata;
     private List<String> productVideos;
     private String videoMetadata;
+    
+    // Variants
     private List<CreateProductVariantDTO> variants;
 
     // Getters
@@ -85,6 +140,83 @@ public class CreateProductDTO {
         return basePrice;
     }
 
+    public String getFullDescription() {
+        return fullDescription != null ? fullDescription : description;
+    }
+
+    public String getMetaTitle() {
+        return metaTitle != null ? metaTitle : name;
+    }
+
+    public String getMetaDescription() {
+        return metaDescription != null ? metaDescription : description;
+    }
+
+    public String getMetaKeywords() {
+        return metaKeywords != null ? metaKeywords : name + " " + description;
+    }
+
+    public String getSearchKeywords() {
+        return searchKeywords != null ? searchKeywords : name + " " + description;
+    }
+
+    public String getDimensionsCm() {
+        if (heightCm != null && widthCm != null && lengthCm != null) {
+            return heightCm + "x" + widthCm + "x" + lengthCm;
+        }
+        return "0x0x0";
+    }
+
+    public BigDecimal getWeightKg() {
+        return weightKg != null ? weightKg : BigDecimal.ZERO;
+    }
+
+    public Boolean getIsOnSale() {
+        return isOnSale != null ? isOnSale : false;
+    }
+
+    public Integer getSalePercentage() {
+        return salePercentage != null ? salePercentage : 0;
+    }
+
+    // Additional getters for new fields
+    public BigDecimal getHeightCm() {
+        return heightCm;
+    }
+
+    public BigDecimal getWidthCm() {
+        return widthCm;
+    }
+
+    public BigDecimal getLengthCm() {
+        return lengthCm;
+    }
+
+    public String getMaterial() {
+        return material;
+    }
+
+    public String getCareInstructions() {
+        return careInstructions;
+    }
+
+    public String getWarrantyInfo() {
+        return warrantyInfo;
+    }
+
+    public String getShippingInfo() {
+        return shippingInfo;
+    }
+
+    public String getReturnPolicy() {
+        return returnPolicy;
+    }
+
+    public List<WarehouseStockDTO> getWarehouseStock() {
+        return warehouseStock;
+    }
+
+    // Existing getters
     public BigDecimal getSalePrice() {
         return salePrice;
     }
@@ -137,11 +269,11 @@ public class CreateProductDTO {
         return isNewArrival;
     }
 
-    public List<String> getProductImages() {
+    public List<MultipartFile> getProductImages() {
         return productImages;
     }
 
-    public String getImageMetadata() {
+    public List<ImageMetadata> getImageMetadata() {
         return imageMetadata;
     }
 
@@ -155,42 +287,5 @@ public class CreateProductDTO {
 
     public List<CreateProductVariantDTO> getVariants() {
         return variants;
-    }
-
-    // Additional methods for ProductServiceImpl
-    public String getFullDescription() {
-        return description;
-    }
-
-    public String getMetaTitle() {
-        return name;
-    }
-
-    public String getMetaDescription() {
-        return description;
-    }
-
-    public String getMetaKeywords() {
-        return name + " " + description;
-    }
-
-    public String getSearchKeywords() {
-        return name + " " + description;
-    }
-
-    public String getDimensionsCm() {
-        return "0x0x0";
-    }
-
-    public BigDecimal getWeightKg() {
-        return BigDecimal.ZERO;
-    }
-
-    public Boolean getIsOnSale() {
-        return false;
-    }
-
-    public Integer getSalePercentage() {
-        return 0;
     }
 }

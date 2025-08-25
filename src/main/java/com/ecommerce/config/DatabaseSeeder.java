@@ -16,6 +16,7 @@ import java.time.LocalDateTime;
 import java.util.Arrays;
 import java.util.List;
 
+
 @Component
 @Order(1)
 @RequiredArgsConstructor
@@ -41,15 +42,57 @@ public class DatabaseSeeder implements CommandLineRunner {
     private final ProductVideoRepository productVideoRepository;
     private final VariantAttributeValueRepository variantAttributeValueRepository;
 
+    // Warehouse related
+    private final WarehouseRepository warehouseRepository;
+    private final StockRepository stockRepository;
+
     @Override
     @Transactional
     public void run(String... args) throws Exception {
+        // Always ensure core users exist
+        seedUsers();
+
+        // Always ensure warehouses exist (independent of other data)
+        if (warehouseRepository.count() == 0) {
+            log.info("No warehouses found. Seeding warehouses...");
+            seedWarehouses();
+        }
+
+        // Always ensure categories exist (independent of other data)
+        if (categoryRepository.count() == 0) {
+            log.info("No categories found. Seeding categories...");
+            seedCategories();
+        } else {
+            // Check if we have the correct categories, if not, replace them
+            List<String> expectedCategoryNames = Arrays.asList("Electronics", "Fashion", "Home & Garden", "Sports & Outdoors", "Beauty & Health");
+            
+            // Use a safer approach to check existing categories without loading full entities
+            boolean needsUpdate = false;
+            for (String expectedName : expectedCategoryNames) {
+                if (categoryRepository.findByName(expectedName).isEmpty()) {
+                    needsUpdate = true;
+                    break;
+                }
+            }
+            
+            if (needsUpdate) {
+                log.info("Categories exist but don't match expected ones. Replacing categories...");
+                // Delete only the categories we want to replace
+                for (String expectedName : expectedCategoryNames) {
+                    categoryRepository.findByName(expectedName).ifPresent(category -> {
+                        log.info("Deleting existing category: {}", category.getName());
+                        categoryRepository.delete(category);
+                    });
+                }
+                log.info("Existing categories deleted, now seeding new ones...");
+                seedCategories();
+            }
+        }
+
         if (shouldSeedData()) {
             log.info("Starting database seeding...");
 
-            // Seed in order of dependencies
-            seedUsers();
-            seedCategories();
+            // Seed in order of dependencies (first-time only)
             seedBrands();
             seedDiscounts();
             seedProductAttributes();
@@ -57,7 +100,24 @@ public class DatabaseSeeder implements CommandLineRunner {
 
             log.info("Database seeding completed successfully!");
         } else {
-            log.info("Database already contains data. Skipping seeding.");
+            // If products are missing, seed minimal catalog requirements and products
+            if (productRepository.count() == 0) {
+                log.info("No products found. Seeding minimal catalog data and sample products...");
+
+                if (brandRepository.count() == 0) {
+                    seedBrands();
+                }
+                if (discountRepository.count() == 0) {
+                    seedDiscounts();
+                }
+                if (attributeTypeRepository.count() == 0 || attributeValueRepository.count() == 0) {
+                    seedProductAttributes();
+                }
+                seedProducts();
+                log.info("Minimal catalog seeding completed.");
+            } else {
+                log.info("Database already contains products. Skipping product seeding.");
+            }
         }
     }
 
@@ -106,6 +166,69 @@ public class DatabaseSeeder implements CommandLineRunner {
             userRepository.save(adminUser);
             log.info("Admin user created: {}", adminUser.getUserEmail());
         }
+
+        // Seed demo Employee user
+        String employeeEmail = "zxy@gmail.com";
+        if (userRepository.findByUserEmail(employeeEmail).isEmpty()) {
+            User employeeUser = new User();
+            employeeUser.setFirstName("Employee");
+            employeeUser.setLastName("User");
+            employeeUser.setUserEmail(employeeEmail);
+            employeeUser.setPassword(passwordEncoder.encode("12345678"));
+            employeeUser.setRole(UserRole.EMPLOYEE);
+            employeeUser.setAuthProvider(User.AuthProvider.LOCAL);
+            employeeUser.setEmailVerified(true);
+            employeeUser.setEnabled(true);
+            employeeUser.setAccountNonLocked(true);
+            employeeUser.setCredentialsNonExpired(true);
+            employeeUser.setAccountNonExpired(true);
+            employeeUser.setPhoneNumber("+10000000002");
+
+            userRepository.save(employeeUser);
+            log.info("Employee user created: {}", employeeUser.getUserEmail());
+        }
+
+        // Seed demo Delivery user
+        String deliveryEmail = "yzx@gmail.com";
+        if (userRepository.findByUserEmail(deliveryEmail).isEmpty()) {
+            User deliveryUser = new User();
+            deliveryUser.setFirstName("Delivery");
+            deliveryUser.setLastName("Agent");
+            deliveryUser.setUserEmail(deliveryEmail);
+            deliveryUser.setPassword(passwordEncoder.encode("12345678"));
+            deliveryUser.setRole(UserRole.DELIVERY_AGENT);
+            deliveryUser.setAuthProvider(User.AuthProvider.LOCAL);
+            deliveryUser.setEmailVerified(true);
+            deliveryUser.setEnabled(true);
+            deliveryUser.setAccountNonLocked(true);
+            deliveryUser.setCredentialsNonExpired(true);
+            deliveryUser.setAccountNonExpired(true);
+            deliveryUser.setPhoneNumber("+10000000003");
+
+            userRepository.save(deliveryUser);
+            log.info("Delivery user created: {}", deliveryUser.getUserEmail());
+        }
+
+        // Seed demo Admin user matching frontend quick login
+        String demoAdminEmail = "xyz@gmail.com";
+        if (userRepository.findByUserEmail(demoAdminEmail).isEmpty()) {
+            User demoAdmin = new User();
+            demoAdmin.setFirstName("Admin");
+            demoAdmin.setLastName("User");
+            demoAdmin.setUserEmail(demoAdminEmail);
+            demoAdmin.setPassword(passwordEncoder.encode("12345678"));
+            demoAdmin.setRole(UserRole.ADMIN);
+            demoAdmin.setAuthProvider(User.AuthProvider.LOCAL);
+            demoAdmin.setEmailVerified(true);
+            demoAdmin.setEnabled(true);
+            demoAdmin.setAccountNonLocked(true);
+            demoAdmin.setCredentialsNonExpired(true);
+            demoAdmin.setAccountNonExpired(true);
+            demoAdmin.setPhoneNumber("+10000000001");
+
+            userRepository.save(demoAdmin);
+            log.info("Demo admin user created: {}", demoAdmin.getUserEmail());
+        }
     }
 
     @Transactional
@@ -113,11 +236,11 @@ public class DatabaseSeeder implements CommandLineRunner {
         log.info("Seeding categories...");
 
         List<Category> categories = Arrays.asList(
-                createCategory("Electronics", "Electronic devices and accessories", "electronics"),
-                createCategory("Audio", "Audio equipment and accessories", "audio"),
-                createCategory("Headphones", "Headphones and earbuds", "headphones"),
-                createCategory("Smartphones", "Mobile phones and accessories", "smartphones"),
-                createCategory("Computers", "Laptops, desktops and computer accessories", "computers"));
+                createCategory("Electronics", "Latest gadgets and electronic devices", "electronics"),
+                createCategory("Fashion", "Trendy clothing and accessories", "fashion"),
+                createCategory("Home & Garden", "Everything for your home and outdoor space", "home-garden"),
+                createCategory("Sports & Outdoors", "Equipment and gear for active lifestyles", "sports-outdoors"),
+                createCategory("Beauty & Health", "Personal care and wellness products", "beauty-health"));
 
         categoryRepository.saveAll(categories);
         log.info("Created {} categories", categories.size());
@@ -193,6 +316,25 @@ public class DatabaseSeeder implements CommandLineRunner {
         attributeValueRepository.saveAll(storageValues);
 
         log.info("Created {} attribute values", colorValues.size() + sizeValues.size() + storageValues.size());
+    }
+
+    @Transactional
+    public void seedWarehouses() {
+        log.info("Seeding warehouses...");
+
+        List<Warehouse> warehouses = Arrays.asList(
+                createWarehouse("Main Distribution Center", "123 Industrial Blvd, New York, NY 10001", "+1-555-0101", "main.warehouse@company.com"),
+                createWarehouse("West Coast Hub", "456 Commerce Way, Los Angeles, CA 90210", "+1-555-0102", "west.warehouse@company.com"),
+                createWarehouse("Central Distribution", "789 Logistics Ave, Chicago, IL 60601", "+1-555-0103", "central.warehouse@company.com"),
+                createWarehouse("Southern Regional", "321 Warehouse Dr, Houston, TX 77001", "+1-555-0104", "south.warehouse@company.com"),
+                createWarehouse("Northeast Branch", "654 Storage St, Boston, MA 02101", "+1-555-0105", "northeast.warehouse@company.com"),
+                createWarehouse("Pacific Northwest", "987 Harbor Blvd, Seattle, WA 98101", "+1-555-0106", "pacific.warehouse@company.com"),
+                createWarehouse("Midwest Hub", "147 Distribution Rd, Detroit, MI 48201", "+1-555-0107", "midwest.warehouse@company.com"),
+                createWarehouse("Southeast Center", "258 Logistics Ln, Atlanta, GA 30301", "+1-555-0108", "southeast.warehouse@company.com")
+        );
+
+        warehouseRepository.saveAll(warehouses);
+        log.info("Created {} warehouses", warehouses.size());
     }
 
     @Transactional
@@ -397,8 +539,9 @@ public class DatabaseSeeder implements CommandLineRunner {
         category.setName(name);
         category.setDescription(description);
         category.setSlug(slug);
-        category.setActive(true);
-        category.setFeatured(false);
+        category.setIsActive(true);
+        // Set featured based on the category (matching frontend data)
+        category.setIsFeatured(name.equals("Electronics") || name.equals("Fashion") || name.equals("Home & Garden") || name.equals("Sports & Outdoors"));
         category.setSortOrder(0);
         category.setMetaTitle(name);
         category.setMetaDescription(description);
@@ -484,5 +627,15 @@ public class DatabaseSeeder implements CommandLineRunner {
         variant.setActive(true);
         variant.setSortOrder(0);
         return variant;
+    }
+
+    private Warehouse createWarehouse(String name, String location, String contactNumber, String email) {
+        Warehouse warehouse = new Warehouse();
+        warehouse.setName(name);
+        warehouse.setLocation(location);
+        warehouse.setContactNumber(contactNumber);
+        warehouse.setEmail(email);
+        warehouse.setActive(true);
+        return warehouse;
     }
 }

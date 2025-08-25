@@ -31,6 +31,7 @@ public class CloudinaryServiceImpl implements CloudinaryService {
 
     private final Cloudinary cloudinary;
     private final ExecutorService executorService = Executors.newFixedThreadPool(10);
+    private final String unsignedPreset = System.getenv("CLOUDINARY_UNSIGNED_PRESET");
 
     @Override
     public Map<String, String> uploadImage(MultipartFile file) throws IOException {
@@ -162,7 +163,15 @@ public class CloudinaryServiceImpl implements CloudinaryService {
             Map params = ObjectUtils.asMap(
                     "resource_type", resourceType,
                     "public_id", generateUniquePublicId(file),
-                    "overwrite", true);
+                    "overwrite", true,
+                    // Provide timestamp to help avoid stale signature issues
+                    "timestamp", String.valueOf(System.currentTimeMillis() / 1000)
+            );
+
+            // If an unsigned upload preset is configured, use it to bypass signing/timestamp requirements
+            if (unsignedPreset != null && !unsignedPreset.isBlank()) {
+                params.put("upload_preset", unsignedPreset);
+            }
 
             Map uploadResult = cloudinary.uploader().upload(convertedFile, params);
             Map<String, String> result = mapToStringMap(uploadResult);
