@@ -28,6 +28,10 @@ public class CreateOrderDTO {
     @Size(min = 1, message = "Payment method cannot be empty")
     private String paymentMethod;
     
+    // Stripe payment information (no sensitive data)
+    private String stripePaymentIntentId;
+    private String stripeSessionId;
+    
     private String notes;
     
     // Nested DTOs

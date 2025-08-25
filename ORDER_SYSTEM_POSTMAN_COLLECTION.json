@@ -1,0 +1,456 @@
+{
+  "info": {
+    "name": "E-commerce Order System API",
+    "description": "Complete order management system with role-based access control and analytics",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{jwt_token}}",
+        "type": "string"
+      }
+    ]
+  },
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://localhost:8095",
+      "type": "string"
+    },
+    {
+      "key": "jwt_token",
+      "value": "your_jwt_token_here",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "🔐 Authentication",
+      "item": [
+        {
+          "name": "Login",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"admin@example.com\",\n  \"password\": \"password123\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/auth/login",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "auth", "login"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "🛒 Order Creation",
+      "item": [
+        {
+          "name": "Create Order",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"items\": [\n    {\n      \"productVariantId\": 1,\n      \"quantity\": 2\n    }\n  ],\n  \"address\": {\n    \"street\": \"123 Main St\",\n    \"city\": \"New York\",\n    \"state\": \"NY\",\n    \"zipCode\": \"10001\",\n    \"country\": \"USA\",\n    \"phone\": \"+1-555-0123\"\n  },\n  \"stripePaymentIntentId\": \"pi_test_123\",\n  \"stripeSessionId\": \"cs_test_123\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/orders",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "orders"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "👤 Customer Endpoints",
+      "item": [
+        {
+          "name": "Get Customer Orders",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/customer/orders",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "customer", "orders"]
+            }
+          }
+        },
+        {
+          "name": "Get Customer Order by ID",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/customer/orders/1",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "customer", "orders", "1"]
+            }
+          }
+        },
+        {
+          "name": "Cancel Order",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"reason\": \"Changed my mind\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/customer/orders/1/cancel",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "customer", "orders", "1", "cancel"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "👨‍💼 Admin Endpoints",
+      "item": [
+        {
+          "name": "Get All Orders",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/admin/orders",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "admin", "orders"]
+            }
+          }
+        },
+        {
+          "name": "Get Orders by Status",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/admin/orders?status=PENDING",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "admin", "orders"],
+              "query": [
+                {
+                  "key": "status",
+                  "value": "PENDING"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get Orders by Date Range",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/admin/orders?startDate=2024-01-01T00:00:00&endDate=2024-12-31T23:59:59",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "admin", "orders"],
+              "query": [
+                {
+                  "key": "startDate",
+                  "value": "2024-01-01T00:00:00"
+                },
+                {
+                  "key": "endDate",
+                  "value": "2024-12-31T23:59:59"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get Order by ID",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/admin/orders/1",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "admin", "orders", "1"]
+            }
+          }
+        },
+        {
+          "name": "Update Order Status",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"PROCESSING\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/admin/orders/1/status",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "admin", "orders", "1", "status"]
+            }
+          }
+        },
+        {
+          "name": "Update Order Tracking",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"trackingNumber\": \"TRACK123456\",\n  \"carrier\": \"FedEx\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/admin/orders/1/tracking",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "admin", "orders", "1", "tracking"]
+            }
+          }
+        },
+        {
+          "name": "Search Orders by Order Code",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/admin/orders/search?orderCode=ORD-2024-001",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "admin", "orders", "search"],
+              "query": [
+                {
+                  "key": "orderCode",
+                  "value": "ORD-2024-001"
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "🚚 Delivery Endpoints",
+      "item": [
+        {
+          "name": "Get Delivery Orders",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/delivery/orders",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "delivery", "orders"]
+            }
+          }
+        },
+        {
+          "name": "Get Delivery Orders by Status",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/delivery/orders/status/PENDING",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "delivery", "orders", "status", "PENDING"]
+            }
+          }
+        },
+        {
+          "name": "Update Order Status (Delivery)",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"OUT_FOR_DELIVERY\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/delivery/orders/1/status",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "delivery", "orders", "1", "status"]
+            }
+          }
+        },
+        {
+          "name": "Update Order Tracking (Delivery)",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"trackingNumber\": \"DELIVERY123\",\n  \"carrier\": \"Delivery Corp\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/delivery/orders/1/tracking",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "delivery", "orders", "1", "tracking"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "📊 Analytics Endpoints",
+      "item": [
+        {
+          "name": "Dashboard Analytics",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/admin/analytics/dashboard",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "admin", "analytics", "dashboard"]
+            }
+          }
+        },
+        {
+          "name": "Revenue Analytics",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/admin/analytics/revenue",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "admin", "analytics", "revenue"]
+            }
+          }
+        },
+        {
+          "name": "Product Analytics",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/admin/analytics/products?limit=5",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "admin", "analytics", "products"],
+              "query": [
+                {
+                  "key": "limit",
+                  "value": "5"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Customer Analytics",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/admin/analytics/customers",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "admin", "analytics", "customers"]
+            }
+          }
+        },
+        {
+          "name": "Delivery Performance",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/admin/analytics/delivery",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "admin", "analytics", "delivery"]
+            }
+          }
+        },
+        {
+          "name": "Revenue Trends",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/admin/analytics/trends?days=7",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "admin", "analytics", "trends"],
+              "query": [
+                {
+                  "key": "days",
+                  "value": "7"
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "🔍 Order Tracking",
+      "item": [
+        {
+          "name": "Get Order Tracking",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/orders/1/tracking",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "orders", "1", "tracking"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "📋 General Order Endpoints",
+      "item": [
+        {
+          "name": "List User Orders",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/orders",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "orders"]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

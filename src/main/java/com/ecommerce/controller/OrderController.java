@@ -7,13 +7,14 @@ import com.ecommerce.entity.OrderItem;
 import com.ecommerce.entity.OrderTransaction;
 import com.ecommerce.entity.ProductVariant;
 import com.ecommerce.entity.Product;
-import com.ecommerce.entity.ProductImage;
 import com.ecommerce.dto.OrderResponseDTO;
 import com.ecommerce.dto.OrderItemDTO;
 import com.ecommerce.dto.OrderAddressDTO;
 import com.ecommerce.dto.SimpleProductDTO;
 import com.ecommerce.dto.CreateOrderDTO;
 import com.ecommerce.service.OrderService;
+import com.ecommerce.repository.UserRepository;
+import org.springframework.security.core.userdetails.UserDetails;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.Schema;
@@ -45,6 +46,7 @@ import java.util.UUID;
 public class OrderController {
 
     private final OrderService orderService;
+    private final UserRepository userRepository;
 
     @GetMapping
     @PreAuthorize("hasAnyRole('CUSTOMER','ADMIN','EMPLOYEE')")
@@ -317,8 +319,22 @@ public class OrderController {
     private UUID getCurrentUserId() {
         try {
             Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-            if (auth != null && auth.getPrincipal() instanceof com.ecommerce.entity.User u && u.getId() != null) {
+            if (auth == null) return null;
+
+            Object principal = auth.getPrincipal();
+            // Case 1: principal is our domain User
+            if (principal instanceof com.ecommerce.entity.User u && u.getId() != null) {
                 return u.getId();
+            }
+            // Case 2: principal is Spring Security UserDetails (uses email as username)
+            if (principal instanceof UserDetails ud) {
+                String email = ud.getUsername();
+                return userRepository.findByUserEmail(email).map(com.ecommerce.entity.User::getId).orElse(null);
+            }
+            // Case 3: principal is a string username
+            String name = auth.getName();
+            if (name != null && !name.isBlank()) {
+                return userRepository.findByUserEmail(name).map(com.ecommerce.entity.User::getId).orElse(null);
             }
         } catch (Exception ignored) { }
         return null;
@@ -333,8 +349,18 @@ public class OrderController {
 
         try {
             Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-            if (auth != null && auth.getPrincipal() instanceof com.ecommerce.entity.User u && u.getId() != null) {
+            if (auth == null) return null;
+            Object principal = auth.getPrincipal();
+            if (principal instanceof com.ecommerce.entity.User u && u.getId() != null) {
                 return u.getId();
+            }
+            if (principal instanceof UserDetails ud) {
+                String email = ud.getUsername();
+                return userRepository.findByUserEmail(email).map(com.ecommerce.entity.User::getId).orElse(null);
+            }
+            String name = auth.getName();
+            if (name != null && !name.isBlank()) {
+                return userRepository.findByUserEmail(name).map(com.ecommerce.entity.User::getId).orElse(null);
             }
         } catch (Exception ignored) { }
         return null;
