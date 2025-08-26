@@ -15,7 +15,7 @@ import java.util.UUID;
 @NoArgsConstructor
 @AllArgsConstructor
 public class CartDTO {
-    
+
     private Long cartId;
     private UUID userId;
     private List<CartItemDTO> items;
@@ -25,13 +25,4 @@ public class CartDTO {
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
     private boolean isEmpty;
-    public Long getProductVariantId() {
-        throw new UnsupportedOperationException("Unimplemented method 'getProductVariantId'");
-    }
-    public int getQuantity() {
-        throw new UnsupportedOperationException("Unimplemented method 'getQuantity'");
-    }
-    public BigDecimal getUnitPrice() {
-        throw new UnsupportedOperationException("Unimplemented method 'getUnitPrice'");
-    }
 }

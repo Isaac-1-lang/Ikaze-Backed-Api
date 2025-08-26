@@ -1,0 +1,42 @@
+<!-- public/payment-success.html -->
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Payment Success</title>
+  </head>
+  <body>
+    <h2>🎉 Payment Successful</h2>
+    <p id="status">Verifying payment...</p>
+
+    <script>
+      const params = new URLSearchParams(window.location.search);
+      const sessionId = params.get("session_id");
+
+      if (!sessionId) {
+        document.getElementById("status").innerText =
+          "❌ No session ID in URL.";
+      } else {
+        fetch(`http://localhost:8081/api/v1/checkout/verify/${sessionId}`)
+          .then((res) => res.json())
+          .then((data) => {
+            console.log(data);
+            if (data.success && data.data.status === "paid") {
+              document.getElementById(
+                "status"
+              ).innerText = `✅ Payment completed! You paid $${
+                data.data.amount / 100
+              }`;
+            } else {
+              document.getElementById("status").innerText =
+                "❌ Payment not completed.";
+            }
+          })
+          .catch((err) => {
+            document.getElementById("status").innerText =
+              "❌ Error verifying payment.";
+            console.error(err);
+          });
+      }
+    </script>
+  </body>
+</html>
