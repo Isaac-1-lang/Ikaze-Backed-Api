@@ -31,10 +31,10 @@ public class CheckoutController {
 
     private final CheckoutService checkoutService;
 
-    @PostMapping("/create-session")
-    @PreAuthorize("hasAnyRole('USER', 'ADMIN', 'EMPLOYEE')")
-    @Operation(summary = "Create checkout session", description = "Create a new checkout session for payment processing", responses = {
-            @ApiResponse(responseCode = "200", description = "Checkout session created successfully", content = @Content(schema = @Schema(implementation = Map.class))),
+    @PostMapping("/create-session-guest")
+    @PreAuthorize("hasAnyRole('CUSTOMER', 'ADMIN', 'EMPLOYEE')")
+    @Operation(summary = "Create guest checkout session", description = "Create a new checkout session for guest users", responses = {
+            @ApiResponse(responseCode = "200", description = "Guest checkout session created successfully", content = @Content(schema = @Schema(implementation = Map.class))),
             @ApiResponse(responseCode = "400", description = "Invalid input data"),
             @ApiResponse(responseCode = "401", description = "Unauthorized"),
             @ApiResponse(responseCode = "403", description = "Forbidden"),
@@ -79,50 +79,50 @@ public class CheckoutController {
         }
     }
 
-    @PostMapping("/guest")
-    @Operation(summary = "Create guest checkout session", description = "Create a checkout session for guest users", responses = {
-            @ApiResponse(responseCode = "200", description = "Guest checkout session created successfully"),
-            @ApiResponse(responseCode = "400", description = "Invalid input data"),
-            @ApiResponse(responseCode = "500", description = "Internal server error")
-    })
-    public ResponseEntity<?> createGuestCheckout(@Valid @RequestBody CheckoutRequest request) {
-        try {
-            log.info("Creating guest checkout session");
-            String sessionUrl = checkoutService.createGuestCheckoutSession(request);
+    // @PostMapping("/guest")
+    // @Operation(summary = "Create guest checkout session", description = "Create a checkout session for guest users", responses = {
+    //         @ApiResponse(responseCode = "200", description = "Guest checkout session created successfully"),
+    //         @ApiResponse(responseCode = "400", description = "Invalid input data"),
+    //         @ApiResponse(responseCode = "500", description = "Internal server error")
+    // })
+    // public ResponseEntity<?> createGuestCheckout(@Valid @RequestBody CheckoutRequest request) {
+    //     try {
+    //         log.info("Creating guest checkout session");
+    //         String sessionUrl = checkoutService.createGuestCheckoutSession(request);
 
-            Map<String, Object> response = new HashMap<>();
-            response.put("success", true);
-            response.put("message", "Guest checkout session created successfully");
-            response.put("sessionUrl", sessionUrl);
+    //         Map<String, Object> response = new HashMap<>();
+    //         response.put("success", true);
+    //         response.put("message", "Guest checkout session created successfully");
+    //         response.put("sessionUrl", sessionUrl);
 
-            log.info("Guest checkout session created successfully");
-            return ResponseEntity.ok(response);
+    //         log.info("Guest checkout session created successfully");
+    //         return ResponseEntity.ok(response);
 
-        } catch (IllegalArgumentException e) {
-            log.warn("Invalid request for guest checkout: {}", e.getMessage());
-            Map<String, Object> response = new HashMap<>();
-            response.put("success", false);
-            response.put("message", e.getMessage());
-            response.put("error", "VALIDATION_ERROR");
-            return ResponseEntity.badRequest().body(response);
+    //     } catch (IllegalArgumentException e) {
+    //         log.warn("Invalid request for guest checkout: {}", e.getMessage());
+    //         Map<String, Object> response = new HashMap<>();
+    //         response.put("success", false);
+    //         response.put("message", e.getMessage());
+    //         response.put("error", "VALIDATION_ERROR");
+    //         return ResponseEntity.badRequest().body(response);
 
-        } catch (EntityNotFoundException e) {
-            log.warn("Entity not found during guest checkout: {}", e.getMessage());
-            Map<String, Object> response = new HashMap<>();
-            response.put("success", false);
-            response.put("message", e.getMessage());
-            response.put("error", "NOT_FOUND");
-            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(response);
+    //     } catch (EntityNotFoundException e) {
+    //         log.warn("Entity not found during guest checkout: {}", e.getMessage());
+    //         Map<String, Object> response = new HashMap<>();
+    //         response.put("success", false);
+    //         response.put("message", e.getMessage());
+    //         response.put("error", "NOT_FOUND");
+    //         return ResponseEntity.status(HttpStatus.NOT_FOUND).body(response);
 
-        } catch (Exception e) {
-            log.error("Error creating guest checkout session: {}", e.getMessage(), e);
-            Map<String, Object> response = new HashMap<>();
-            response.put("success", false);
-            response.put("message", "Failed to create guest checkout session");
-            response.put("error", "INTERNAL_ERROR");
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(response);
-        }
-    }
+    //     } catch (Exception e) {
+    //         log.error("Error creating guest checkout session: {}", e.getMessage(), e);
+    //         Map<String, Object> response = new HashMap<>();
+    //         response.put("success", false);
+    //         response.put("message", "Failed to create guest checkout session");
+    //         response.put("error", "INTERNAL_ERROR");
+    //         return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(response);
+    //     }
+    // }
 
     @PostMapping("/verify")
     @Operation(summary = "Verify checkout session", description = "Verify a completed checkout session", responses = {
@@ -134,8 +134,12 @@ public class CheckoutController {
     public ResponseEntity<?> verifyCheckoutSession(@RequestBody Map<String, String> request) {
         try {
             String sessionId = request.get("sessionId");
+
             if (sessionId == null || sessionId.trim().isEmpty()) {
-                return ResponseEntity.badRequest().body(Map.of("error", "Session ID is required"));
+                return ResponseEntity.badRequest().body(Map.of(
+                        "success", false,
+                        "message", "Session ID is required",
+                        "error", "VALIDATION_ERROR"));
             }
 
             log.info("Verifying checkout session: {}", sessionId);

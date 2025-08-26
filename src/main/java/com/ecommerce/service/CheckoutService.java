@@ -63,8 +63,8 @@ public class CheckoutService {
 
         // add order items
         BigDecimal total = BigDecimal.ZERO;
-        for (CartDTO ci : req.getItems()) {
-            ProductVariant variant = variantRepository.findById(ci.getProductVariantId())
+        for (CartItemDTO ci : req.getItems()) {
+            ProductVariant variant = variantRepository.findById(ci.getVariantId())
                     .orElseThrow(() -> new EntityNotFoundException("Variant not found"));
 
             // Check stock availability
@@ -75,10 +75,10 @@ public class CheckoutService {
             OrderItem oi = new OrderItem();
             oi.setProductVariant(variant);
             oi.setQuantity(ci.getQuantity());
-            oi.setPrice(ci.getUnitPrice());
+            oi.setPrice(ci.getPrice());
             oi.setOrder(order);
             order.getOrderItems().add(oi);
-            total = total.add(ci.getUnitPrice().multiply(BigDecimal.valueOf(ci.getQuantity())));
+            total = total.add(ci.getPrice().multiply(BigDecimal.valueOf(ci.getQuantity())));
         }
 
         // create OrderTransaction
@@ -119,8 +119,8 @@ public class CheckoutService {
 
         // add order items
         BigDecimal total = BigDecimal.ZERO;
-        for (CartDTO ci : req.getItems()) {
-            ProductVariant variant = variantRepository.findById(ci.getProductVariantId())
+        for (CartItemDTO ci : req.getItems()) {
+            ProductVariant variant = variantRepository.findById(ci.getVariantId())
                     .orElseThrow(() -> new EntityNotFoundException("Variant not found"));
 
             // Check stock availability
@@ -131,10 +131,10 @@ public class CheckoutService {
             OrderItem oi = new OrderItem();
             oi.setProductVariant(variant);
             oi.setQuantity(ci.getQuantity());
-            oi.setPrice(ci.getUnitPrice());
+            oi.setPrice(ci.getPrice());
             oi.setOrder(order);
             order.getOrderItems().add(oi);
-            total = total.add(ci.getUnitPrice().multiply(BigDecimal.valueOf(ci.getQuantity())));
+            total = total.add(ci.getPrice().multiply(BigDecimal.valueOf(ci.getQuantity())));
         }
 
         // create OrderTransaction

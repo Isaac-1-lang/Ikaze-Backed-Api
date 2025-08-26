@@ -76,8 +76,8 @@ public class StripeService {
                                 .setMode(SessionCreateParams.Mode.PAYMENT)
                                 .addAllLineItem(lineItems)
                                 .putAllMetadata(metadata)
-                                .setSuccessUrl("http://localhost:3000/parent/payments/success?session_id={CHECKOUT_SESSION_ID}")
-                                .setCancelUrl("http://localhost:3000/parent/payments/cancel?session_id={CHECKOUT_SESSION_ID}")
+                                .setSuccessUrl("http://localhost:8081/stripeCheckoutPayment/payment-success.html?session_id={CHECKOUT_SESSION_ID}")
+                                .setCancelUrl("http://localhost:8081/stripeCheckoutPayment/payment-cancel.html?session_id={CHECKOUT_SESSION_ID}")
                                 .build();
 
                 Session session = Session.create(params);

@@ -34,7 +34,7 @@ public class CartController {
     private final CartService cartService;
 
     @PostMapping("/add")
-    @PreAuthorize("hasRole('USER') or hasRole('ADMIN') or hasRole('EMPLOYEE')")
+   @PreAuthorize("hasAnyRole('ADMIN','EMPLOYEE','CUSTOMER')")
     @Operation(summary = "Add item to cart", description = "Add a product variant to the user's shopping cart")
     public ResponseEntity<?> addToCart(@RequestParam UUID userId, @Valid @RequestBody AddToCartDTO addToCartDTO) {
         try {
@@ -154,7 +154,7 @@ public class CartController {
     }
 
     @GetMapping("/view")
-    @PreAuthorize("hasRole('USER') or hasRole('ADMIN') or hasRole('EMPLOYEE')")
+    @PreAuthorize("hasAnyRole('ADMIN','EMPLOYEE','CUSTOMER')")
     @Operation(summary = "View cart", description = "View the user's cart with pagination")
     public ResponseEntity<?> viewCart(
             @RequestParam UUID userId,

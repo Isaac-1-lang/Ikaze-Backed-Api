@@ -44,7 +44,8 @@ public class CartServiceImpl implements CartService {
                 .orElseThrow(() -> new EntityNotFoundException("User not found with ID: " + userId));
 
         ProductVariant variant = productVariantRepository.findById(addToCartDTO.getVariantId())
-                .orElseThrow(() -> new EntityNotFoundException("Product variant not found with ID: " + addToCartDTO.getVariantId()));
+                .orElseThrow(() -> new EntityNotFoundException(
+                        "Product variant not found with ID: " + addToCartDTO.getVariantId()));
 
         if (!variant.isActive()) {
             throw new IllegalArgumentException("Product variant is not active");
@@ -55,7 +56,8 @@ public class CartServiceImpl implements CartService {
         }
 
         Cart cart = getOrCreateUserCart(user);
-        CartItem existingItem = cartItemRepository.findByCartIdAndProductVariantId(cart.getId(), variant.getId()).orElse(null);
+        CartItem existingItem = cartItemRepository.findByCartIdAndProductVariantId(cart.getId(), variant.getId())
+                .orElse(null);
 
         if (existingItem != null) {
             int newQuantity = existingItem.getQuantity() + addToCartDTO.getQuantity();
@@ -87,7 +89,8 @@ public class CartServiceImpl implements CartService {
                 .orElseThrow(() -> new EntityNotFoundException("Cart not found for user: " + userId));
 
         CartItem cartItem = cartItemRepository.findById(updateCartItemDTO.getCartItemId())
-                .orElseThrow(() -> new EntityNotFoundException("Cart item not found with ID: " + updateCartItemDTO.getCartItemId()));
+                .orElseThrow(() -> new EntityNotFoundException(
+                        "Cart item not found with ID: " + updateCartItemDTO.getCartItemId()));
 
         if (!cartItem.getCart().getId().equals(cart.getId())) {
             throw new IllegalArgumentException("Cart item does not belong to the user");
@@ -95,7 +98,8 @@ public class CartServiceImpl implements CartService {
 
         ProductVariant variant = cartItem.getProductVariant();
         if (updateCartItemDTO.getQuantity() > variant.getStockQuantity()) {
-            throw new IllegalArgumentException("Quantity cannot exceed available stock of " + variant.getStockQuantity());
+            throw new IllegalArgumentException(
+                    "Quantity cannot exceed available stock of " + variant.getStockQuantity());
         }
 
         cartItem.setQuantity(updateCartItemDTO.getQuantity());
@@ -169,8 +173,20 @@ public class CartServiceImpl implements CartService {
     @Override
     @Transactional
     public CartItemDTO getCartItem(UUID userId, Long cartItemId) {
-        // Implementation will be added
-        return null;
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new EntityNotFoundException("User not found with ID: " + userId));
+
+        Cart cart = cartRepository.findByUserId(userId)
+                .orElseThrow(() -> new EntityNotFoundException("Cart not found for user: " + userId));
+
+        CartItem cartItem = cartItemRepository.findById(cartItemId)
+                .orElseThrow(() -> new EntityNotFoundException("Cart item not found with ID: " + cartItemId));
+
+        if (!cartItem.getCart().getId().equals(cart.getId())) {
+            throw new IllegalArgumentException("Cart item does not belong to the user");
+        }
+
+        return mapCartItemToDTO(cartItem);
     }
 
     @Override
@@ -198,7 +214,7 @@ public class CartServiceImpl implements CartService {
     private CartItemDTO mapCartItemToDTO(CartItem cartItem) {
         ProductVariant variant = cartItem.getProductVariant();
         String productImage = null;
-        
+
         if (variant.getImages() != null && !variant.getImages().isEmpty()) {
             productImage = variant.getImages().stream()
                     .filter(img -> img.isPrimary())
@@ -220,9 +236,8 @@ public class CartServiceImpl implements CartService {
                 .inStock(variant.isInStock())
                 .availableStock(variant.getStockQuantity())
                 .build();
-       
 
-        }
+    }
 
     private BigDecimal calculateSubtotal(List<CartItem> cartItems) {
         return cartItems.stream()

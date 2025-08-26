@@ -11,7 +11,7 @@ import java.util.UUID;
 @Data
 public class CheckoutRequest {
     @NotEmpty(message = "Items list cannot be empty")
-    private List<CartDTO> items; // productVariantId, name, unitPrice, quantity
+    private List<CartItemDTO> items; // variantId, quantity, price, etc.
 
     @NotBlank(message = "First name is required")
     private String firstName;
