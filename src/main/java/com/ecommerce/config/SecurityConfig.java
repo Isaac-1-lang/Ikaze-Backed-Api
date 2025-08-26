@@ -48,6 +48,7 @@ public class SecurityConfig {
                                 "/api/v1/auth/users/verify-reset-code",
                                 "/api/v1/auth/users/reset-password",
                                 "/api/v1/auth/users/welcome",
+                                "/api/v1/checkout/verify/**",
                                 "/v3/api-docs/**",
                                 "/swagger-ui/**",
                                 "/swagger-ui.html")
@@ -55,19 +56,26 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.GET, "/api/v1/products", "/api/v1/products/**").permitAll()
                         .requestMatchers(HttpMethod.POST, "/api/v1/products/search").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/v1/categories", "/api/v1/categories/**").permitAll()
-                                                          .requestMatchers(HttpMethod.GET, "/api/warehouses", "/api/warehouses/**", "/api/warehouses/*/inventory", "/api/warehouses/inventory/**").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/warehouses", "/api/warehouses/**",
+                                "/api/warehouses/*/inventory", "/api/warehouses/inventory/**")
+                        .permitAll()
                         .anyRequest().authenticated())
                 .httpBasic(httpBasic -> httpBasic.disable());
 
         // Add JWT filter before UsernamePasswordAuthenticationFilter
-        http.addFilterBefore(new JwtAuthFilter(jwtService, userDetailsService), UsernamePasswordAuthenticationFilter.class);
+        http.addFilterBefore(new JwtAuthFilter(jwtService, userDetailsService),
+                UsernamePasswordAuthenticationFilter.class);
         return http.build();
     }
 
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration configuration = new CorsConfiguration();
-        configuration.setAllowedOriginPatterns(Arrays.asList("http://localhost:3000", "http://127.0.0.1:3000"));
+        configuration.setAllowedOriginPatterns(Arrays.asList(
+                "http://localhost:3000",
+                "http://127.0.0.1:3000",
+                "http://localhost:8081",
+                "http://localhost:5500"));
         configuration.setAllowedMethods(Arrays.asList("GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"));
         configuration.setAllowedHeaders(Arrays.asList("*"));
         configuration.setAllowCredentials(true);
@@ -87,6 +95,5 @@ public class SecurityConfig {
     public AuthenticationManager authenticationManager(AuthenticationConfiguration configuration) throws Exception {
         return configuration.getAuthenticationManager();
     }
-
 
 }

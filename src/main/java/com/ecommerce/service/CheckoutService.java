@@ -157,6 +157,7 @@ public class CheckoutService {
         return sessionUrl;
     }
 
+    @Transactional
     public CheckoutVerificationResult verifyCheckoutSession(String sessionId) throws Exception {
         log.info("Verifying checkout session: {}", sessionId);
 

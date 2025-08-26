@@ -16,17 +16,15 @@
         document.getElementById("status").innerText =
           "❌ No session ID in URL.";
       } else {
-        fetch(
-          `http://localhost:3000/api/v1/payments/payment-session/${sessionId}`
-        )
+        fetch(`http://localhost:8081/api/v1/checkout/verify/${sessionId}`)
           .then((res) => res.json())
           .then((data) => {
             console.log(data);
-            if (data.status === "paid") {
+            if (data.success && data.data.status === "paid") {
               document.getElementById(
                 "status"
               ).innerText = `✅ Payment completed! You paid $${
-                data.amount / 100
+                data.data.amount / 100
               }`;
             } else {
               document.getElementById("status").innerText =
