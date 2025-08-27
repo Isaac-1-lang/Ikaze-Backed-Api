@@ -43,6 +43,21 @@ public class OrderCustomerInfo {
     @Column(name = "phone_number", nullable = false)
     private String phoneNumber;
 
+    @Column(name = "street_address")
+    private String streetAddress;
+
+    @Column(name = "city")
+    private String city;
+
+    @Column(name = "state")
+    private String state;
+
+    @Column(name = "postal_code")
+    private String postalCode;
+
+    @Column(name = "country")
+    private String country;
+
     @Column(name = "created_at")
     private LocalDateTime createdAt;
 

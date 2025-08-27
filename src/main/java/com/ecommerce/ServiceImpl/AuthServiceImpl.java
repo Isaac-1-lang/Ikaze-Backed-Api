@@ -81,7 +81,7 @@ public class AuthServiceImpl implements AuthService {
                         token,
                         user.getFirstName() + " " + user.getLastName(),
                         user.getUserEmail(),
-                        "Login successful",
+                        "Login Now",
                         user.getId(),
                         user.getPhoneNumber(),
                         user.getRole());

@@ -28,7 +28,7 @@ public class Discount {
     private UUID discountId;
 
     @NotBlank(message = "Discount name is required")
-    @Column(nullable = false)
+    @Column(name = "name", nullable = false)
     private String name;
 
     @Column(columnDefinition = "TEXT")

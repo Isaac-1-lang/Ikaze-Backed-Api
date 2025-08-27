@@ -19,6 +19,7 @@ public interface ProductVariantRepository extends JpaRepository<ProductVariant, 
     List<ProductVariant> findByProductProductId(UUID productId);
 
     Optional<ProductVariant> findByVariantSku(String variantSku);
+    
 
     void deleteByProductProductId(UUID productId);
 
