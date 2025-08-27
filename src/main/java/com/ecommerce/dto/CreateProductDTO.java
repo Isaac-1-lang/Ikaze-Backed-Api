@@ -5,6 +5,7 @@ import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Positive;
 import jakarta.validation.constraints.Size;
 import lombok.Data;
+import org.springframework.web.multipart.MultipartFile;
 import java.math.BigDecimal;
 import java.util.List;
 import java.util.UUID;
@@ -63,6 +64,10 @@ public class CreateProductDTO {
     private List<String> productVideos;
     private String videoMetadata;
     private List<CreateProductVariantDTO> variants;
+
+    // Variant images and mapping
+    private List<MultipartFile> variantImages;
+    private String variantImageMapping;
 
     // Getters
     public String getName() {

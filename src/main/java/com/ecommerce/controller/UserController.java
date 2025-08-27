@@ -1,6 +1,7 @@
 package com.ecommerce.controller;
 
 import com.ecommerce.dto.UserRegistrationDTO;
+import com.ecommerce.dto.UserDTO;
 import com.ecommerce.service.AuthService;
 import com.ecommerce.dto.LoginDto;
 import com.ecommerce.dto.LoginResponseDto;
@@ -52,5 +53,13 @@ public class UserController {
     public ResponseEntity<String> logoutUser(@RequestHeader("Authorization") String token) {
         String response = authService.logoutUser(token.replace("Bearer ", ""));
         return ResponseEntity.ok(response);
+    }
+
+    @GetMapping("/me")
+    public ResponseEntity<UserDTO> getCurrentUser(@RequestHeader("Authorization") String token) {
+        // Extract email from JWT token
+        String email = authService.extractEmailFromToken(token.replace("Bearer ", ""));
+        UserDTO user = authService.getCurrentUser(email);
+        return ResponseEntity.ok(user);
     }
 }

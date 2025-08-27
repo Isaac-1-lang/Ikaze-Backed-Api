@@ -69,7 +69,6 @@ public class DatabaseSeeder implements CommandLineRunner {
     @Transactional
     public void seedUsers() {
         log.info("Seeding users...");
-
         String adminEmail = System.getenv("ADMIN_EMAIL");
         String adminPassword = System.getenv("ADMIN_PASSWORD");
         String adminFirstName = System.getenv("ADMIN_FIRST_NAME");

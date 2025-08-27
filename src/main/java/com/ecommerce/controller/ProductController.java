@@ -1,6 +1,7 @@
 package com.ecommerce.controller;
 
 import com.ecommerce.dto.CreateProductDTO;
+import com.ecommerce.dto.CreateProductRequestDTO;
 import com.ecommerce.dto.ManyProductsDto;
 import com.ecommerce.dto.ProductDTO;
 import com.ecommerce.dto.ProductSearchDTO;
@@ -25,6 +26,7 @@ import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.util.HashMap;
 import java.util.List;
@@ -50,10 +52,18 @@ public class ProductController {
             @ApiResponse(responseCode = "403", description = "Forbidden"),
             @ApiResponse(responseCode = "500", description = "Internal server error")
     })
-    public ResponseEntity<?> createProduct(@Valid @ModelAttribute CreateProductDTO createProductDTO) {
+    public ResponseEntity<?> createProduct(@Valid @ModelAttribute CreateProductRequestDTO createProductRequest) {
         try {
-            log.info("Creating product with name: {}", createProductDTO.getName());
-            ProductDTO createdProduct = productService.createProduct(createProductDTO);
+            log.info("Creating product with name: {}", createProductRequest.getName());
+
+            // Convert to CreateProductDTO for service layer
+            CreateProductDTO createProductDTO = createProductRequest.toCreateProductDTO();
+
+            // Handle file uploads separately
+            List<MultipartFile> productImages = createProductRequest.getProductImages();
+            List<MultipartFile> productVideos = createProductRequest.getProductVideos();
+
+            ProductDTO createdProduct = productService.createProduct(createProductDTO, productImages, productVideos);
             log.info("Product created successfully with ID: {}", createdProduct.getProductId());
             return new ResponseEntity<>(createdProduct, HttpStatus.CREATED);
         } catch (EntityNotFoundException e) {
