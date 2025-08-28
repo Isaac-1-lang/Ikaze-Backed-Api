@@ -101,21 +101,17 @@ public class CreateProductRequestDTO {
         dto.setIsFeatured(this.isFeatured);
         dto.setIsBestseller(this.isBestseller);
         dto.setIsNewArrival(this.isNewArrival);
-        // Parse image metadata from JSON string if provided
         if (this.imageMetadata != null && !this.imageMetadata.trim().isEmpty()) {
             try {
                 List<ImageMetadata> parsedImageMetadata = parseImageMetadataFromJson(this.imageMetadata);
                 dto.setImageMetadata(parsedImageMetadata);
             } catch (Exception e) {
-                // Log error but continue - image metadata is optional
                 System.err.println("Failed to parse image metadata JSON: " + e.getMessage());
                 e.printStackTrace();
             }
         }
 
         dto.setVideoMetadata(this.videoMetadata);
-
-        // Parse variants from JSON string if provided
         if (this.variants != null && !this.variants.trim().isEmpty()) {
             try {
                 System.out.println("Raw variants JSON: " + this.variants);
@@ -123,7 +119,6 @@ public class CreateProductRequestDTO {
                 System.out.println("Parsed variants count: " + parsedVariants.size());
                 dto.setVariants(parsedVariants);
             } catch (Exception e) {
-                // Log error but continue - variants are optional
                 System.err.println("Failed to parse variants JSON: " + e.getMessage());
                 e.printStackTrace();
             }
