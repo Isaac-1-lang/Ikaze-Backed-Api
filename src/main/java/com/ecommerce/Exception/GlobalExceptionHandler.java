@@ -33,9 +33,26 @@ public class GlobalExceptionHandler {
         return new ResponseEntity<>(response, HttpStatus.PAYLOAD_TOO_LARGE);
     }
 
+    @ExceptionHandler(IllegalArgumentException.class)
+    public ResponseEntity<FileUploadResponseDTO> handleIllegalArgumentException(IllegalArgumentException ex) {
+        // Check if it's a video duration or file size validation error
+        String message = ex.getMessage();
+        if (message.contains("duration") || message.contains("file size")) {
+            FileUploadResponseDTO response = FileUploadResponseDTO.builder()
+                    .error(message)
+                    .build();
+            return new ResponseEntity<>(response, HttpStatus.BAD_REQUEST);
+        }
+
+        // For other IllegalArgumentException, return generic message
+        FileUploadResponseDTO response = FileUploadResponseDTO.builder()
+                .error("Invalid input: " + ex.getMessage())
+                .build();
+        return new ResponseEntity<>(response, HttpStatus.BAD_REQUEST);
+    }
+
     @ExceptionHandler(Exception.class)
     public ResponseEntity<String> handleGeneralException(Exception ex) {
-        // Log the full exception for debugging but don't expose it to the client
         System.err.println("Unexpected error: " + ex.getMessage());
         ex.printStackTrace();
         return new ResponseEntity<>("An unexpected error occurred. Please try again later.",

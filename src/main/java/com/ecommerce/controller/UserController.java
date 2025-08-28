@@ -1,6 +1,7 @@
 package com.ecommerce.controller;
 
 import com.ecommerce.dto.UserRegistrationDTO;
+import com.ecommerce.dto.UserDTO;
 import com.ecommerce.service.AuthService;
 import com.ecommerce.dto.LoginDto;
 import com.ecommerce.dto.LoginResponseDto;
@@ -54,9 +55,11 @@ public class UserController {
         return ResponseEntity.ok(response);
     }
 
-    
-    @GetMapping("/welcome")
-    public ResponseEntity<String> welcomeUser(@RequestHeader("Authorization") String token) {
-            return ResponseEntity.ok("Welcome back.this is E-commerce backend api");
+    @GetMapping("/me")
+    public ResponseEntity<UserDTO> getCurrentUser(@RequestHeader("Authorization") String token) {
+        // Extract email from JWT token
+        String email = authService.extractEmailFromToken(token.replace("Bearer ", ""));
+        UserDTO user = authService.getCurrentUser(email);
+        return ResponseEntity.ok(user);
     }
 }

@@ -2,6 +2,7 @@ package com.ecommerce.service;
 
 import com.ecommerce.dto.UserRegistrationDTO;
 import com.ecommerce.dto.LoginResponseDto;
+import com.ecommerce.dto.UserDTO;
 
 public interface AuthService {
     String registerUser(UserRegistrationDTO registrationDTO);
@@ -15,4 +16,8 @@ public interface AuthService {
     void resetPassword(String email, String newPassword);
 
     String logoutUser(String token);
+
+    UserDTO getCurrentUser(String email);
+
+    String extractEmailFromToken(String token);
 }
