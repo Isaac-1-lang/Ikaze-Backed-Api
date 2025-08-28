@@ -187,7 +187,7 @@ public class ProductServiceImpl implements ProductService {
             if (productImages != null && !productImages.isEmpty()) {
                 try {
                     processProductImages(savedProduct, productImages,
-                            parseImageMetadataFromString(createProductDTO.getImageMetadata()));
+                            createProductDTO.getImageMetadata());
                     log.info("Successfully processed {} product images", productImages.size());
                 } catch (Exception e) {
                     log.error("Failed to process product images: {}", e.getMessage(), e);

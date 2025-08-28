@@ -12,6 +12,7 @@ import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
+import com.ecommerce.dto.ImageMetadata;
 
 @Data
 public class CreateProductRequestDTO {
@@ -100,7 +101,18 @@ public class CreateProductRequestDTO {
         dto.setIsFeatured(this.isFeatured);
         dto.setIsBestseller(this.isBestseller);
         dto.setIsNewArrival(this.isNewArrival);
-        dto.setImageMetadata(this.imageMetadata);
+        // Parse image metadata from JSON string if provided
+        if (this.imageMetadata != null && !this.imageMetadata.trim().isEmpty()) {
+            try {
+                List<ImageMetadata> parsedImageMetadata = parseImageMetadataFromJson(this.imageMetadata);
+                dto.setImageMetadata(parsedImageMetadata);
+            } catch (Exception e) {
+                // Log error but continue - image metadata is optional
+                System.err.println("Failed to parse image metadata JSON: " + e.getMessage());
+                e.printStackTrace();
+            }
+        }
+
         dto.setVideoMetadata(this.videoMetadata);
 
         // Parse variants from JSON string if provided
@@ -138,6 +150,23 @@ public class CreateProductRequestDTO {
                     objectMapper.getTypeFactory().constructCollectionType(List.class, CreateProductVariantDTO.class));
         } catch (Exception e) {
             System.err.println("Failed to parse variants JSON: " + e.getMessage());
+            e.printStackTrace();
+            return new ArrayList<>();
+        }
+    }
+
+    // Helper method to parse image metadata from JSON
+    private List<ImageMetadata> parseImageMetadataFromJson(String imageMetadataJson) {
+        try {
+            // Use Jackson ObjectMapper to parse JSON
+            ObjectMapper objectMapper = new ObjectMapper();
+            objectMapper.configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
+
+            // Parse the JSON string to List<ImageMetadata>
+            return objectMapper.readValue(imageMetadataJson,
+                    objectMapper.getTypeFactory().constructCollectionType(List.class, ImageMetadata.class));
+        } catch (Exception e) {
+            System.err.println("Failed to parse image metadata JSON: " + e.getMessage());
             e.printStackTrace();
             return new ArrayList<>();
         }
