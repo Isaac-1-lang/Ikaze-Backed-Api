@@ -41,8 +41,6 @@ public class Order {
     @OneToOne(mappedBy = "order", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
     private OrderTransaction orderTransaction;
 
-
-
     @OneToOne(mappedBy = "order", cascade = CascadeType.ALL, fetch = FetchType.LAZY, orphanRemoval = true)
     private OrderAddress orderAddress;
 
@@ -174,10 +172,15 @@ public class Order {
         if (orderInfo != null && orderInfo.getFinalAmount() != null) {
             return orderInfo.getFinalAmount();
         }
-        
+
         // Calculate from order items if order info is not available
         return orderItems.stream()
-                .map(item -> item.getProductVariant().getPrice().multiply(BigDecimal.valueOf(item.getQuantity())))
+                .map(item -> {
+                    BigDecimal price = item.getProductVariant() != null && item.getProductVariant().getPrice() != null
+                            ? item.getProductVariant().getPrice()
+                            : BigDecimal.ZERO;
+                    return price.multiply(BigDecimal.valueOf(item.getQuantity()));
+                })
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
     }
 

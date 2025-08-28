@@ -1,4 +1,3 @@
-// ...existing code...
 package com.ecommerce.ServiceImpl;
 
 import com.ecommerce.entity.Order;
@@ -186,7 +185,7 @@ public class OrderServiceImpl implements OrderService {
         }
         orderTransaction.setPaymentMethod(paymentMethod);
         orderTransaction.setStatus(OrderTransaction.TransactionStatus.PENDING);
-        
+
         // Store Stripe payment information (no sensitive data)
         if (createOrderDTO.getStripePaymentIntentId() != null) {
             orderTransaction.setStripePaymentIntentId(createOrderDTO.getStripePaymentIntentId());
@@ -194,10 +193,10 @@ public class OrderServiceImpl implements OrderService {
         if (createOrderDTO.getStripeSessionId() != null) {
             orderTransaction.setStripeSessionId(createOrderDTO.getStripeSessionId());
         }
-        
+
         // Generate transaction reference
         orderTransaction.setTransactionRef("TXN-" + System.currentTimeMillis());
-        
+
         orderTransaction.setCreatedAt(LocalDateTime.now());
         orderTransaction.setUpdatedAt(LocalDateTime.now());
         order.setOrderTransaction(orderTransaction);
@@ -340,21 +339,18 @@ public class OrderServiceImpl implements OrderService {
     }
 
     // Customer methods
-    @Override
     public List<CustomerOrderDTO> getCustomerOrders(UUID userId) {
         List<Order> orders = getOrdersForUser(userId);
         return orders.stream()
-            .map(this::toCustomerOrderDTO)
-            .collect(Collectors.toList());
+                .map(this::toCustomerOrderDTO)
+                .collect(Collectors.toList());
     }
 
-    @Override
     public CustomerOrderDTO getCustomerOrderById(UUID userId, Long orderId) {
         Order order = getOrderByIdForUser(userId, orderId);
         return toCustomerOrderDTO(order);
     }
 
-    @Override
     public CustomerOrderDTO getCustomerOrderByNumber(UUID userId, String orderNumber) {
         Order order = getOrderByNumber(userId, orderNumber);
         return toCustomerOrderDTO(order);
@@ -362,11 +358,11 @@ public class OrderServiceImpl implements OrderService {
 
     // Admin methods
     @Override
-    public List<AdminOrderDTO> getAllOrders() {
+    public List<AdminOrderDTO> getAllAdminOrders() {
         List<Order> orders = orderRepository.findAll();
         return orders.stream()
-            .map(this::toAdminOrderDTO)
-            .collect(Collectors.toList());
+                .map(this::toAdminOrderDTO)
+                .collect(Collectors.toList());
     }
 
     @Override
@@ -374,21 +370,21 @@ public class OrderServiceImpl implements OrderService {
         Order.OrderStatus orderStatus = Order.OrderStatus.valueOf(status.toUpperCase());
         List<Order> orders = orderRepository.findByOrderStatus(orderStatus);
         return orders.stream()
-            .map(this::toAdminOrderDTO)
-            .collect(Collectors.toList());
+                .map(this::toAdminOrderDTO)
+                .collect(Collectors.toList());
     }
 
     @Override
     public AdminOrderDTO getAdminOrderById(Long orderId) {
         Order order = orderRepository.findById(orderId)
-            .orElseThrow(() -> new EntityNotFoundException("Order not found"));
+                .orElseThrow(() -> new EntityNotFoundException("Order not found"));
         return toAdminOrderDTO(order);
     }
 
     @Override
     public AdminOrderDTO getAdminOrderByNumber(String orderNumber) {
         Order order = orderRepository.findByOrderCode(orderNumber)
-            .orElseThrow(() -> new EntityNotFoundException("Order not found"));
+                .orElseThrow(() -> new EntityNotFoundException("Order not found"));
         return toAdminOrderDTO(order);
     }
 
@@ -397,8 +393,8 @@ public class OrderServiceImpl implements OrderService {
     public List<DeliveryOrderDTO> getDeliveryOrders() {
         List<Order> orders = orderRepository.findAll();
         return orders.stream()
-            .map(this::toDeliveryOrderDTO)
-            .collect(Collectors.toList());
+                .map(this::toDeliveryOrderDTO)
+                .collect(Collectors.toList());
     }
 
     @Override
@@ -406,14 +402,14 @@ public class OrderServiceImpl implements OrderService {
         Order.OrderStatus orderStatus = Order.OrderStatus.valueOf(status.toUpperCase());
         List<Order> orders = orderRepository.findByOrderStatus(orderStatus);
         return orders.stream()
-            .map(this::toDeliveryOrderDTO)
-            .collect(Collectors.toList());
+                .map(this::toDeliveryOrderDTO)
+                .collect(Collectors.toList());
     }
 
     @Override
     public DeliveryOrderDTO getDeliveryOrderByNumber(String orderNumber) {
         Order order = orderRepository.findByOrderCode(orderNumber)
-            .orElseThrow(() -> new EntityNotFoundException("Order not found"));
+                .orElseThrow(() -> new EntityNotFoundException("Order not found"));
         return toDeliveryOrderDTO(order);
     }
 
@@ -421,65 +417,70 @@ public class OrderServiceImpl implements OrderService {
     @Transactional
     public Order updateOrderTracking(Long orderId, String trackingNumber, String estimatedDelivery) {
         log.info("Updating tracking info for order {}", orderId);
-        
+
         Order order = orderRepository.findById(orderId)
-            .orElseThrow(() -> new EntityNotFoundException("Order not found"));
-        
-        // Update tracking information (you might want to add these fields to Order entity)
+                .orElseThrow(() -> new EntityNotFoundException("Order not found"));
+
+        // Update tracking information (you might want to add these fields to Order
+        // entity)
         // For now, we'll store in notes or create a separate tracking entity
         String currentNotes = order.getOrderInfo() != null ? order.getOrderInfo().getNotes() : "";
-        String updatedNotes = currentNotes + "\nTracking: " + trackingNumber + 
-                            (estimatedDelivery != null ? "\nEstimated Delivery: " + estimatedDelivery : "");
-        
+        String updatedNotes = currentNotes + "\nTracking: " + trackingNumber +
+                (estimatedDelivery != null ? "\nEstimated Delivery: " + estimatedDelivery : "");
+
         if (order.getOrderInfo() != null) {
             order.getOrderInfo().setNotes(updatedNotes);
         }
-        
+
         order.setUpdatedAt(LocalDateTime.now());
         Order savedOrder = orderRepository.save(order);
         log.info("Tracking info updated for order {}", orderId);
-        
+
         return savedOrder;
     }
 
     // DTO conversion methods
     private CustomerOrderDTO toCustomerOrderDTO(Order order) {
         return CustomerOrderDTO.builder()
-            .id(order.getOrderId().toString())
-            .orderNumber(order.getOrderCode())
-            .status(order.getOrderStatus().name())
-            .items(order.getOrderItems().stream()
-                .map(this::toCustomerOrderItemDTO)
-                .collect(Collectors.toList()))
-            .subtotal(order.getOrderInfo() != null ? order.getOrderInfo().getTotalAmount() : BigDecimal.ZERO)
-            .tax(order.getOrderInfo() != null ? order.getOrderInfo().getTaxAmount() : BigDecimal.ZERO)
-            .shipping(order.getOrderInfo() != null ? order.getOrderInfo().getShippingCost() : BigDecimal.ZERO)
-            .discount(order.getOrderInfo() != null ? order.getOrderInfo().getDiscountAmount() : BigDecimal.ZERO)
-            .total(order.getOrderInfo() != null ? order.getOrderInfo().getFinalAmount() : BigDecimal.ZERO)
-            .shippingAddress(toCustomerOrderAddressDTO(order.getOrderAddress()))
-            .billingAddress(toCustomerOrderAddressDTO(order.getOrderAddress())) // Same as shipping for now
-            .paymentMethod(order.getOrderTransaction() != null ? order.getOrderTransaction().getPaymentMethod().name() : null)
-            .paymentStatus(order.getOrderTransaction() != null ? order.getOrderTransaction().getStatus().name() : null)
-            .notes(order.getOrderInfo() != null ? order.getOrderInfo().getNotes() : null)
-            .createdAt(order.getCreatedAt())
-            .updatedAt(order.getUpdatedAt())
-            .build();
+                .id(order.getOrderId().toString())
+                .orderNumber(order.getOrderCode())
+                .status(order.getOrderStatus().name())
+                .items(order.getOrderItems().stream()
+                        .map(this::toCustomerOrderItemDTO)
+                        .collect(Collectors.toList()))
+                .subtotal(order.getOrderInfo() != null ? order.getOrderInfo().getTotalAmount() : BigDecimal.ZERO)
+                .tax(order.getOrderInfo() != null ? order.getOrderInfo().getTaxAmount() : BigDecimal.ZERO)
+                .shipping(order.getOrderInfo() != null ? order.getOrderInfo().getShippingCost() : BigDecimal.ZERO)
+                .discount(order.getOrderInfo() != null ? order.getOrderInfo().getDiscountAmount() : BigDecimal.ZERO)
+                .total(order.getOrderInfo() != null ? order.getOrderInfo().getFinalAmount() : BigDecimal.ZERO)
+                .shippingAddress(toCustomerOrderAddressDTO(order.getOrderAddress()))
+                .billingAddress(toCustomerOrderAddressDTO(order.getOrderAddress())) // Same as shipping for now
+                .paymentMethod(
+                        order.getOrderTransaction() != null ? order.getOrderTransaction().getPaymentMethod().name()
+                                : null)
+                .paymentStatus(
+                        order.getOrderTransaction() != null ? order.getOrderTransaction().getStatus().name() : null)
+                .notes(order.getOrderInfo() != null ? order.getOrderInfo().getNotes() : null)
+                .createdAt(order.getCreatedAt())
+                .updatedAt(order.getUpdatedAt())
+                .build();
     }
 
     private CustomerOrderDTO.CustomerOrderItemDTO toCustomerOrderItemDTO(OrderItem item) {
         return CustomerOrderDTO.CustomerOrderItemDTO.builder()
-            .id(item.getOrderItemId().toString())
-            .productId(item.getProductVariant().getProduct().getProductId().toString())
-            .product(toSimpleProductDTO(item.getProductVariant().getProduct()))
-            .quantity(item.getQuantity())
-            .price(item.getPrice())
-            .totalPrice(item.getPrice().multiply(BigDecimal.valueOf(item.getQuantity())))
-            .build();
+                .id(item.getOrderItemId().toString())
+                .productId(item.getProductVariant().getProduct().getProductId().toString())
+                .product(toSimpleProductDTO(item.getProductVariant().getProduct()))
+                .quantity(item.getQuantity())
+                .price(item.getPrice())
+                .totalPrice(item.getPrice().multiply(BigDecimal.valueOf(item.getQuantity())))
+                .build();
     }
 
     private CustomerOrderDTO.CustomerOrderAddressDTO toCustomerOrderAddressDTO(OrderAddress addr) {
-        if (addr == null) return null;
-        
+        if (addr == null)
+            return null;
+
         String city = "", state = "";
         if (addr.getRegions() != null && !addr.getRegions().isEmpty()) {
             String[] regions = addr.getRegions().split(",");
@@ -490,60 +491,62 @@ public class OrderServiceImpl implements OrderService {
                 city = regions[0].trim();
             }
         }
-        
+
         return CustomerOrderDTO.CustomerOrderAddressDTO.builder()
-            .id(addr.getOrderAddressId().toString())
-            .street(addr.getStreet())
-            .city(city)
-            .state(state)
-            .zipCode(addr.getZipcode())
-            .country(addr.getCountry())
-            .phone("") // Will be set from customer info
-            .build();
+                .id(addr.getOrderAddressId().toString())
+                .street(addr.getStreet())
+                .city(city)
+                .state(state)
+                .zipCode(addr.getZipcode())
+                .country(addr.getCountry())
+                .phone("") // Will be set from customer info
+                .build();
     }
 
     private AdminOrderDTO toAdminOrderDTO(Order order) {
         return AdminOrderDTO.builder()
-            .id(order.getOrderId().toString())
-            .userId(order.getUser() != null ? order.getUser().getId().toString() : null)
-            .customerName(order.getOrderCustomerInfo() != null ? 
-                order.getOrderCustomerInfo().getFirstName() + " " + order.getOrderCustomerInfo().getLastName() : null)
-            .customerEmail(order.getOrderCustomerInfo() != null ? order.getOrderCustomerInfo().getEmail() : null)
-            .orderNumber(order.getOrderCode())
-            .status(order.getOrderStatus().name())
-            .items(order.getOrderItems().stream()
-                .map(this::toAdminOrderItemDTO)
-                .collect(Collectors.toList()))
-            .subtotal(order.getOrderInfo() != null ? order.getOrderInfo().getTotalAmount() : BigDecimal.ZERO)
-            .tax(order.getOrderInfo() != null ? order.getOrderInfo().getTaxAmount() : BigDecimal.ZERO)
-            .shipping(order.getOrderInfo() != null ? order.getOrderInfo().getShippingCost() : BigDecimal.ZERO)
-            .discount(order.getOrderInfo() != null ? order.getOrderInfo().getDiscountAmount() : BigDecimal.ZERO)
-            .total(order.getOrderInfo() != null ? order.getOrderInfo().getFinalAmount() : BigDecimal.ZERO)
-            .shippingAddress(toAdminOrderAddressDTO(order.getOrderAddress()))
-            .billingAddress(toAdminOrderAddressDTO(order.getOrderAddress()))
-            .paymentInfo(toAdminPaymentInfoDTO(order.getOrderTransaction()))
-            .notes(order.getOrderInfo() != null ? order.getOrderInfo().getNotes() : null)
-            .createdAt(order.getCreatedAt())
-            .updatedAt(order.getUpdatedAt())
-            .build();
+                .id(order.getOrderId().toString())
+                .userId(order.getUser() != null ? order.getUser().getId().toString() : null)
+                .customerName(order.getOrderCustomerInfo() != null
+                        ? order.getOrderCustomerInfo().getFirstName() + " " + order.getOrderCustomerInfo().getLastName()
+                        : null)
+                .customerEmail(order.getOrderCustomerInfo() != null ? order.getOrderCustomerInfo().getEmail() : null)
+                .orderNumber(order.getOrderCode())
+                .status(order.getOrderStatus().name())
+                .items(order.getOrderItems().stream()
+                        .map(this::toAdminOrderItemDTO)
+                        .collect(Collectors.toList()))
+                .subtotal(order.getOrderInfo() != null ? order.getOrderInfo().getTotalAmount() : BigDecimal.ZERO)
+                .tax(order.getOrderInfo() != null ? order.getOrderInfo().getTaxAmount() : BigDecimal.ZERO)
+                .shipping(order.getOrderInfo() != null ? order.getOrderInfo().getShippingCost() : BigDecimal.ZERO)
+                .discount(order.getOrderInfo() != null ? order.getOrderInfo().getDiscountAmount() : BigDecimal.ZERO)
+                .total(order.getOrderInfo() != null ? order.getOrderInfo().getFinalAmount() : BigDecimal.ZERO)
+                .shippingAddress(toAdminOrderAddressDTO(order.getOrderAddress()))
+                .billingAddress(toAdminOrderAddressDTO(order.getOrderAddress()))
+                .paymentInfo(toAdminPaymentInfoDTO(order.getOrderTransaction()))
+                .notes(order.getOrderInfo() != null ? order.getOrderInfo().getNotes() : null)
+                .createdAt(order.getCreatedAt())
+                .updatedAt(order.getUpdatedAt())
+                .build();
     }
 
     private AdminOrderDTO.AdminOrderItemDTO toAdminOrderItemDTO(OrderItem item) {
         return AdminOrderDTO.AdminOrderItemDTO.builder()
-            .id(item.getOrderItemId().toString())
-            .productId(item.getProductVariant().getProduct().getProductId().toString())
-            .variantId(item.getProductVariant().getId().toString())
-            .product(toSimpleProductDTO(item.getProductVariant().getProduct()))
-            .quantity(item.getQuantity())
-            .price(item.getPrice())
-            .totalPrice(item.getPrice().multiply(BigDecimal.valueOf(item.getQuantity())))
-            .availableStock(item.getProductVariant().getStockQuantity())
-            .build();
+                .id(item.getOrderItemId().toString())
+                .productId(item.getProductVariant().getProduct().getProductId().toString())
+                .variantId(item.getProductVariant().getId().toString())
+                .product(toSimpleProductDTO(item.getProductVariant().getProduct()))
+                .quantity(item.getQuantity())
+                .price(item.getPrice())
+                .totalPrice(item.getPrice().multiply(BigDecimal.valueOf(item.getQuantity())))
+                .availableStock(item.getProductVariant().getStockQuantity())
+                .build();
     }
 
     private AdminOrderDTO.AdminOrderAddressDTO toAdminOrderAddressDTO(OrderAddress addr) {
-        if (addr == null) return null;
-        
+        if (addr == null)
+            return null;
+
         String city = "", state = "";
         if (addr.getRegions() != null && !addr.getRegions().isEmpty()) {
             String[] regions = addr.getRegions().split(",");
@@ -554,59 +557,61 @@ public class OrderServiceImpl implements OrderService {
                 city = regions[0].trim();
             }
         }
-        
+
         return AdminOrderDTO.AdminOrderAddressDTO.builder()
-            .id(addr.getOrderAddressId().toString())
-            .street(addr.getStreet())
-            .city(city)
-            .state(state)
-            .zipCode(addr.getZipcode())
-            .country(addr.getCountry())
-            .phone("") // Will be set from customer info
-            .build();
+                .id(addr.getOrderAddressId().toString())
+                .street(addr.getStreet())
+                .city(city)
+                .state(state)
+                .zipCode(addr.getZipcode())
+                .country(addr.getCountry())
+                .phone("") // Will be set from customer info
+                .build();
     }
 
     private AdminOrderDTO.AdminPaymentInfoDTO toAdminPaymentInfoDTO(OrderTransaction tx) {
-        if (tx == null) return null;
-        
+        if (tx == null)
+            return null;
+
         return AdminOrderDTO.AdminPaymentInfoDTO.builder()
-            .paymentMethod(tx.getPaymentMethod().name())
-            .paymentStatus(tx.getStatus().name())
-            .stripePaymentIntentId(tx.getStripePaymentIntentId())
-            .stripeSessionId(tx.getStripeSessionId())
-            .transactionRef(tx.getTransactionRef())
-            .paymentDate(tx.getPaymentDate())
-            .receiptUrl(tx.getReceiptUrl())
-            .build();
+                .paymentMethod(tx.getPaymentMethod().name())
+                .paymentStatus(tx.getStatus().name())
+                .stripePaymentIntentId(tx.getStripePaymentIntentId())
+                .stripeSessionId(tx.getStripeSessionId())
+                .transactionRef(tx.getTransactionRef())
+                .paymentDate(tx.getPaymentDate())
+                .receiptUrl(tx.getReceiptUrl())
+                .build();
     }
 
     private DeliveryOrderDTO toDeliveryOrderDTO(Order order) {
         return DeliveryOrderDTO.builder()
-            .orderNumber(order.getOrderCode())
-            .status(order.getOrderStatus().name())
-            .items(order.getOrderItems().stream()
-                .map(this::toDeliveryItemDTO)
-                .collect(Collectors.toList()))
-            .deliveryAddress(toDeliveryAddressDTO(order.getOrderAddress()))
-            .customer(toDeliveryCustomerDTO(order.getOrderCustomerInfo()))
-            .notes(order.getOrderInfo() != null ? order.getOrderInfo().getNotes() : null)
-            .createdAt(order.getCreatedAt())
-            .build();
+                .orderNumber(order.getOrderCode())
+                .status(order.getOrderStatus().name())
+                .items(order.getOrderItems().stream()
+                        .map(this::toDeliveryItemDTO)
+                        .collect(Collectors.toList()))
+                .deliveryAddress(toDeliveryAddressDTO(order.getOrderAddress()))
+                .customer(toDeliveryCustomerDTO(order.getOrderCustomerInfo()))
+                .notes(order.getOrderInfo() != null ? order.getOrderInfo().getNotes() : null)
+                .createdAt(order.getCreatedAt())
+                .build();
     }
 
     private DeliveryOrderDTO.DeliveryItemDTO toDeliveryItemDTO(OrderItem item) {
         return DeliveryOrderDTO.DeliveryItemDTO.builder()
-            .productName(item.getProductVariant().getProduct().getProductName())
-            .variantSku("SKU-" + item.getProductVariant().getId()) // Generate SKU from variant ID
-            .quantity(item.getQuantity())
-            .productImage("") // You can add product image logic here
-            .productDescription(item.getProductVariant().getProduct().getDescription())
-            .build();
+                .productName(item.getProductVariant().getProduct().getProductName())
+                .variantSku("SKU-" + item.getProductVariant().getId()) // Generate SKU from variant ID
+                .quantity(item.getQuantity())
+                .productImage("") // You can add product image logic here
+                .productDescription(item.getProductVariant().getProduct().getDescription())
+                .build();
     }
 
     private DeliveryOrderDTO.DeliveryAddressDTO toDeliveryAddressDTO(OrderAddress addr) {
-        if (addr == null) return null;
-        
+        if (addr == null)
+            return null;
+
         String city = "", state = "";
         if (addr.getRegions() != null && !addr.getRegions().isEmpty()) {
             String[] regions = addr.getRegions().split(",");
@@ -617,32 +622,33 @@ public class OrderServiceImpl implements OrderService {
                 city = regions[0].trim();
             }
         }
-        
+
         return DeliveryOrderDTO.DeliveryAddressDTO.builder()
-            .street(addr.getStreet())
-            .city(city)
-            .state(state)
-            .zipCode(addr.getZipcode())
-            .country(addr.getCountry())
-            .build();
+                .street(addr.getStreet())
+                .city(city)
+                .state(state)
+                .zipCode(addr.getZipcode())
+                .country(addr.getCountry())
+                .build();
     }
 
     private DeliveryOrderDTO.DeliveryCustomerDTO toDeliveryCustomerDTO(OrderCustomerInfo customerInfo) {
-        if (customerInfo == null) return null;
-        
+        if (customerInfo == null)
+            return null;
+
         return DeliveryOrderDTO.DeliveryCustomerDTO.builder()
-            .fullName(customerInfo.getFirstName() + " " + customerInfo.getLastName())
-            .phone(customerInfo.getPhoneNumber())
-            .build();
+                .fullName(customerInfo.getFirstName() + " " + customerInfo.getLastName())
+                .phone(customerInfo.getPhoneNumber())
+                .build();
     }
 
     private SimpleProductDTO toSimpleProductDTO(Product product) {
         return new SimpleProductDTO(
-            product.getProductId().toString(),
-            product.getProductName(),
-            product.getDescription(),
-            product.getPrice().doubleValue(),
-            new String[0] // Empty images array
+                product.getProductId().toString(),
+                product.getProductName(),
+                product.getDescription(),
+                product.getPrice().doubleValue(),
+                new String[0] // Empty images array
         );
     }
 }

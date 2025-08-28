@@ -30,20 +30,19 @@ public class AdminOrderController {
     @Operation(summary = "Get all orders", description = "Retrieve all orders in the system")
     public ResponseEntity<?> getAllOrders() {
         try {
-            List<AdminOrderDTO> orders = orderService.getAllOrders();
-            
+            List<AdminOrderDTO> orders = orderService.getAllAdminOrders();
+
             Map<String, Object> response = new HashMap<>();
             response.put("success", true);
             response.put("data", orders);
-            
+
             return ResponseEntity.ok(response);
-            
+
         } catch (Exception e) {
             log.error("Error fetching all orders: {}", e.getMessage(), e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(Map.of(
-                "success", false,
-                "message", "Failed to fetch orders"
-            ));
+                    "success", false,
+                    "message", "Failed to fetch orders"));
         }
     }
 
@@ -52,24 +51,22 @@ public class AdminOrderController {
     public ResponseEntity<?> getOrdersByStatus(@PathVariable String status) {
         try {
             List<AdminOrderDTO> orders = orderService.getOrdersByStatus(status);
-            
+
             Map<String, Object> response = new HashMap<>();
             response.put("success", true);
             response.put("data", orders);
-            
+
             return ResponseEntity.ok(response);
-            
+
         } catch (IllegalArgumentException e) {
             return ResponseEntity.badRequest().body(Map.of(
-                "success", false,
-                "message", "Invalid status: " + status
-            ));
+                    "success", false,
+                    "message", "Invalid status: " + status));
         } catch (Exception e) {
             log.error("Error fetching orders by status: {}", e.getMessage(), e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(Map.of(
-                "success", false,
-                "message", "Failed to fetch orders"
-            ));
+                    "success", false,
+                    "message", "Failed to fetch orders"));
         }
     }
 
@@ -78,24 +75,22 @@ public class AdminOrderController {
     public ResponseEntity<?> getOrderById(@PathVariable Long orderId) {
         try {
             AdminOrderDTO order = orderService.getAdminOrderById(orderId);
-            
+
             Map<String, Object> response = new HashMap<>();
             response.put("success", true);
             response.put("data", order);
-            
+
             return ResponseEntity.ok(response);
-            
+
         } catch (EntityNotFoundException e) {
             return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of(
-                "success", false,
-                "message", "Order not found"
-            ));
+                    "success", false,
+                    "message", "Order not found"));
         } catch (Exception e) {
             log.error("Error fetching order by ID: {}", e.getMessage(), e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(Map.of(
-                "success", false,
-                "message", "Failed to fetch order"
-            ));
+                    "success", false,
+                    "message", "Failed to fetch order"));
         }
     }
 
@@ -104,24 +99,22 @@ public class AdminOrderController {
     public ResponseEntity<?> getOrderByNumber(@PathVariable String orderNumber) {
         try {
             AdminOrderDTO order = orderService.getAdminOrderByNumber(orderNumber);
-            
+
             Map<String, Object> response = new HashMap<>();
             response.put("success", true);
             response.put("data", order);
-            
+
             return ResponseEntity.ok(response);
-            
+
         } catch (EntityNotFoundException e) {
             return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of(
-                "success", false,
-                "message", "Order not found"
-            ));
+                    "success", false,
+                    "message", "Order not found"));
         } catch (Exception e) {
             log.error("Error fetching order by number: {}", e.getMessage(), e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(Map.of(
-                "success", false,
-                "message", "Failed to fetch order"
-            ));
+                    "success", false,
+                    "message", "Failed to fetch order"));
         }
     }
 
@@ -132,37 +125,33 @@ public class AdminOrderController {
             String status = request.get("status");
             if (status == null) {
                 return ResponseEntity.badRequest().body(Map.of(
-                    "success", false,
-                    "message", "Status is required"
-                ));
+                        "success", false,
+                        "message", "Status is required"));
             }
 
             var order = orderService.updateOrderStatus(orderId, status);
             AdminOrderDTO adminOrder = orderService.getAdminOrderById(order.getOrderId());
-            
+
             Map<String, Object> response = new HashMap<>();
             response.put("success", true);
             response.put("message", "Order status updated successfully");
             response.put("data", adminOrder);
-            
+
             return ResponseEntity.ok(response);
-            
+
         } catch (EntityNotFoundException e) {
             return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of(
-                "success", false,
-                "message", "Order not found"
-            ));
+                    "success", false,
+                    "message", "Order not found"));
         } catch (IllegalArgumentException e) {
             return ResponseEntity.badRequest().body(Map.of(
-                "success", false,
-                "message", e.getMessage()
-            ));
+                    "success", false,
+                    "message", e.getMessage()));
         } catch (Exception e) {
             log.error("Error updating order status: {}", e.getMessage(), e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(Map.of(
-                "success", false,
-                "message", "Failed to update order status"
-            ));
+                    "success", false,
+                    "message", "Failed to update order status"));
         }
     }
 
@@ -175,32 +164,29 @@ public class AdminOrderController {
 
             if (trackingNumber == null) {
                 return ResponseEntity.badRequest().body(Map.of(
-                    "success", false,
-                    "message", "Tracking number is required"
-                ));
+                        "success", false,
+                        "message", "Tracking number is required"));
             }
 
             var order = orderService.updateOrderTracking(orderId, trackingNumber, estimatedDelivery);
             AdminOrderDTO adminOrder = orderService.getAdminOrderById(order.getOrderId());
-            
+
             Map<String, Object> response = new HashMap<>();
             response.put("success", true);
             response.put("message", "Tracking information updated successfully");
             response.put("data", adminOrder);
-            
+
             return ResponseEntity.ok(response);
-            
+
         } catch (EntityNotFoundException e) {
             return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of(
-                "success", false,
-                "message", "Order not found"
-            ));
+                    "success", false,
+                    "message", "Order not found"));
         } catch (Exception e) {
             log.error("Error updating order tracking: {}", e.getMessage(), e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(Map.of(
-                "success", false,
-                "message", "Failed to update tracking information"
-            ));
+                    "success", false,
+                    "message", "Failed to update tracking information"));
         }
     }
 }
