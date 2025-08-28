@@ -10,6 +10,7 @@ import com.ecommerce.dto.CartDTO;
 import com.ecommerce.dto.CartItemDTO;
 import com.ecommerce.dto.CheckoutRequest;
 import com.ecommerce.dto.CheckoutVerificationResult;
+import com.ecommerce.dto.GuestCheckoutRequest;
 import com.ecommerce.entity.Order;
 import com.ecommerce.entity.OrderCustomerInfo;
 import com.ecommerce.entity.OrderItem;
@@ -38,7 +39,7 @@ public class CheckoutService {
     private final ProductVariantRepository variantRepository;
     private final OrderTransactionRepository transactionRepository;
     private final UserRepository userRepository;
-    private final StripeService stripeService; // wrapper for Stripe SDK calls
+    private final StripeService stripeService;
 
     @Transactional
     public String createCheckoutSession(CheckoutRequest req) throws Exception {
@@ -54,10 +55,18 @@ public class CheckoutService {
         order.setUser(user);
 
         OrderCustomerInfo customerInfo = new OrderCustomerInfo();
-        customerInfo.setFirstName(req.getFirstName());
-        customerInfo.setLastName(req.getLastName());
-        customerInfo.setEmail(req.getEmail());
-        customerInfo.setPhoneNumber(req.getPhoneNumber());
+        customerInfo.setFirstName(user.getFirstName());
+        customerInfo.setLastName(user.getLastName());
+        customerInfo.setEmail(user.getUserEmail());
+        customerInfo.setPhoneNumber(user.getPhoneNumber());
+        // Map address from req.getShippingAddress() if present
+        if (req.getShippingAddress() != null) {
+            customerInfo.setStreetAddress(req.getShippingAddress().getStreetAddress());
+            customerInfo.setCity(req.getShippingAddress().getCity());
+            customerInfo.setState(req.getShippingAddress().getState());
+            customerInfo.setPostalCode(req.getShippingAddress().getPostalCode());
+            customerInfo.setCountry(req.getShippingAddress().getCountry());
+        }
         order.setOrderCustomerInfo(customerInfo);
         customerInfo.setOrder(order);
 
@@ -102,7 +111,7 @@ public class CheckoutService {
     }
 
     @Transactional
-    public String createGuestCheckoutSession(CheckoutRequest req) throws Exception {
+    public String createGuestCheckoutSession(GuestCheckoutRequest req) throws Exception {
         log.info("Creating guest checkout session");
 
         // 1. build order
@@ -110,10 +119,18 @@ public class CheckoutService {
         order.setOrderStatus(Order.OrderStatus.PENDING);
         // order.user remains null for guest
         OrderCustomerInfo customerInfo = new OrderCustomerInfo();
-        customerInfo.setFirstName(req.getFirstName());
-        customerInfo.setLastName(req.getLastName());
-        customerInfo.setEmail(req.getEmail());
-        customerInfo.setPhoneNumber(req.getPhoneNumber());
+        customerInfo.setFirstName(req.getGuestName());
+        customerInfo.setLastName(req.getGuestLastName());
+        customerInfo.setEmail(req.getGuestEmail());
+        customerInfo.setPhoneNumber(req.getGuestPhone());
+        // Map address from req.getAddress()
+        if (req.getAddress() != null) {
+            customerInfo.setStreetAddress(req.getAddress().getStreetAddress());
+            customerInfo.setCity(req.getAddress().getCity());
+            customerInfo.setState(req.getAddress().getState());
+            customerInfo.setPostalCode(req.getAddress().getPostalCode());
+            customerInfo.setCountry(req.getAddress().getCountry());
+        }
         order.setOrderCustomerInfo(customerInfo);
         customerInfo.setOrder(order);
 
@@ -151,7 +168,8 @@ public class CheckoutService {
         log.info("Guest order created with ID: {}", saved.getOrderId());
 
         // 2. create stripe session
-        String sessionUrl = stripeService.createCheckoutSessionForOrder(saved, req.getCurrency());
+        String sessionUrl = stripeService.createCheckoutSessionForOrder(saved, "usd"); // Default currency, adjust if
+                                                                                       // needed
         log.info("Guest Stripe session created successfully");
 
         return sessionUrl;
