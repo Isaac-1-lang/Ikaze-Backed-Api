@@ -73,12 +73,12 @@ public class ProductSearchDTO {
     // Variant filters
     private Integer variantCountMin;
     private Integer variantCountMax;
-    private List<String> variantAttributes; // e.g., ["Color:Red", "Size:LG"]
+    private List<String> variantAttributes;
 
     // Physical attributes
     private BigDecimal weightMin;
     private BigDecimal weightMax;
-    private BigDecimal dimensionsMin; // Length + Width + Height
+    private BigDecimal dimensionsMin;
     private BigDecimal dimensionsMax;
 
     // Date filters
