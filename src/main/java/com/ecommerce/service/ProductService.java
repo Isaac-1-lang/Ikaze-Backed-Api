@@ -8,6 +8,7 @@ import com.ecommerce.dto.ProductUpdateDTO;
 
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
 import java.util.UUID;
@@ -18,9 +19,12 @@ public interface ProductService {
      * Create a new product with variants, images, and videos
      * 
      * @param createProductDTO The product creation data
+     * @param productImages    List of product image files
+     * @param productVideos    List of product video files
      * @return The created product DTO
      */
-    ProductDTO createProduct(CreateProductDTO createProductDTO);
+    ProductDTO createProduct(CreateProductDTO createProductDTO, List<MultipartFile> productImages,
+            List<MultipartFile> productVideos);
 
     /**
      * Get a product by its ID
@@ -70,7 +74,8 @@ public interface ProductService {
      * 
      * @param productId The product ID
      * @return true if deleted successfully
-     * @throws ProductDeletionException if the product cannot be deleted due to pending orders
+     * @throws ProductDeletionException if the product cannot be deleted due to
+     *                                  pending orders
      */
     boolean deleteProduct(UUID productId);
 

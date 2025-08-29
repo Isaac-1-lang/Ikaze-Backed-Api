@@ -2,6 +2,8 @@ package com.ecommerce.Filters;
 
 import java.io.IOException;
 
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Component;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.core.userdetails.UserDetails;
@@ -16,20 +18,20 @@ import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 
+@Component
 public class JwtAuthFilter extends OncePerRequestFilter {
 
-    private JwtService jwtService;
-    private UserDetailsService userDetailsService;
+    private final JwtService jwtService;
+    private final UserDetailsService userDetailsService;
 
-    public JwtAuthFilter(JwtService servic,UserDetailsService userDet){
-        this.jwtService=servic;
-        this.userDetailsService= userDet;
+    @Autowired
+    public JwtAuthFilter(JwtService jwtService, UserDetailsService userDetailsService) {
+        this.jwtService = jwtService;
+        this.userDetailsService = userDetailsService;
     }
 
-
-
- @SuppressWarnings("null")
-@Override
+    @SuppressWarnings("null")
+    @Override
     public void doFilterInternal(HttpServletRequest req, HttpServletResponse res, FilterChain filterChain)
             throws ServletException, IOException {
         String authHeader = req.getHeader("Authorization");
@@ -65,7 +67,4 @@ public class JwtAuthFilter extends OncePerRequestFilter {
 
         filterChain.doFilter(req, res);
     }
-
-
-
 }

@@ -11,6 +11,7 @@ import org.springframework.stereotype.Service;
 import com.ecommerce.Enum.UserRole;
 import com.ecommerce.Exception.CustomException;
 import com.ecommerce.dto.UserRegistrationDTO;
+import com.ecommerce.dto.UserDTO;
 import com.ecommerce.entity.User;
 import com.ecommerce.repository.UserRepository;
 import com.ecommerce.service.AuthService;
@@ -128,5 +129,32 @@ public class AuthServiceImpl implements AuthService {
     public String logoutUser(String token) {
         jwtService.invalidateToken(token);
         return "User logged out successfully";
+    }
+
+    @Override
+    public UserDTO getCurrentUser(String email) {
+        User user = userRepository.findByUserEmail(email)
+                .orElseThrow(() -> new CustomException("User not found"));
+
+        UserDTO userDTO = new UserDTO();
+        userDTO.setId(user.getId());
+        userDTO.setFirstName(user.getFirstName());
+        userDTO.setLastName(user.getLastName());
+        userDTO.setUserEmail(user.getUserEmail());
+        userDTO.setPhoneNumber(user.getPhoneNumber());
+        userDTO.setRole(user.getRole());
+        userDTO.setEmailVerified(user.isEmailVerified());
+        userDTO.setPhoneVerified(user.isPhoneVerified());
+        userDTO.setEnabled(user.isEnabled());
+        userDTO.setLastLogin(user.getLastLogin());
+        userDTO.setCreatedAt(user.getCreatedAt());
+        userDTO.setUpdatedAt(user.getUpdatedAt());
+
+        return userDTO;
+    }
+
+    @Override
+    public String extractEmailFromToken(String token) {
+        return jwtService.extractUsername(token);
     }
 }

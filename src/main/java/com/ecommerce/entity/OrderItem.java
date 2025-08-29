@@ -99,6 +99,13 @@ public class OrderItem {
     }
 
     /**
+     * Get product (convenience method for analytics)
+     */
+    public Product getProduct() {
+        return productVariant != null ? productVariant.getProduct() : null;
+    }
+
+    /**
      * Sets the quantity
      * 
      * @param quantity The quantity to set
