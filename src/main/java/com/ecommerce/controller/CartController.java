@@ -87,7 +87,7 @@ public class CartController {
     }
 
     @PutMapping("/update")
-    @PreAuthorize("hasRole('USER') or hasRole('ADMIN') or hasRole('EMPLOYEE')")
+    @PreAuthorize("hasAnyRole('CUSTOMER','ADMIN','EMPLOYEE')")
     @Operation(summary = "Update cart item quantity", description = "Update the quantity of an item in the user's cart")
     public ResponseEntity<?> updateCartItem(@Valid @RequestBody UpdateCartItemDTO updateCartItemDTO) {
         try {
@@ -135,7 +135,7 @@ public class CartController {
     }
 
     @DeleteMapping("/remove/{cartItemId}")
-    @PreAuthorize("hasRole('USER') or hasRole('ADMIN') or hasRole('EMPLOYEE')")
+    @PreAuthorize("hasAnyRole('CUSTOMER','ADMIN','EMPLOYEE')")
     @Operation(summary = "Remove item from cart", description = "Remove a specific item from the user's cart")
     public ResponseEntity<?> removeFromCart(@PathVariable Long cartItemId) {
         try {
@@ -180,7 +180,7 @@ public class CartController {
     }
 
     @DeleteMapping("/clear")
-    @PreAuthorize("hasRole('USER') or hasRole('ADMIN') or hasRole('EMPLOYEE')")
+    @PreAuthorize("hasAnyRole('CUSTOMER','ADMIN','EMPLOYEE')")
     @Operation(summary = "Clear cart", description = "Remove all items from the user's cart")
     public ResponseEntity<?> clearCart() {
         try {
@@ -278,7 +278,7 @@ public class CartController {
     }
 
     @GetMapping("/item/{cartItemId}")
-    @PreAuthorize("hasRole('USER') or hasRole('ADMIN') or hasRole('EMPLOYEE')")
+    @PreAuthorize("hasAnyRole('CUSTOMER','ADMIN','EMPLOYEE')")
     @Operation(summary = "Get cart item", description = "Get details of a specific cart item")
     public ResponseEntity<?> getCartItem(@PathVariable Long cartItemId) {
         try {
@@ -318,7 +318,7 @@ public class CartController {
     }
 
     @GetMapping("/has-items")
-    @PreAuthorize("hasRole('USER') or hasRole('ADMIN') or hasRole('EMPLOYEE')")
+    @PreAuthorize("hasAnyRole('CUSTOMER','ADMIN','EMPLOYEE')")
     @Operation(summary = "Check if cart has items", description = "Check if the user's cart contains any items")
     public ResponseEntity<?> hasItems() {
         try {
@@ -360,21 +360,36 @@ public class CartController {
     private UUID getCurrentUserId() {
         try {
             Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-            if (auth == null)
+            if (auth == null || !auth.isAuthenticated()) {
                 return null;
-            Object principal = auth.getPrincipal();
-            if (principal instanceof com.ecommerce.entity.User u && u.getId() != null) {
-                return u.getId();
             }
-            if (principal instanceof UserDetails ud) {
-                String email = ud.getUsername();
+
+            Object principal = auth.getPrincipal();
+
+            // If principal is CustomUserDetails, extract email and find user
+            if (principal instanceof com.ecommerce.ServiceImpl.CustomUserDetails customUserDetails) {
+                String email = customUserDetails.getUsername();
                 return userRepository.findByUserEmail(email).map(com.ecommerce.entity.User::getId).orElse(null);
             }
+
+            // If principal is User entity
+            if (principal instanceof com.ecommerce.entity.User user && user.getId() != null) {
+                return user.getId();
+            }
+
+            // If principal is UserDetails
+            if (principal instanceof UserDetails userDetails) {
+                String email = userDetails.getUsername();
+                return userRepository.findByUserEmail(email).map(com.ecommerce.entity.User::getId).orElse(null);
+            }
+
+            // Fallback to auth name
             String name = auth.getName();
             if (name != null && !name.isBlank()) {
                 return userRepository.findByUserEmail(name).map(com.ecommerce.entity.User::getId).orElse(null);
             }
-        } catch (Exception ignored) {
+        } catch (Exception e) {
+            log.error("Error getting current user ID: {}", e.getMessage(), e);
         }
         return null;
     }
