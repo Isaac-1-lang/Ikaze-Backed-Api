@@ -37,6 +37,7 @@ public class ProductDTO {
     private Boolean isOnSale;
     private Double averageRating;
     private Integer reviewCount;
+    private List<ReviewDTO> reviews;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 

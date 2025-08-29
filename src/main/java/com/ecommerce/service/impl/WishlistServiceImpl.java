@@ -224,10 +224,7 @@ public class WishlistServiceImpl implements WishlistService {
         @Override
         @Transactional
         public boolean moveToCart(UUID userId, Long wishlistProductId, int quantity) {
-                // This method would integrate with the cart service
-                // For now, we'll just remove it from wishlist
-                // In a real implementation, you'd call cartService.addToCart() first
-
+        
                 User user = userRepository.findById(userId)
                                 .orElseThrow(() -> new EntityNotFoundException("User not found with ID: " + userId));
 
@@ -244,10 +241,12 @@ public class WishlistServiceImpl implements WishlistService {
                         throw new IllegalArgumentException("Wishlist product does not belong to the user");
                 }
 
-                cartService.addToCart(userId,
-                                new AddToCartDTO(wishlistProduct.getProductVariant().getId(), quantity));
+                AddToCartDTO addToCartDTO = new AddToCartDTO();
+                addToCartDTO.setVariantId(wishlistProduct.getProductVariant().getId());
+                addToCartDTO.setQuantity(quantity);
 
-                // Remove from wishlist
+                cartService.addToCart(userId, addToCartDTO);
+
                 wishlistProductRepository.delete(wishlistProduct);
                 return true;
         }
