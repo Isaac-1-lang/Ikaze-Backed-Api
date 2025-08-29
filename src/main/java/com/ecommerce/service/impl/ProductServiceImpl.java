@@ -21,6 +21,7 @@ import com.ecommerce.dto.VariantAttributeDTO;
 import com.ecommerce.dto.VariantImageMetadata;
 
 import com.ecommerce.dto.VideoMetadata;
+import com.ecommerce.dto.ReviewDTO;
 
 import com.ecommerce.entity.*;
 
@@ -2565,6 +2566,14 @@ public class ProductServiceImpl implements ProductService {
 
         }
 
+        // Map reviews
+        if (product.getReviews() != null) {
+            dto.setReviews(product.getReviews().stream()
+                    .filter(review -> review.isApproved()) // Only include approved reviews
+                    .map(this::mapReviewToDTO)
+                    .collect(Collectors.toList()));
+        }
+
         return dto;
 
     }
@@ -2603,6 +2612,31 @@ public class ProductServiceImpl implements ProductService {
 
                 .build();
 
+    }
+
+    private ReviewDTO mapReviewToDTO(Review review) {
+        return ReviewDTO.builder()
+                .id(review.getId())
+                .userId(review.getUser().getId())
+                .userName(review.getUser().getFirstName() + " " + review.getUser().getLastName())
+                .userEmail(review.getUser().getUserEmail())
+                .productId(review.getProduct().getProductId())
+                .productName(review.getProduct().getProductName())
+                .rating(review.getRating())
+                .title(review.getTitle())
+                .content(review.getContent())
+                .status(review.getStatus().name())
+                .isVerifiedPurchase(review.isVerifiedPurchase())
+                .helpfulVotes(review.getHelpfulVotes())
+                .notHelpfulVotes(review.getNotHelpfulVotes())
+                .moderatorNotes(review.getModeratorNotes())
+                .moderatedBy(review.getModeratedBy())
+                .moderatedAt(review.getModeratedAt())
+                .createdAt(review.getCreatedAt())
+                .updatedAt(review.getUpdatedAt())
+                .canEdit(false) // This would be determined by business logic
+                .canDelete(false) // This would be determined by business logic
+                .build();
     }
 
     private ProductVariantDTO mapProductVariantToDTO(ProductVariant variant) {
@@ -2990,6 +3024,8 @@ public class ProductServiceImpl implements ProductService {
 
                     .discountInfo(discountDto)
                     .primaryImage(imageDto)
+                    .averageRating(product.getAverageRating())
+                    .reviewCount(product.getReviewCount())
                     .build();
 
         } catch (Exception e) {

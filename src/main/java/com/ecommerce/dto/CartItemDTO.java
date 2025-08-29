@@ -7,6 +7,7 @@ import lombok.NoArgsConstructor;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.UUID;
 
 @Data
 @Builder
@@ -14,8 +15,9 @@ import java.time.LocalDateTime;
 @AllArgsConstructor
 public class CartItemDTO {
     private Long id;
-    private Long variantId;
-    private String variantSku;
+    private UUID productId; // For products without variants
+    private Long variantId; // For products with variants
+    private String sku; // SKU (either product SKU or variant SKU)
     private String productName;
     private String productImage;
     private Integer quantity;
@@ -24,4 +26,5 @@ public class CartItemDTO {
     private LocalDateTime addedAt;
     private boolean inStock;
     private Integer availableStock;
+    private boolean isVariantBased; // Flag to indicate if this is a variant-based item
 }

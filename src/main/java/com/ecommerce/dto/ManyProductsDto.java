@@ -31,7 +31,9 @@ public class ManyProductsDto {
     private Boolean isFeatured;
     private SimpleDiscountDto discountInfo;
     private SimpleProductImageDto primaryImage;
-    
+    private Double averageRating;
+    private Integer reviewCount;
+
     /**
      * Simplified Category DTO to prevent infinite recursion
      */
@@ -46,7 +48,7 @@ public class ManyProductsDto {
         private String slug;
         private String imageUrl;
     }
-    
+
     /**
      * Simplified Brand DTO to prevent infinite recursion
      */
@@ -60,7 +62,7 @@ public class ManyProductsDto {
         private String description;
         private String logoUrl;
     }
-    
+
     /**
      * Simplified Discount DTO to prevent infinite recursion
      */
@@ -76,7 +78,7 @@ public class ManyProductsDto {
         private String endDate;
         private Boolean active;
     }
-    
+
     /**
      * Simplified Product Image DTO to prevent infinite recursion
      */
