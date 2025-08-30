@@ -12,7 +12,7 @@ import java.util.UUID;
 public interface WishlistService {
 
     /**
-     * Add a product variant to the user's wishlist
+     * Add a product to the user's wishlist
      */
     WishlistProductDTO addToWishlist(UUID userId, AddToWishlistDTO addToWishlistDTO);
 

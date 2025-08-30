@@ -17,11 +17,4 @@ public interface WishlistRepository extends JpaRepository<Wishlist, Long> {
      * Find wishlist by user ID
      */
     Optional<Wishlist> findByUserId(UUID userId);
-
-    /**
-     * Remove wishlist products by product variant ID
-     */
-    @Modifying
-    @Query("DELETE FROM WishlistProduct wp WHERE wp.productVariant.id = :variantId")
-    void deleteWishlistProductsByProductVariant(@Param("variantId") Long variantId);
 }

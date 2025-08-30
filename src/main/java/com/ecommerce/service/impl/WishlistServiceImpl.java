@@ -8,11 +8,11 @@ import com.ecommerce.dto.UpdateWishlistProductDTO;
 import com.ecommerce.service.CartService;
 import com.ecommerce.entity.Wishlist;
 import com.ecommerce.entity.WishlistProduct;
-import com.ecommerce.entity.ProductVariant;
+import com.ecommerce.entity.Product;
 import com.ecommerce.entity.User;
 import com.ecommerce.repository.WishlistProductRepository;
 import com.ecommerce.repository.WishlistRepository;
-import com.ecommerce.repository.ProductVariantRepository;
+import com.ecommerce.repository.ProductRepository;
 import com.ecommerce.repository.UserRepository;
 import com.ecommerce.service.WishlistService;
 import jakarta.persistence.EntityNotFoundException;
@@ -36,7 +36,7 @@ public class WishlistServiceImpl implements WishlistService {
         private final WishlistProductRepository wishlistProductRepository;
         private final WishlistRepository wishlistRepository;
         private final UserRepository userRepository;
-        private final ProductVariantRepository productVariantRepository;
+        private final ProductRepository productRepository;
         private final CartService cartService;
 
         @Override
@@ -45,20 +45,21 @@ public class WishlistServiceImpl implements WishlistService {
                 User user = userRepository.findById(userId)
                                 .orElseThrow(() -> new EntityNotFoundException("User not found with ID: " + userId));
 
-                ProductVariant variant = productVariantRepository.findById(addToWishlistDTO.getVariantId())
+                Product product = productRepository.findById(addToWishlistDTO.getProductId())
                                 .orElseThrow(() -> new EntityNotFoundException(
-                                                "Product variant not found with ID: "
-                                                                + addToWishlistDTO.getVariantId()));
+                                                "Product not found with ID: "
+                                                                + addToWishlistDTO.getProductId()));
 
-                if (!variant.isActive()) {
-                        throw new IllegalArgumentException("Product variant is not active");
+                if (!product.isActive()) {
+                        throw new IllegalArgumentException("Product is not active");
                 }
 
                 Wishlist wishlist = getOrCreateUserWishlist(user);
 
                 // Check if product already exists in wishlist
                 WishlistProduct existingProduct = wishlistProductRepository
-                                .findByWishlistIdAndProductVariantId(wishlist.getId(), variant.getId()).orElse(null);
+                                .findByWishlistIdAndProductProductId(wishlist.getId(), product.getProductId())
+                                .orElse(null);
 
                 if (existingProduct != null) {
                         // Update existing product with new notes/priority if provided
@@ -74,7 +75,7 @@ public class WishlistServiceImpl implements WishlistService {
                         // Create new wishlist product
                         WishlistProduct newProduct = new WishlistProduct();
                         newProduct.setWishlist(wishlist);
-                        newProduct.setProductVariant(variant);
+                        newProduct.setProduct(product);
                         newProduct.setNotes(addToWishlistDTO.getNotes());
                         newProduct.setPriority(
                                         addToWishlistDTO.getPriority() != null ? addToWishlistDTO.getPriority() : 0);
@@ -224,7 +225,7 @@ public class WishlistServiceImpl implements WishlistService {
         @Override
         @Transactional
         public boolean moveToCart(UUID userId, Long wishlistProductId, int quantity) {
-        
+
                 User user = userRepository.findById(userId)
                                 .orElseThrow(() -> new EntityNotFoundException("User not found with ID: " + userId));
 
@@ -241,13 +242,21 @@ public class WishlistServiceImpl implements WishlistService {
                         throw new IllegalArgumentException("Wishlist product does not belong to the user");
                 }
 
+                Product product = wishlistProduct.getProduct();
+
                 AddToCartDTO addToCartDTO = new AddToCartDTO();
-                addToCartDTO.setVariantId(wishlistProduct.getProductVariant().getId());
+                addToCartDTO.setProductId(product.getProductId());
                 addToCartDTO.setQuantity(quantity);
 
                 cartService.addToCart(userId, addToCartDTO);
 
-                wishlistProductRepository.delete(wishlistProduct);
+                // Only remove from wishlist if the product has no variants
+                // Products with variants should remain in wishlist so users can buy multiple
+                // variants
+                if (product.getVariants() == null || product.getVariants().isEmpty()) {
+                        wishlistProductRepository.delete(wishlistProduct);
+                }
+
                 return true;
         }
 
@@ -261,29 +270,30 @@ public class WishlistServiceImpl implements WishlistService {
         }
 
         private WishlistProductDTO mapWishlistProductToDTO(WishlistProduct wishlistProduct) {
-                ProductVariant variant = wishlistProduct.getProductVariant();
+                Product product = wishlistProduct.getProduct();
                 String productImage = null;
 
-                if (variant.getImages() != null && !variant.getImages().isEmpty()) {
-                        productImage = variant.getImages().stream()
+                if (product.getImages() != null && !product.getImages().isEmpty()) {
+                        productImage = product.getImages().stream()
                                         .filter(img -> img.isPrimary())
                                         .findFirst()
                                         .map(img -> img.getImageUrl())
-                                        .orElse(variant.getImages().get(0).getImageUrl());
+                                        .orElse(product.getImages().get(0).getImageUrl());
                 }
 
                 return WishlistProductDTO.builder()
                                 .id(wishlistProduct.getId())
-                                .variantId(variant.getId())
-                                .variantSku(variant.getVariantSku())
-                                .productName(variant.getProduct().getProductName())
+                                .productId(product.getProductId())
+                                .productSku(product.getSku())
+                                .productName(product.getProductName())
                                 .productImage(productImage)
                                 .notes(wishlistProduct.getNotes())
                                 .priority(wishlistProduct.getPriority())
                                 .addedAt(wishlistProduct.getAddedAt())
-                                .inStock(variant.isInStock())
-                                .availableStock(variant.getStockQuantity())
-                                .price(variant.getPrice())
+                                .inStock(product.isInStock())
+                                .availableStock(product.getStockQuantity())
+                                .price(product.getPrice())
+                                .finalPrice(product.getDiscountedPrice())
                                 .build();
         }
 }
