@@ -5,6 +5,7 @@ import com.ecommerce.dto.WishlistDTO;
 import com.ecommerce.dto.WishlistProductDTO;
 import com.ecommerce.dto.UpdateWishlistProductDTO;
 import com.ecommerce.service.WishlistService;
+import com.ecommerce.repository.UserRepository;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
@@ -16,6 +17,9 @@ import org.springframework.data.domain.Sort;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.web.bind.annotation.*;
 import jakarta.persistence.EntityNotFoundException;
 
@@ -31,18 +35,25 @@ import java.util.UUID;
 public class WishlistController {
 
     private final WishlistService wishlistService;
+    private final UserRepository userRepository;
 
     @PostMapping("/add")
-    @PreAuthorize("hasRole('USER') or hasRole('ADMIN') or hasRole('EMPLOYEE')")
+    @PreAuthorize("hasAnyRole('CUSTOMER','ADMIN','EMPLOYEE')")
     @Operation(summary = "Add product to wishlist", description = "Add a product variant to the user's wishlist")
-    public ResponseEntity<?> addToWishlist(@RequestParam UUID userId,
-            @Valid @RequestBody AddToWishlistDTO addToWishlistDTO) {
+    public ResponseEntity<?> addToWishlist(@Valid @RequestBody AddToWishlistDTO addToWishlistDTO) {
         try {
+            UUID userId = getCurrentUserId();
+            if (userId == null) {
+                return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(Map.of(
+                        "success", false,
+                        "message", "User not authenticated"));
+            }
+
             log.info("Adding product to wishlist for user: {}", userId);
             WishlistProductDTO wishlistProduct = wishlistService.addToWishlist(userId, addToWishlistDTO);
 
             Map<String, Object> response = new HashMap<>();
-            response.put("success", true);
+            response.put("su    ccess", true);
             response.put("message", "Product added to wishlist successfully");
             response.put("data", wishlistProduct);
 
@@ -75,11 +86,18 @@ public class WishlistController {
     }
 
     @PutMapping("/update")
-    @PreAuthorize("hasRole('USER') or hasRole('ADMIN') or hasRole('EMPLOYEE')")
+    @PreAuthorize("hasAnyRole('CUSTOMER','ADMIN','EMPLOYEE')")
     @Operation(summary = "Update wishlist product", description = "Update the notes or priority of a wishlist product")
-    public ResponseEntity<?> updateWishlistProduct(@RequestParam UUID userId,
+    public ResponseEntity<?> updateWishlistProduct(
             @Valid @RequestBody UpdateWishlistProductDTO updateWishlistProductDTO) {
         try {
+            UUID userId = getCurrentUserId();
+            if (userId == null) {
+                return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(Map.of(
+                        "success", false,
+                        "message", "User not authenticated"));
+            }
+
             log.info("Updating wishlist product for user: {}", userId);
             WishlistProductDTO wishlistProduct = wishlistService.updateWishlistProduct(userId,
                     updateWishlistProductDTO);
@@ -118,10 +136,17 @@ public class WishlistController {
     }
 
     @DeleteMapping("/remove/{wishlistProductId}")
-    @PreAuthorize("hasRole('USER') or hasRole('ADMIN') or hasRole('EMPLOYEE')")
+    @PreAuthorize("hasAnyRole('CUSTOMER','ADMIN','EMPLOYEE')")
     @Operation(summary = "Remove product from wishlist", description = "Remove a specific product from the user's wishlist")
-    public ResponseEntity<?> removeFromWishlist(@RequestParam UUID userId, @PathVariable Long wishlistProductId) {
+    public ResponseEntity<?> removeFromWishlist(@PathVariable Long wishlistProductId) {
         try {
+            UUID userId = getCurrentUserId();
+            if (userId == null) {
+                return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(Map.of(
+                        "success", false,
+                        "message", "User not authenticated"));
+            }
+
             log.info("Removing product from wishlist for user: {}, product: {}", userId, wishlistProductId);
             boolean removed = wishlistService.removeFromWishlist(userId, wishlistProductId);
 
@@ -156,15 +181,21 @@ public class WishlistController {
     }
 
     @GetMapping("/view")
-    @PreAuthorize("hasRole('USER') or hasRole('ADMIN') or hasRole('EMPLOYEE')")
+    @PreAuthorize("hasAnyRole('CUSTOMER','ADMIN','EMPLOYEE')")
     @Operation(summary = "View wishlist", description = "View the user's wishlist with pagination")
     public ResponseEntity<?> viewWishlist(
-            @RequestParam UUID userId,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "10") int size,
             @RequestParam(defaultValue = "addedAt") String sortBy,
             @RequestParam(defaultValue = "desc") String sortDirection) {
         try {
+            UUID userId = getCurrentUserId();
+            if (userId == null) {
+                return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(Map.of(
+                        "success", false,
+                        "message", "User not authenticated"));
+            }
+
             log.info("Viewing wishlist for user: {}, page: {}, size: {}", userId, page, size);
 
             Sort.Direction direction = sortDirection.equalsIgnoreCase("asc") ? Sort.Direction.ASC : Sort.Direction.DESC;
@@ -203,10 +234,17 @@ public class WishlistController {
     }
 
     @DeleteMapping("/clear")
-    @PreAuthorize("hasRole('USER') or hasRole('ADMIN') or hasRole('EMPLOYEE')")
+    @PreAuthorize("hasAnyRole('CUSTOMER','ADMIN','EMPLOYEE')")
     @Operation(summary = "Clear wishlist", description = "Remove all products from the user's wishlist")
-    public ResponseEntity<?> clearWishlist(@RequestParam UUID userId) {
+    public ResponseEntity<?> clearWishlist() {
         try {
+            UUID userId = getCurrentUserId();
+            if (userId == null) {
+                return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(Map.of(
+                        "success", false,
+                        "message", "User not authenticated"));
+            }
+
             log.info("Clearing wishlist for user: {}", userId);
             boolean cleared = wishlistService.clearWishlist(userId);
 
@@ -241,10 +279,17 @@ public class WishlistController {
     }
 
     @GetMapping("/product/{wishlistProductId}")
-    @PreAuthorize("hasRole('USER') or hasRole('ADMIN') or hasRole('EMPLOYEE')")
+    @PreAuthorize("hasAnyRole('CUSTOMER','ADMIN','EMPLOYEE')")
     @Operation(summary = "Get wishlist product", description = "Get details of a specific wishlist product")
-    public ResponseEntity<?> getWishlistProduct(@RequestParam UUID userId, @PathVariable Long wishlistProductId) {
+    public ResponseEntity<?> getWishlistProduct(@PathVariable Long wishlistProductId) {
         try {
+            UUID userId = getCurrentUserId();
+            if (userId == null) {
+                return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(Map.of(
+                        "success", false,
+                        "message", "User not authenticated"));
+            }
+
             log.info("Getting wishlist product for user: {}, product: {}", userId, wishlistProductId);
             WishlistProductDTO wishlistProduct = wishlistService.getWishlistProduct(userId, wishlistProductId);
 
@@ -274,10 +319,17 @@ public class WishlistController {
     }
 
     @GetMapping("/has-products")
-    @PreAuthorize("hasRole('USER') or hasRole('ADMIN') or hasRole('EMPLOYEE')")
+    @PreAuthorize("hasAnyRole('CUSTOMER','ADMIN','EMPLOYEE')")
     @Operation(summary = "Check if wishlist has products", description = "Check if the user's wishlist contains any products")
-    public ResponseEntity<?> hasProducts(@RequestParam UUID userId) {
+    public ResponseEntity<?> hasProducts() {
         try {
+            UUID userId = getCurrentUserId();
+            if (userId == null) {
+                return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(Map.of(
+                        "success", false,
+                        "message", "User not authenticated"));
+            }
+
             log.info("Checking if user has products in wishlist: {}", userId);
             boolean hasProducts = wishlistService.hasProducts(userId);
 
@@ -307,13 +359,19 @@ public class WishlistController {
     }
 
     @PostMapping("/move-to-cart/{wishlistProductId}")
-    @PreAuthorize("hasRole('USER') or hasRole('ADMIN') or hasRole('EMPLOYEE')")
-    @Operation(summary = "Move product to cart", description = "Move a product from wishlist to cart and remove it from wishlist")
+    @PreAuthorize("hasAnyRole('CUSTOMER','ADMIN','EMPLOYEE')")
+    @Operation(summary = "Move product to cart", description = "Move a product from wishlist to cart and remove it from wishlist if it has no variants")
     public ResponseEntity<?> moveToCart(
-            @RequestParam UUID userId,
             @PathVariable Long wishlistProductId,
             @RequestParam(defaultValue = "1") int quantity) {
         try {
+            UUID userId = getCurrentUserId();
+            if (userId == null) {
+                return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(Map.of(
+                        "success", false,
+                        "message", "User not authenticated"));
+            }
+
             log.info("Moving product from wishlist to cart for user: {}, product: {}, quantity: {}", userId,
                     wishlistProductId, quantity);
             boolean moved = wishlistService.moveToCart(userId, wishlistProductId, quantity);
@@ -346,5 +404,42 @@ public class WishlistController {
             response.put("error", "INTERNAL_ERROR");
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(response);
         }
+    }
+
+    private UUID getCurrentUserId() {
+        try {
+            Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+            if (auth == null || !auth.isAuthenticated()) {
+                return null;
+            }
+
+            Object principal = auth.getPrincipal();
+
+            // If principal is CustomUserDetails, extract email and find user
+            if (principal instanceof com.ecommerce.ServiceImpl.CustomUserDetails customUserDetails) {
+                String email = customUserDetails.getUsername();
+                return userRepository.findByUserEmail(email).map(com.ecommerce.entity.User::getId).orElse(null);
+            }
+
+            // If principal is User entity
+            if (principal instanceof com.ecommerce.entity.User user && user.getId() != null) {
+                return user.getId();
+            }
+
+            // If principal is UserDetails
+            if (principal instanceof UserDetails userDetails) {
+                String email = userDetails.getUsername();
+                return userRepository.findByUserEmail(email).map(com.ecommerce.entity.User::getId).orElse(null);
+            }
+
+            // Fallback to auth name
+            String name = auth.getName();
+            if (name != null && !name.isBlank()) {
+                return userRepository.findByUserEmail(name).map(com.ecommerce.entity.User::getId).orElse(null);
+            }
+        } catch (Exception e) {
+            log.error("Error getting current user ID: {}", e.getMessage(), e);
+        }
+        return null;
     }
 }

@@ -800,26 +800,17 @@ public class ProductServiceImpl implements ProductService {
 
             try {
 
-                // Remove from carts
-
                 cartRepository.deleteCartItemsByProductVariant(variant.getId());
 
                 log.debug("Removed variant {} from all carts", variant.getVariantSku());
-
-                // Remove from wishlists
-
-                wishlistRepository.deleteWishlistProductsByProductVariant(variant.getId());
-
-                log.debug("Removed variant {} from all wishlists", variant.getVariantSku());
+                log.debug("Skipping wishlist cleanup for variant {} (wishlist is now product-based)",
+                        variant.getVariantSku());
 
             } catch (Exception e) {
 
                 log.warn("Failed to remove variant {} from carts/wishlists: {}", variant.getVariantSku(),
 
                         e.getMessage());
-
-                // Continue with deletion even if cart/wishlist cleanup fails
-
             }
 
         }

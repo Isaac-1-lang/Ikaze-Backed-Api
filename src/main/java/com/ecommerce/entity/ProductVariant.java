@@ -67,9 +67,6 @@ public class ProductVariant {
     @OneToMany(mappedBy = "productVariant", fetch = FetchType.LAZY)
     private java.util.List<OrderItem> orderItems;
 
-    @OneToMany(mappedBy = "productVariant", fetch = FetchType.LAZY)
-    private java.util.List<WishlistProduct> wishlistProducts;
-
     @Column(name = "created_at")
     private LocalDateTime createdAt;
 
