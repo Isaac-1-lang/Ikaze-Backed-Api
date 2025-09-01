@@ -73,8 +73,8 @@ public class StripeService {
 
                 String webSuccess = "http://127.0.0.1:5500/src/stripeCheckoutPayment/payment-success.html";
                 String webCancel = "http://127.0.0.1:5500/src/stripeCheckoutPayment/payment-cancel.html";
-                String mobSuccess = "pickupbuddi://parent/buy-tokens-success";
-                String mobCancel = "pickupbuddi://parent/buy-tokens-cancel";
+                String mobSuccess = "snapshop://checkout-redirect";
+                String mobCancel = "snapshop://checkout-redirect";
                 String successUrl;
                 String cancelUrl;
                 if (platform != null && platform.equalsIgnoreCase("mobile")) {
