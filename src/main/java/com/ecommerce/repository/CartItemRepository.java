@@ -11,6 +11,7 @@ import org.springframework.stereotype.Repository;
 
 import java.util.List;
 import java.util.Optional;
+import java.util.UUID;
 
 @Repository
 public interface CartItemRepository extends JpaRepository<CartItem, Long> {
@@ -31,9 +32,19 @@ public interface CartItemRepository extends JpaRepository<CartItem, Long> {
     Optional<CartItem> findByCartIdAndProductVariantId(Long cartId, Long variantId);
 
     /**
+     * Find cart item by cart ID and product ID
+     */
+    Optional<CartItem> findByCartIdAndProductProductId(Long cartId, UUID productId);
+
+    /**
      * Check if cart item exists by cart ID and variant ID
      */
     boolean existsByCartIdAndProductVariantId(Long cartId, Long variantId);
+
+    /**
+     * Check if cart item exists by cart ID and product ID
+     */
+    boolean existsByCartIdAndProductProductId(Long cartId, UUID productId);
 
     /**
      * Delete cart item by ID

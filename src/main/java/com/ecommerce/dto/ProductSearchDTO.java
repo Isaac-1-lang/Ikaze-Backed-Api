@@ -44,10 +44,12 @@ public class ProductSearchDTO {
 
     // Category and brand filters
     private Long categoryId;
-    private List<Long> categoryIds; // For multiple categories
-    private Boolean includeSubcategories; // Whether to include subcategories
+    private List<Long> categoryIds;
+    private List<String> categoryNames; // Fallback when ID mapping fails
+    private Boolean includeSubcategories;
     private UUID brandId;
     private List<UUID> brandIds; // For multiple brands
+    private List<String> brandNames; // Fallback when ID mapping fails
 
     // Discount filters
     private UUID discountId;
@@ -71,12 +73,12 @@ public class ProductSearchDTO {
     // Variant filters
     private Integer variantCountMin;
     private Integer variantCountMax;
-    private List<String> variantAttributes; // e.g., ["Color:Red", "Size:LG"]
+    private List<String> variantAttributes;
 
     // Physical attributes
     private BigDecimal weightMin;
     private BigDecimal weightMax;
-    private BigDecimal dimensionsMin; // Length + Width + Height
+    private BigDecimal dimensionsMin;
     private BigDecimal dimensionsMax;
 
     // Date filters
@@ -119,9 +121,11 @@ public class ProductSearchDTO {
                 inStock != null ||
                 categoryId != null ||
                 (categoryIds != null && !categoryIds.isEmpty()) ||
+                (categoryNames != null && !categoryNames.isEmpty()) ||
                 includeSubcategories != null ||
                 brandId != null ||
                 (brandIds != null && !brandIds.isEmpty()) ||
+                (brandNames != null && !brandNames.isEmpty()) ||
                 discountId != null ||
                 (discountIds != null && !discountIds.isEmpty()) ||
                 discountPercentageMin != null ||

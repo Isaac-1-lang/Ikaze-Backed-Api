@@ -119,6 +119,10 @@ public class CreateProductDTO {
     // Variants
     private List<CreateProductVariantDTO> variants;
 
+    // Variant images and mapping
+    private List<MultipartFile> variantImages;
+    private String variantImageMapping;
+
     // Getters
     public String getName() {
         return name;

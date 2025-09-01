@@ -55,6 +55,26 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
        @Query("SELECT o FROM Order o WHERE o.createdAt >= :startDate AND o.createdAt < :endDate")
        List<Order> findAllBetween(@Param("startDate") LocalDateTime startDate, @Param("endDate") LocalDateTime endDate);
 
+       /**
+        * Find orders by status
+        */
+       List<Order> findByOrderStatusIn(List<String> statuses);
+
+       /**
+        * Find orders by date range and status
+        */
+       @Query("SELECT o FROM Order o WHERE o.createdAt BETWEEN :startDate AND :endDate AND o.orderStatus IN :statuses")
+       List<Order> findByCreatedAtBetweenAndStatusIn(@Param("startDate") LocalDateTime startDate, 
+                                                     @Param("endDate") LocalDateTime endDate, 
+                                                     @Param("statuses") List<String> statuses);
+
+       /**
+        * Find orders by date range
+        */
+       @Query("SELECT o FROM Order o WHERE o.createdAt BETWEEN :startDate AND :endDate")
+       List<Order> findByCreatedAtBetween(@Param("startDate") LocalDateTime startDate, 
+                                         @Param("endDate") LocalDateTime endDate);
+
        @Query("SELECT DISTINCT o FROM Order o " +
                "LEFT JOIN FETCH o.user u " +
                "LEFT JOIN FETCH o.orderItems oi " +
@@ -81,5 +101,10 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
          * Find order by order code and user ID
          */
         Optional<Order> findByOrderCodeAndUser_Id(String orderCode, UUID userId);
+
+        /**
+         * Find order by order code
+         */
+        Optional<Order> findByOrderCode(String orderCode);
 
 }

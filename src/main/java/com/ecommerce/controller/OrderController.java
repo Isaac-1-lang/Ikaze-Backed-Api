@@ -68,7 +68,6 @@ public class OrderController {
         }
     }
 
-    
     @GetMapping("/by-user/{userId}")
     // @PreAuthorize("hasAnyRole('ADMIN','EMPLOYEE')")
     @Operation(summary = "Get orders by userId", description = "Retrieve all orders for a specific user (admin/employee only)", responses = {
@@ -95,7 +94,6 @@ public class OrderController {
         }
     }
 
-    
     @GetMapping("/id/{orderId}")
     // @PreAuthorize("hasAnyRole('ADMIN','EMPLOYEE')")
     @Operation(summary = "Get order by orderId", description = "Retrieve an order by its orderId (admin/employee only)", responses = {
@@ -122,7 +120,11 @@ public class OrderController {
     private final OrderService orderService;
 
     @GetMapping
-    // @PreAuthorize("hasAnyRole('CUSTOMER','ADMIN','EMPLOYEE')")
+    @Operation(summary = "List user orders", description = "Retrieve all orders for a specific user by userId (customer, admin, or employee)", responses = {
+            @ApiResponse(responseCode = "200", description = "Orders retrieved successfully", content = @Content(schema = @Schema(implementation = OrderResponseDTO.class))),
+            @ApiResponse(responseCode = "400", description = "Invalid or missing userId"),
+            @ApiResponse(responseCode = "500", description = "Internal server error")
+    })
     public ResponseEntity<?> listUserOrders(@RequestParam(name = "userId") String userId) {
         try {
             if (userId == null || userId.isBlank()) {
@@ -238,6 +240,12 @@ public class OrderController {
 
     @GetMapping("/{orderId}")
     @PreAuthorize("hasAnyRole('CUSTOMER','ADMIN','EMPLOYEE')")
+    @Operation(summary = "Get order by orderId and userId", description = "Retrieve an order by its orderId and userId (customer, admin, or employee)", responses = {
+            @ApiResponse(responseCode = "200", description = "Order found", content = @Content(schema = @Schema(implementation = OrderResponseDTO.class))),
+            @ApiResponse(responseCode = "400", description = "Invalid or missing userId"),
+            @ApiResponse(responseCode = "404", description = "Order not found"),
+            @ApiResponse(responseCode = "500", description = "Internal server error")
+    })
     public ResponseEntity<?> getOrder(@RequestParam(name = "userId") String userId,
             @PathVariable Long orderId) {
         try {
@@ -417,7 +425,6 @@ public class OrderController {
             ad.setZipCode(addr.getZipcode());
             ad.setCountry(addr.getCountry());
 
-           
             if (addr.getRegions() != null && !addr.getRegions().isEmpty()) {
                 String[] regions = addr.getRegions().split(",");
                 if (regions.length >= 2) {

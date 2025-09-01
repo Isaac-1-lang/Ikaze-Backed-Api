@@ -7,6 +7,7 @@ import lombok.NoArgsConstructor;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.UUID;
 
 @Data
 @Builder
@@ -15,8 +16,8 @@ import java.time.LocalDateTime;
 public class WishlistProductDTO {
 
     private Long id;
-    private Long variantId;
-    private String variantSku;
+    private UUID productId;
+    private String productSku;
     private String productName;
     private String productImage;
     private String notes;
@@ -25,4 +26,5 @@ public class WishlistProductDTO {
     private boolean inStock;
     private int availableStock;
     private BigDecimal price;
+    private BigDecimal finalPrice;
 }

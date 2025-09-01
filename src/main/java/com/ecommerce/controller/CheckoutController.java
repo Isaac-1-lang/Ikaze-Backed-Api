@@ -85,9 +85,10 @@ public class CheckoutController {
     }
 
     @PostMapping("/guest/create-session")
-    @Operation(summary = "Create guest checkout session", description = "Create a checkout session for guest users", responses = {
+    @Operation(summary = "Create guest checkout session", description = "Create a checkout session for guest users (no authentication required)", responses = {
             @ApiResponse(responseCode = "200", description = "Guest checkout session created successfully", content = @Content(schema = @Schema(implementation = Map.class))),
             @ApiResponse(responseCode = "400", description = "Invalid input data"),
+            @ApiResponse(responseCode = "404", description = "Entity not found"),
             @ApiResponse(responseCode = "500", description = "Internal server error")
     })
     public ResponseEntity<?> createGuestCheckout(@Valid @RequestBody GuestCheckoutRequest request) {
@@ -130,8 +131,8 @@ public class CheckoutController {
     }
 
     @GetMapping("/verify/{sessionId}")
-    @Operation(summary = "Verify checkout session by ID", description = "Verify a completed checkout session by session ID", responses = {
-            @ApiResponse(responseCode = "200", description = "Checkout session verified successfully"),
+    @Operation(summary = "Verify checkout session by ID", description = "Verify a completed checkout session by session ID (Stripe)", responses = {
+            @ApiResponse(responseCode = "200", description = "Checkout session verified successfully", content = @Content(schema = @Schema(implementation = CheckoutVerificationResult.class))),
             @ApiResponse(responseCode = "400", description = "Invalid session or payment not completed"),
             @ApiResponse(responseCode = "404", description = "Session not found"),
             @ApiResponse(responseCode = "500", description = "Internal server error")

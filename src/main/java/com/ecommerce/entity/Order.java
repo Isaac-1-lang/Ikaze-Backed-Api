@@ -5,6 +5,7 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 import lombok.AllArgsConstructor;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
@@ -39,9 +40,6 @@ public class Order {
 
     @OneToOne(mappedBy = "order", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
     private OrderTransaction orderTransaction;
-
-    @Column(name = "is_barcode_scanned")
-    private boolean isBarCodeScanned = false;
 
     @OneToOne(mappedBy = "order", cascade = CascadeType.ALL, fetch = FetchType.LAZY, orphanRemoval = true)
     private OrderAddress orderAddress;
@@ -151,6 +149,39 @@ public class Order {
      */
     private String generateOrderCode() {
         return "ORD-" + System.currentTimeMillis() + "-" + UUID.randomUUID().toString().substring(0, 8).toUpperCase();
+    }
+
+    /**
+     * Get order ID (convenience method for analytics)
+     */
+    public Long getId() {
+        return orderId;
+    }
+
+    /**
+     * Get order status as string (convenience method for analytics)
+     */
+    public String getStatus() {
+        return orderStatus != null ? orderStatus.name() : null;
+    }
+
+    /**
+     * Get total amount (convenience method for analytics)
+     */
+    public BigDecimal getTotalAmount() {
+        if (orderInfo != null && orderInfo.getFinalAmount() != null) {
+            return orderInfo.getFinalAmount();
+        }
+
+        // Calculate from order items if order info is not available
+        return orderItems.stream()
+                .map(item -> {
+                    BigDecimal price = item.getProductVariant() != null && item.getProductVariant().getPrice() != null
+                            ? item.getProductVariant().getPrice()
+                            : BigDecimal.ZERO;
+                    return price.multiply(BigDecimal.valueOf(item.getQuantity()));
+                })
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
     }
 
     /**

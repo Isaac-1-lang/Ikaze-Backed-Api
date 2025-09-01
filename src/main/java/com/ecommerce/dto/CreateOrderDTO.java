@@ -32,6 +32,11 @@ public class CreateOrderDTO {
 
     private String notes;
 
+    // Stripe payment fields
+    private String stripePaymentIntentId;
+
+    private String stripeSessionId;
+
     // Nested DTOs
     @Data
     @Builder

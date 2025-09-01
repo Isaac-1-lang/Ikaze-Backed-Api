@@ -6,6 +6,7 @@ import lombok.NoArgsConstructor;
 import lombok.AllArgsConstructor;
 
 import java.time.LocalDateTime;
+import java.util.UUID;
 
 @Entity
 @Table(name = "wishlist_products")
@@ -23,8 +24,8 @@ public class WishlistProduct {
     private Wishlist wishlist;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "variant_id")
-    private ProductVariant productVariant;
+    @JoinColumn(name = "product_id")
+    private Product product;
 
     @Column(name = "notes")
     private String notes;
