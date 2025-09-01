@@ -19,4 +19,7 @@ public class CheckoutRequest {
 
     // For authenticated users
     private UUID userId;
+
+    @NotBlank
+    private String platform; // "web" or "mobile"
 }

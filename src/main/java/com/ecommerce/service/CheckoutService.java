@@ -104,7 +104,7 @@ public class CheckoutService {
         log.info("Order created with ID: {}", saved.getOrderId());
 
         // 2. create stripe session
-        String sessionUrl = stripeService.createCheckoutSessionForOrder(saved, req.getCurrency());
+        String sessionUrl = stripeService.createCheckoutSessionForOrder(saved, req.getCurrency(), req.getPlatform());
         log.info("Stripe session created successfully");
 
         return sessionUrl;
@@ -168,8 +168,7 @@ public class CheckoutService {
         log.info("Guest order created with ID: {}", saved.getOrderId());
 
         // 2. create stripe session
-        String sessionUrl = stripeService.createCheckoutSessionForOrder(saved, "usd"); // Default currency, adjust if
-                                                                                       // needed
+        String sessionUrl = stripeService.createCheckoutSessionForOrder(saved, "usd", req.getPlatform());
         log.info("Guest Stripe session created successfully");
 
         return sessionUrl;

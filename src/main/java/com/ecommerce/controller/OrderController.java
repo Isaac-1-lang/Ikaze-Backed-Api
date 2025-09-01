@@ -149,7 +149,7 @@ public class OrderController {
         }
     }
 
-    @PostMapping
+    @PostMapping("/create")
     @PreAuthorize("hasAnyRole('CUSTOMER','ADMIN','EMPLOYEE')")
     @Operation(summary = "Create a new order", description = "Create a new order with items and shipping information", responses = {
             @ApiResponse(responseCode = "201", description = "Order created successfully", content = @Content(schema = @Schema(implementation = OrderResponseDTO.class))),

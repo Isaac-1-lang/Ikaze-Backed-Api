@@ -23,8 +23,19 @@ public class GuestCheckoutRequest {
     @NotNull
     private AddressDto address;
 
+    @NotBlank
+    private String platform; // "web" or "mobile"
+
     @NotNull
     private List<CartItemDTO> items;
+
+    public String getPlatform() {
+        return platform;
+    }
+
+    public void setPlatform(String platform) {
+        this.platform = platform;
+    }
 
     // Getters and setters
 
