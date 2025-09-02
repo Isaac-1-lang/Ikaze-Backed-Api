@@ -9,14 +9,14 @@ import java.util.List;
 
 @Repository
 public interface DeliveryAreaRepository extends JpaRepository<DeliveryArea, Long> {
-    
+
     /**
      * Find all top-level delivery areas (areas with no parent)
      * 
      * @return list of top-level delivery areas
      */
     List<DeliveryArea> findByParentIsNull();
-    
+
     /**
      * Find all sub-areas of a given parent delivery area
      * 
@@ -24,7 +24,7 @@ public interface DeliveryAreaRepository extends JpaRepository<DeliveryArea, Long
      * @return list of child delivery areas
      */
     List<DeliveryArea> findByParentDeliveryAreaId(Long parentId);
-    
+
     /**
      * Find a delivery area by its name
      * 
@@ -32,7 +32,15 @@ public interface DeliveryAreaRepository extends JpaRepository<DeliveryArea, Long
      * @return the delivery area if found
      */
     DeliveryArea findByDeliveryAreaName(String name);
-    
+
+    /**
+     * Find delivery areas by name containing the given query (case-insensitive)
+     * 
+     * @param query the search query
+     * @return list of matching delivery areas
+     */
+    List<DeliveryArea> findByDeliveryAreaNameContainingIgnoreCase(String query);
+
     /**
      * Check if a delivery area has any children
      * 
