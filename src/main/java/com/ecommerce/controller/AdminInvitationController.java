@@ -12,7 +12,6 @@ import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.persistence.EntityNotFoundException;
-import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -25,6 +24,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.HashMap;
@@ -41,6 +41,7 @@ public class AdminInvitationController {
 
     private final AdminInvitationService adminInvitationService;
     private final JwtService jwtService;
+    private final com.ecommerce.repository.UserRepository userRepository;
 
     @PostMapping
     @PreAuthorize("hasRole('ADMIN')")
@@ -54,16 +55,14 @@ public class AdminInvitationController {
             @ApiResponse(responseCode = "500", description = "Internal server error")
     })
     public ResponseEntity<?> createInvitation(
-            @Valid @RequestBody CreateAdminInvitationDTO createInvitationDTO,
-            HttpServletRequest request) {
+            @Valid @RequestBody CreateAdminInvitationDTO createInvitationDTO) {
 
         Map<String, Object> response = new HashMap<>();
 
         try {
             log.info("Creating admin invitation for email: {}", createInvitationDTO.getEmail());
 
-            // Extract admin ID from JWT token
-            UUID adminId = extractUserIdFromRequest(request);
+            UUID adminId = getCurrentUserId();
 
             AdminInvitationDTO createdInvitation = adminInvitationService.createInvitation(adminId,
                     createInvitationDTO);
@@ -759,12 +758,36 @@ public class AdminInvitationController {
         }
     }
 
-    private UUID extractUserIdFromRequest(HttpServletRequest request) {
-        String authHeader = request.getHeader("Authorization");
-        if (authHeader != null && authHeader.startsWith("Bearer ")) {
-            String token = authHeader.substring(7);
-            return UUID.fromString(jwtService.extractUsername(token));
+    private UUID getCurrentUserId() {
+        try {
+            Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+            if (auth == null || !auth.isAuthenticated()) {
+                return null;
+            }
+
+            Object principal = auth.getPrincipal();
+
+            if (principal instanceof com.ecommerce.ServiceImpl.CustomUserDetails customUserDetails) {
+                String email = customUserDetails.getUsername();
+                return userRepository.findByUserEmail(email).map(com.ecommerce.entity.User::getId).orElse(null);
+            }
+
+            if (principal instanceof com.ecommerce.entity.User user && user.getId() != null) {
+                return user.getId();
+            }
+
+            if (principal instanceof UserDetails userDetails) {
+                String email = userDetails.getUsername();
+                return userRepository.findByUserEmail(email).map(com.ecommerce.entity.User::getId).orElse(null);
+            }
+
+            String name = auth.getName();
+            if (name != null && !name.isBlank()) {
+                return userRepository.findByUserEmail(name).map(com.ecommerce.entity.User::getId).orElse(null);
+            }
+        } catch (Exception e) {
+            log.error("Error getting current user ID: {}", e.getMessage(), e);
         }
-        throw new IllegalArgumentException("Invalid or missing authorization token");
+        return null;
     }
 }

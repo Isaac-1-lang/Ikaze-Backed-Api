@@ -155,4 +155,24 @@ public class DeliveryAreaController {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(response);
         }
     }
+
+    @GetMapping("/search")
+    public ResponseEntity<?> searchDeliveryAreas(@RequestParam String query) {
+        Map<String, Object> response = new HashMap<>();
+        try {
+            if (query == null || query.trim().isEmpty()) {
+                response.put("success", false);
+                response.put("message", "Search query cannot be empty");
+                return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(response);
+            }
+
+            List<DeliveryAreaDTO> searchResults = deliveryAreaService.searchDeliveryAreas(query.trim());
+            return ResponseEntity.ok(searchResults);
+        } catch (Exception e) {
+            log.error("Error searching delivery areas", e);
+            response.put("success", false);
+            response.put("message", "Failed to search delivery areas");
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(response);
+        }
+    }
 }

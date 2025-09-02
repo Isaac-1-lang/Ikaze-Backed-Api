@@ -99,6 +99,14 @@ public class DeliveryAreaServiceImpl implements DeliveryAreaService {
     }
 
     @Override
+    public List<DeliveryAreaDTO> searchDeliveryAreas(String query) {
+        List<DeliveryArea> deliveryAreas = deliveryAreaRepository.findByDeliveryAreaNameContainingIgnoreCase(query);
+        return deliveryAreas.stream()
+                .map(this::convertToDTO)
+                .collect(Collectors.toList());
+    }
+
+    @Override
     public DeliveryAreaDTO convertToDTO(DeliveryArea deliveryArea) {
         DeliveryAreaDTO dto = new DeliveryAreaDTO();
         dto.setDeliveryAreaId(deliveryArea.getDeliveryAreaId());
