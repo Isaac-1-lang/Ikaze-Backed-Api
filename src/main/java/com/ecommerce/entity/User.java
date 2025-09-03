@@ -116,6 +116,9 @@ public class User implements UserDetails {
     @OneToMany(mappedBy = "user", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
     private Set<Wishlist> wishlists;
 
+    @Column(name = "points", nullable = false)
+    private Integer points = 0;
+
     @PrePersist
     protected void onCreate() {
         createdAt = LocalDateTime.now();

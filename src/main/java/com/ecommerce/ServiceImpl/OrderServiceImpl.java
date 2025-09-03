@@ -14,6 +14,7 @@ import com.ecommerce.repository.ProductRepository;
 import com.ecommerce.repository.ProductVariantRepository;
 import com.ecommerce.repository.UserRepository;
 import com.ecommerce.service.OrderService;
+import com.ecommerce.service.RewardService;
 import com.ecommerce.dto.CreateOrderDTO;
 import com.ecommerce.dto.CustomerOrderDTO;
 import com.ecommerce.dto.AdminOrderDTO;
@@ -52,6 +53,7 @@ public class OrderServiceImpl implements OrderService {
     private final ProductRepository productRepository;
     private final ProductVariantRepository productVariantRepository;
     private final UserRepository userRepository;
+    private final RewardService rewardService;
 
     @Override
     public List<Order> getOrdersForUser(UUID userId) {
@@ -101,6 +103,7 @@ public class OrderServiceImpl implements OrderService {
 
         // Create order items
         BigDecimal subtotal = BigDecimal.ZERO;
+        int totalProductCount = 0;
         for (CreateOrderDTO.CreateOrderItemDTO itemDTO : createOrderDTO.getItems()) {
             // Find product variant by ID (Long)
             Long variantIdLong;
@@ -131,6 +134,7 @@ public class OrderServiceImpl implements OrderService {
 
             order.getOrderItems().add(orderItem);
             subtotal = subtotal.add(variant.getPrice().multiply(BigDecimal.valueOf(itemDTO.getQuantity())));
+            totalProductCount += itemDTO.getQuantity();
 
             // Update stock
             variant.setStockQuantity(variant.getStockQuantity() - itemDTO.getQuantity());
@@ -209,10 +213,14 @@ public class OrderServiceImpl implements OrderService {
         customerInfo.setEmail(user.getUserEmail());
         customerInfo.setPhoneNumber(createOrderDTO.getShippingAddress().getPhone());
         order.setOrderCustomerInfo(customerInfo);
-
-        // Save order
         Order savedOrder = orderRepository.save(order);
+
         log.info("Order created successfully with ID: {}", savedOrder.getOrderId());
+        try {
+            rewardService.checkRewardableOnOrderAndReward(userId, savedOrder.getOrderId(), totalProductCount, subtotal);
+        } catch (Exception e) {
+            log.error("Error checking reward eligibility for order {}: {}", savedOrder.getOrderId(), e.getMessage(), e);
+        }
 
         return savedOrder;
     }

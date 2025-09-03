@@ -1,0 +1,503 @@
+package com.ecommerce.service.impl;
+
+import com.ecommerce.dto.RewardSystemDTO;
+import com.ecommerce.dto.UserPointsDTO;
+import com.ecommerce.dto.UserRewardSummaryDTO;
+import com.ecommerce.entity.RewardSystem;
+import com.ecommerce.entity.User;
+import com.ecommerce.entity.UserPoints;
+import com.ecommerce.entity.UserPoints.PointsType;
+import com.ecommerce.repository.RewardSystemRepository;
+import com.ecommerce.repository.UserPointsRepository;
+import com.ecommerce.repository.UserRepository;
+import com.ecommerce.service.RewardService;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.math.BigDecimal;
+import java.time.LocalDateTime;
+import java.util.List;
+import java.util.Optional;
+import java.util.UUID;
+import java.util.stream.Collectors;
+
+@Service
+@RequiredArgsConstructor
+@Slf4j
+@Transactional
+public class RewardServiceImpl implements RewardService {
+
+    private final RewardSystemRepository rewardSystemRepository;
+    private final UserPointsRepository userPointsRepository;
+    private final UserRepository userRepository;
+
+    @Override
+    public RewardSystemDTO getActiveRewardSystem() {
+        Optional<RewardSystem> activeSystem = rewardSystemRepository.findByIsActiveTrue();
+        if (activeSystem.isPresent()) {
+            return convertToDTO(activeSystem.get());
+        }
+        return null;
+    }
+
+    @Override
+    public RewardSystemDTO saveRewardSystem(RewardSystemDTO rewardSystemDTO) {
+        if (rewardSystemDTO.getId() != null) {
+            RewardSystem existing = rewardSystemRepository.findById(rewardSystemDTO.getId())
+                    .orElseThrow(() -> new RuntimeException("Reward system not found"));
+            updateRewardSystem(existing, rewardSystemDTO);
+            return convertToDTO(rewardSystemRepository.save(existing));
+        } else {
+            if (rewardSystemDTO.getIsActive()) {
+                deactivateCurrentSystem();
+            }
+            RewardSystem newSystem = convertToEntity(rewardSystemDTO);
+            return convertToDTO(rewardSystemRepository.save(newSystem));
+        }
+    }
+
+    @Override
+    public RewardSystemDTO activateRewardSystem(Long rewardSystemId) {
+        RewardSystem system = rewardSystemRepository.findById(rewardSystemId)
+                .orElseThrow(() -> new RuntimeException("Reward system not found"));
+
+        deactivateCurrentSystem();
+        system.setIsActive(true);
+        system.setUpdatedAt(LocalDateTime.now());
+
+        return convertToDTO(rewardSystemRepository.save(system));
+    }
+
+    @Override
+    public RewardSystemDTO toggleSystemEnabled(Long rewardSystemId, Boolean enabled) {
+        RewardSystem system = rewardSystemRepository.findById(rewardSystemId)
+                .orElseThrow(() -> new RuntimeException("Reward system not found"));
+
+        system.setIsSystemEnabled(enabled);
+        system.setUpdatedAt(LocalDateTime.now());
+
+        return convertToDTO(rewardSystemRepository.save(system));
+    }
+
+    @Override
+    public RewardSystemDTO toggleReviewPoints(Long rewardSystemId, Boolean enabled, Integer pointsAmount) {
+        RewardSystem system = rewardSystemRepository.findById(rewardSystemId)
+                .orElseThrow(() -> new RuntimeException("Reward system not found"));
+
+        system.setIsReviewPointsEnabled(enabled);
+        if (enabled && pointsAmount != null) {
+            system.setReviewPointsAmount(pointsAmount);
+        }
+        system.setUpdatedAt(LocalDateTime.now());
+
+        return convertToDTO(rewardSystemRepository.save(system));
+    }
+
+    @Override
+    public RewardSystemDTO toggleSignupPoints(Long rewardSystemId, Boolean enabled, Integer pointsAmount) {
+        RewardSystem system = rewardSystemRepository.findById(rewardSystemId)
+                .orElseThrow(() -> new RuntimeException("Reward system not found"));
+
+        system.setIsSignupPointsEnabled(enabled);
+        if (enabled && pointsAmount != null) {
+            system.setSignupPointsAmount(pointsAmount);
+        }
+        system.setUpdatedAt(LocalDateTime.now());
+
+        return convertToDTO(rewardSystemRepository.save(system));
+    }
+
+    @Override
+    public RewardSystemDTO togglePurchasePoints(Long rewardSystemId, Boolean enabled) {
+        RewardSystem system = rewardSystemRepository.findById(rewardSystemId)
+                .orElseThrow(() -> new RuntimeException("Reward system not found"));
+
+        system.setIsPurchasePointsEnabled(enabled);
+        system.setUpdatedAt(LocalDateTime.now());
+
+        return convertToDTO(rewardSystemRepository.save(system));
+    }
+
+    @Override
+    public RewardSystemDTO toggleQuantityBased(Long rewardSystemId, Boolean enabled) {
+        RewardSystem system = rewardSystemRepository.findById(rewardSystemId)
+                .orElseThrow(() -> new RuntimeException("Reward system not found"));
+
+        system.setIsQuantityBasedEnabled(enabled);
+        system.setUpdatedAt(LocalDateTime.now());
+
+        return convertToDTO(rewardSystemRepository.save(system));
+    }
+
+    @Override
+    public RewardSystemDTO toggleAmountBased(Long rewardSystemId, Boolean enabled) {
+        RewardSystem system = rewardSystemRepository.findById(rewardSystemId)
+                .orElseThrow(() -> new RuntimeException("Reward system not found"));
+
+        system.setIsAmountBasedEnabled(enabled);
+        system.setUpdatedAt(LocalDateTime.now());
+
+        return convertToDTO(rewardSystemRepository.save(system));
+    }
+
+    @Override
+    public RewardSystemDTO togglePercentageBased(Long rewardSystemId, Boolean enabled, BigDecimal percentageRate) {
+        RewardSystem system = rewardSystemRepository.findById(rewardSystemId)
+                .orElseThrow(() -> new RuntimeException("Reward system not found"));
+
+        system.setIsPercentageBasedEnabled(enabled);
+        if (enabled && percentageRate != null) {
+            system.setPercentageRate(percentageRate);
+        }
+        system.setUpdatedAt(LocalDateTime.now());
+
+        return convertToDTO(rewardSystemRepository.save(system));
+    }
+
+    @Override
+    public Integer calculateOrderPoints(Integer productCount, BigDecimal orderAmount) {
+        RewardSystem activeSystem = getActiveRewardSystemEntity();
+        if (activeSystem == null) {
+            return 0;
+        }
+        return activeSystem.calculatePurchasePoints(productCount, orderAmount);
+    }
+
+    @Override
+    public void checkRewardableOnOrderAndReward(UUID userId, Long orderId, Integer productCount,
+            BigDecimal orderAmount) {
+        try {
+            log.info("Checking if order {} is rewardable for user {}", orderId, userId);
+
+            RewardSystem activeSystem = getActiveRewardSystemEntity();
+            if (activeSystem == null || !activeSystem.getIsSystemEnabled()) {
+                log.info("No active reward system or system disabled, skipping points calculation");
+                return;
+            }
+
+            Integer pointsEarned = activeSystem.calculatePurchasePoints(productCount, orderAmount);
+
+            if (pointsEarned <= 0) {
+                log.info("Order {} does not meet reward criteria. Products: {}, Amount: {}. No points awarded.",
+                        orderId, productCount, orderAmount);
+                return;
+            }
+
+            log.info("Order {} meets reward criteria. Awarding {} points to user {}",
+                    orderId, pointsEarned, userId);
+
+            awardPointsForOrder(userId, orderId, productCount, orderAmount);
+
+        } catch (Exception e) {
+            log.error("Error checking and rewarding points for order {}: {}", orderId, e.getMessage(), e);
+        }
+    }
+
+    @Override
+    public UserPointsDTO awardPointsForOrder(UUID userId, Long orderId, Integer productCount, BigDecimal orderAmount) {
+        Integer pointsEarned = calculateOrderPoints(productCount, orderAmount);
+        if (pointsEarned <= 0) {
+            return null;
+        }
+
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new RuntimeException("User not found"));
+
+        Integer currentBalance = getUserCurrentPoints(userId);
+        Integer newBalance = currentBalance + pointsEarned;
+
+        UserPoints userPoints = new UserPoints();
+        userPoints.setUser(user);
+        userPoints.setPoints(pointsEarned);
+        userPoints.setPointsType(PointsType.EARNED_PURCHASE);
+        userPoints.setDescription("Points earned from order #" + orderId);
+        userPoints.setOrderId(orderId);
+        userPoints.setBalanceAfter(newBalance);
+        userPoints.setCreatedAt(LocalDateTime.now());
+
+        RewardSystem activeSystem = getActiveRewardSystemEntity();
+        if (activeSystem != null) {
+            userPoints.setPointsValue(activeSystem.calculatePointsValue(pointsEarned));
+        }
+
+        UserPoints saved = userPointsRepository.save(userPoints);
+
+        user.setPoints(newBalance);
+        userRepository.save(user);
+
+        log.info("Awarded {} points to user {} for order {}. New balance: {}",
+                pointsEarned, userId, orderId, newBalance);
+
+        return convertToDTO(saved);
+    }
+
+    @Override
+    public UserPointsDTO awardPointsForSignup(UUID userId) {
+        RewardSystem activeSystem = getActiveRewardSystemEntity();
+        if (activeSystem == null || !activeSystem.getIsSystemEnabled() || !activeSystem.getIsSignupPointsEnabled()) {
+            return null;
+        }
+
+        Integer signupPoints = activeSystem.calculateSignupPoints();
+        if (signupPoints <= 0) {
+            return null;
+        }
+
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new RuntimeException("User not found"));
+
+        Integer currentBalance = getUserCurrentPoints(userId);
+        Integer newBalance = currentBalance + signupPoints;
+
+        UserPoints userPoints = new UserPoints();
+        userPoints.setUser(user);
+        userPoints.setPoints(signupPoints);
+        userPoints.setPointsType(PointsType.EARNED_SIGNUP);
+        userPoints.setDescription("Points earned from user registration");
+        userPoints.setBalanceAfter(newBalance);
+        userPoints.setCreatedAt(LocalDateTime.now());
+        userPoints.setPointsValue(activeSystem.calculatePointsValue(signupPoints));
+
+        UserPoints saved = userPointsRepository.save(userPoints);
+
+        user.setPoints(newBalance);
+        userRepository.save(user);
+
+        return convertToDTO(saved);
+    }
+
+    @Override
+    public UserPointsDTO awardPointsForReview(UUID userId, String description) {
+        RewardSystem activeSystem = getActiveRewardSystemEntity();
+        if (activeSystem == null || !activeSystem.getIsSystemEnabled() || !activeSystem.getIsReviewPointsEnabled()) {
+            return null;
+        }
+
+        Integer reviewPoints = activeSystem.calculateReviewPoints();
+        if (reviewPoints <= 0) {
+            return null;
+        }
+
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new RuntimeException("User not found"));
+
+        Integer currentBalance = getUserCurrentPoints(userId);
+        Integer newBalance = currentBalance + reviewPoints;
+
+        UserPoints userPoints = new UserPoints();
+        userPoints.setUser(user);
+        userPoints.setPoints(reviewPoints);
+        userPoints.setPointsType(PointsType.EARNED_REVIEW);
+        userPoints.setDescription(description != null ? description : "Points earned from product review");
+        userPoints.setBalanceAfter(newBalance);
+        userPoints.setCreatedAt(LocalDateTime.now());
+        userPoints.setPointsValue(activeSystem.calculatePointsValue(reviewPoints));
+
+        UserPoints saved = userPointsRepository.save(userPoints);
+
+        user.setPoints(newBalance);
+        userRepository.save(user);
+
+        return convertToDTO(saved);
+    }
+
+    @Override
+    public UserPointsDTO deductPointsForPurchase(UUID userId, Integer points, String description) {
+        if (!hasEnoughPoints(userId, points)) {
+            throw new RuntimeException("Insufficient points");
+        }
+
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new RuntimeException("User not found"));
+
+        Integer currentBalance = getUserCurrentPoints(userId);
+        Integer newBalance = currentBalance - points;
+
+        UserPoints userPoints = new UserPoints();
+        userPoints.setUser(user);
+        userPoints.setPoints(-points);
+        userPoints.setPointsType(PointsType.SPENT_PURCHASE);
+        userPoints.setDescription(description != null ? description : "Points spent on product purchase");
+        userPoints.setBalanceAfter(newBalance);
+        userPoints.setCreatedAt(LocalDateTime.now());
+
+        RewardSystem activeSystem = getActiveRewardSystemEntity();
+        if (activeSystem != null) {
+            userPoints.setPointsValue(activeSystem.calculatePointsValue(points));
+        }
+
+        UserPoints saved = userPointsRepository.save(userPoints);
+
+        user.setPoints(newBalance);
+        userRepository.save(user);
+
+        return convertToDTO(saved);
+    }
+
+    @Override
+    public Integer getUserCurrentPoints(UUID userId) {
+        return userPointsRepository.calculateCurrentBalance(userId);
+    }
+
+    @Override
+    public UserRewardSummaryDTO getUserRewardSummary(UUID userId) {
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new RuntimeException("User not found"));
+
+        Integer currentPoints = getUserCurrentPoints(userId);
+        Integer totalEarned = userPointsRepository.calculateTotalPointsEarned(userId);
+        Integer totalSpent = userPointsRepository.calculateTotalPointsSpent(userId);
+
+        RewardSystem activeSystem = getActiveRewardSystemEntity();
+        BigDecimal pointValue = activeSystem != null ? activeSystem.getPointValue() : BigDecimal.ZERO;
+
+        BigDecimal currentPointsValue = calculatePointsValue(currentPoints);
+        BigDecimal totalValueEarned = calculatePointsValue(totalEarned);
+        BigDecimal totalValueSpent = calculatePointsValue(totalSpent);
+
+        UserRewardSummaryDTO summary = new UserRewardSummaryDTO();
+        summary.setUserId(userId);
+        summary.setUserFullName(user.getFullName());
+        summary.setUserEmail(user.getUserEmail());
+        summary.setCurrentPoints(currentPoints);
+        summary.setCurrentPointsValue(currentPointsValue);
+        summary.setTotalPointsEarned(totalEarned);
+        summary.setTotalPointsSpent(totalSpent);
+        summary.setTotalPointsExpired(0);
+        summary.setTotalValueEarned(totalValueEarned);
+        summary.setTotalValueSpent(totalValueSpent);
+        summary.setPointValue(pointValue);
+
+        return summary;
+    }
+
+    @Override
+    public List<UserPointsDTO> getUserPointsHistory(UUID userId, int page, int size) {
+        Page<UserPoints> pointsPage = userPointsRepository.findByUserIdOrderByCreatedAtDesc(
+                userId, PageRequest.of(page, size));
+
+        return pointsPage.getContent().stream()
+                .map(this::convertToDTO)
+                .collect(Collectors.toList());
+    }
+
+    @Override
+    public BigDecimal calculatePointsValue(Integer points) {
+        RewardSystem activeSystem = getActiveRewardSystemEntity();
+        if (activeSystem == null || points == null || points <= 0) {
+            return BigDecimal.ZERO;
+        }
+        return activeSystem.calculatePointsValue(points);
+    }
+
+    @Override
+    public boolean hasEnoughPoints(UUID userId, Integer requiredPoints) {
+        Integer currentPoints = getUserCurrentPoints(userId);
+        return currentPoints >= requiredPoints;
+    }
+
+    @Override
+    public Integer getPointsRequiredForProduct(BigDecimal productPrice) {
+        RewardSystem activeSystem = getActiveRewardSystemEntity();
+        if (activeSystem == null || productPrice == null) {
+            return 0;
+        }
+
+        BigDecimal pointsValue = activeSystem.getPointValue();
+        if (pointsValue.compareTo(BigDecimal.ZERO) <= 0) {
+            return 0;
+        }
+
+        return productPrice.divide(pointsValue, 0, java.math.RoundingMode.HALF_UP).intValue();
+    }
+
+    private RewardSystem getActiveRewardSystemEntity() {
+        return rewardSystemRepository.findByIsActiveTrue().orElse(null);
+    }
+
+    private void deactivateCurrentSystem() {
+        Optional<RewardSystem> currentActive = rewardSystemRepository.findByIsActiveTrue();
+        if (currentActive.isPresent()) {
+            RewardSystem active = currentActive.get();
+            active.setIsActive(false);
+            active.setUpdatedAt(LocalDateTime.now());
+            rewardSystemRepository.save(active);
+        }
+    }
+
+    private void updateRewardSystem(RewardSystem existing, RewardSystemDTO dto) {
+        existing.setPointValue(dto.getPointValue());
+        existing.setIsSystemEnabled(dto.getIsSystemEnabled());
+        existing.setIsReviewPointsEnabled(dto.getIsReviewPointsEnabled());
+        existing.setReviewPointsAmount(dto.getReviewPointsAmount());
+        existing.setIsSignupPointsEnabled(dto.getIsSignupPointsEnabled());
+        existing.setSignupPointsAmount(dto.getSignupPointsAmount());
+        existing.setIsPurchasePointsEnabled(dto.getIsPurchasePointsEnabled());
+        existing.setIsQuantityBasedEnabled(dto.getIsQuantityBasedEnabled());
+        existing.setIsAmountBasedEnabled(dto.getIsAmountBasedEnabled());
+        existing.setIsPercentageBasedEnabled(dto.getIsPercentageBasedEnabled());
+        existing.setPercentageRate(dto.getPercentageRate());
+        existing.setDescription(dto.getDescription());
+        existing.setUpdatedAt(LocalDateTime.now());
+    }
+
+    private RewardSystem convertToEntity(RewardSystemDTO dto) {
+        RewardSystem entity = new RewardSystem();
+        entity.setPointValue(dto.getPointValue());
+        entity.setIsSystemEnabled(dto.getIsSystemEnabled());
+        entity.setIsReviewPointsEnabled(dto.getIsReviewPointsEnabled());
+        entity.setReviewPointsAmount(dto.getReviewPointsAmount());
+        entity.setIsSignupPointsEnabled(dto.getIsSignupPointsEnabled());
+        entity.setSignupPointsAmount(dto.getSignupPointsAmount());
+        entity.setIsPurchasePointsEnabled(dto.getIsPurchasePointsEnabled());
+        entity.setIsQuantityBasedEnabled(dto.getIsQuantityBasedEnabled());
+        entity.setIsAmountBasedEnabled(dto.getIsAmountBasedEnabled());
+        entity.setIsPercentageBasedEnabled(dto.getIsPercentageBasedEnabled());
+        entity.setPercentageRate(dto.getPercentageRate());
+        entity.setDescription(dto.getDescription());
+        entity.setCreatedAt(LocalDateTime.now());
+        entity.setUpdatedAt(LocalDateTime.now());
+        return entity;
+    }
+
+    private RewardSystemDTO convertToDTO(RewardSystem entity) {
+        RewardSystemDTO dto = new RewardSystemDTO();
+        dto.setId(entity.getId());
+        dto.setPointValue(entity.getPointValue());
+        dto.setIsActive(entity.getIsActive());
+        dto.setIsSystemEnabled(entity.getIsSystemEnabled());
+        dto.setIsReviewPointsEnabled(entity.getIsReviewPointsEnabled());
+        dto.setReviewPointsAmount(entity.getReviewPointsAmount());
+        dto.setIsSignupPointsEnabled(entity.getIsSignupPointsEnabled());
+        dto.setSignupPointsAmount(entity.getSignupPointsAmount());
+        dto.setIsPurchasePointsEnabled(entity.getIsPurchasePointsEnabled());
+        dto.setIsQuantityBasedEnabled(entity.getIsQuantityBasedEnabled());
+        dto.setIsAmountBasedEnabled(entity.getIsAmountBasedEnabled());
+        dto.setIsPercentageBasedEnabled(entity.getIsPercentageBasedEnabled());
+        dto.setPercentageRate(entity.getPercentageRate());
+        dto.setDescription(entity.getDescription());
+        dto.setCreatedAt(entity.getCreatedAt());
+        dto.setUpdatedAt(entity.getUpdatedAt());
+        return dto;
+    }
+
+    private UserPointsDTO convertToDTO(UserPoints entity) {
+        UserPointsDTO dto = new UserPointsDTO();
+        dto.setId(entity.getId());
+        dto.setUserId(entity.getUser().getId());
+        dto.setUserFullName(entity.getUser().getFullName());
+        dto.setUserEmail(entity.getUser().getUserEmail());
+        dto.setPoints(entity.getPoints());
+        dto.setPointsType(entity.getPointsType().name());
+        dto.setDescription(entity.getDescription());
+        dto.setOrderId(entity.getOrderId());
+        dto.setPointsValue(entity.getPointsValue());
+        dto.setBalanceAfter(entity.getBalanceAfter());
+        dto.setCreatedAt(entity.getCreatedAt());
+        return dto;
+    }
+}

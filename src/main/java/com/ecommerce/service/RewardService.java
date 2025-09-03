@@ -1,0 +1,56 @@
+package com.ecommerce.service;
+
+import com.ecommerce.dto.RewardSystemDTO;
+import com.ecommerce.dto.UserPointsDTO;
+import com.ecommerce.dto.UserRewardSummaryDTO;
+
+import java.math.BigDecimal;
+import java.util.List;
+import java.util.UUID;
+
+public interface RewardService {
+
+    RewardSystemDTO getActiveRewardSystem();
+
+    RewardSystemDTO saveRewardSystem(RewardSystemDTO rewardSystemDTO);
+
+    RewardSystemDTO activateRewardSystem(Long rewardSystemId);
+
+    RewardSystemDTO toggleSystemEnabled(Long rewardSystemId, Boolean enabled);
+
+    RewardSystemDTO toggleReviewPoints(Long rewardSystemId, Boolean enabled, Integer pointsAmount);
+
+    RewardSystemDTO toggleSignupPoints(Long rewardSystemId, Boolean enabled, Integer pointsAmount);
+
+    RewardSystemDTO togglePurchasePoints(Long rewardSystemId, Boolean enabled);
+
+    RewardSystemDTO toggleQuantityBased(Long rewardSystemId, Boolean enabled);
+
+    RewardSystemDTO toggleAmountBased(Long rewardSystemId, Boolean enabled);
+
+    RewardSystemDTO togglePercentageBased(Long rewardSystemId, Boolean enabled, BigDecimal percentageRate);
+
+    Integer calculateOrderPoints(Integer productCount, BigDecimal orderAmount);
+
+    void checkRewardableOnOrderAndReward(UUID userId, Long orderId, Integer productCount, BigDecimal orderAmount);
+
+    UserPointsDTO awardPointsForOrder(UUID userId, Long orderId, Integer productCount, BigDecimal orderAmount);
+
+    UserPointsDTO awardPointsForReview(UUID userId, String description);
+
+    UserPointsDTO awardPointsForSignup(UUID userId);
+
+    UserPointsDTO deductPointsForPurchase(UUID userId, Integer points, String description);
+
+    Integer getUserCurrentPoints(UUID userId);
+
+    UserRewardSummaryDTO getUserRewardSummary(UUID userId);
+
+    List<UserPointsDTO> getUserPointsHistory(UUID userId, int page, int size);
+
+    BigDecimal calculatePointsValue(Integer points);
+
+    boolean hasEnoughPoints(UUID userId, Integer requiredPoints);
+
+    Integer getPointsRequiredForProduct(BigDecimal productPrice);
+}
