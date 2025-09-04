@@ -69,7 +69,7 @@ public class RewardSystem {
     @Column(name = "updated_at", nullable = false)
     private LocalDateTime updatedAt;
 
-    @OneToMany(mappedBy = "rewardSystem", cascade = CascadeType.ALL, orphanRemoval = true)
+    @OneToMany(mappedBy = "rewardSystem", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.EAGER)
     private List<RewardRange> rewardRanges;
 
     @PrePersist

@@ -15,6 +15,8 @@ import jakarta.validation.Valid;
 import java.math.BigDecimal;
 import java.util.List;
 import java.util.UUID;
+import java.util.Arrays;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/api/v1/rewards")
@@ -38,6 +40,59 @@ public class RewardController {
             return ResponseEntity.notFound().build();
         } catch (Exception e) {
             log.error("Error fetching active reward system: {}", e.getMessage(), e);
+            return ResponseEntity.internalServerError().build();
+        }
+    }
+
+    @GetMapping("/systems")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<Map<String, Object>> getAllRewardSystems(
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "10") int size,
+            @RequestParam(defaultValue = "id") String sortBy,
+            @RequestParam(defaultValue = "desc") String sortDir) {
+        try {
+            log.info("Fetching all reward systems: page={}, size={}, sortBy={}, sortDir={}", page, size, sortBy,
+                    sortDir);
+
+            // Validate pagination parameters
+            if (page < 0) {
+                page = 0;
+            }
+            if (size < 1 || size > 100) {
+                size = 10;
+            }
+
+            // Validate sort parameters
+            if (!Arrays.asList("id", "createdAt", "updatedAt", "isActive", "isSystemEnabled").contains(sortBy)) {
+                sortBy = "id";
+            }
+            if (!Arrays.asList("asc", "desc").contains(sortDir.toLowerCase())) {
+                sortDir = "desc";
+            }
+
+            Map<String, Object> result = rewardService.getAllRewardSystems(page, size, sortBy, sortDir);
+            log.info("Retrieved {} reward systems successfully", result.get("totalElements"));
+            return ResponseEntity.ok(result);
+        } catch (Exception e) {
+            log.error("Error fetching all reward systems: {}", e.getMessage(), e);
+            return ResponseEntity.internalServerError().build();
+        }
+    }
+
+    @GetMapping("/system/{id}")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<RewardSystemDTO> getRewardSystemById(@PathVariable Long id) {
+        try {
+            log.info("Fetching reward system with ID: {}", id);
+            RewardSystemDTO system = rewardService.getRewardSystemById(id);
+            if (system != null) {
+                return ResponseEntity.ok(system);
+            }
+            log.warn("Reward system not found with ID: {}", id);
+            return ResponseEntity.notFound().build();
+        } catch (Exception e) {
+            log.error("Error fetching reward system with ID {}: {}", id, e.getMessage(), e);
             return ResponseEntity.internalServerError().build();
         }
     }

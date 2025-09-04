@@ -6,11 +6,16 @@ import com.ecommerce.dto.UserRewardSummaryDTO;
 
 import java.math.BigDecimal;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 public interface RewardService {
 
     RewardSystemDTO getActiveRewardSystem();
+
+    Map<String, Object> getAllRewardSystems(int page, int size, String sortBy, String sortDir);
+
+    RewardSystemDTO getRewardSystemById(Long id);
 
     RewardSystemDTO saveRewardSystem(RewardSystemDTO rewardSystemDTO);
 

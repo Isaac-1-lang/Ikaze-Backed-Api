@@ -15,15 +15,20 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
+import java.util.HashMap;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.stream.Collectors;
+import com.ecommerce.dto.RewardRangeDTO;
+import com.ecommerce.entity.RewardRange;
 
 @Service
 @RequiredArgsConstructor
@@ -45,7 +50,65 @@ public class RewardServiceImpl implements RewardService {
     }
 
     @Override
+    public Map<String, Object> getAllRewardSystems(int page, int size, String sortBy, String sortDir) {
+        try {
+            // Create sort object
+            Sort sort = Sort.by(Sort.Direction.fromString(sortDir.toUpperCase()), sortBy);
+
+            // Create pageable object
+            PageRequest pageRequest = PageRequest.of(page, size, sort);
+
+            // Fetch paginated data
+            Page<RewardSystem> rewardSystemPage = rewardSystemRepository.findAll(pageRequest);
+
+            // Convert to DTOs
+            List<RewardSystemDTO> content = rewardSystemPage.getContent().stream()
+                    .map(this::convertToDTO)
+                    .collect(Collectors.toList());
+
+            // Build response map
+            Map<String, Object> response = new HashMap<>();
+            response.put("content", content);
+            response.put("currentPage", rewardSystemPage.getNumber());
+            response.put("totalPages", rewardSystemPage.getTotalPages());
+            response.put("totalElements", rewardSystemPage.getTotalElements());
+            response.put("size", rewardSystemPage.getSize());
+            response.put("first", rewardSystemPage.isFirst());
+            response.put("last", rewardSystemPage.isLast());
+            response.put("empty", rewardSystemPage.isEmpty());
+
+            return response;
+        } catch (Exception e) {
+            log.error("Error fetching all reward systems: {}", e.getMessage(), e);
+            throw new RuntimeException("Failed to fetch reward systems", e);
+        }
+    }
+
+    @Override
+    public RewardSystemDTO getRewardSystemById(Long id) {
+        RewardSystem system = rewardSystemRepository.findById(id)
+                .orElseThrow(() -> new RuntimeException("Reward system not found"));
+        return convertToDTO(system);
+    }
+
+    @Override
     public RewardSystemDTO saveRewardSystem(RewardSystemDTO rewardSystemDTO) {
+        if (rewardSystemDTO.getIsPurchasePointsEnabled()) {
+            if (rewardSystemDTO.getIsQuantityBasedEnabled() &&
+                    (rewardSystemDTO.getRewardRanges() == null ||
+                            rewardSystemDTO.getRewardRanges().stream()
+                                    .noneMatch(range -> "QUANTITY".equals(range.getRangeType())))) {
+                throw new IllegalArgumentException("Quantity-based rewards require at least one quantity range");
+            }
+
+            if (rewardSystemDTO.getIsAmountBasedEnabled() &&
+                    (rewardSystemDTO.getRewardRanges() == null ||
+                            rewardSystemDTO.getRewardRanges().stream()
+                                    .noneMatch(range -> "AMOUNT".equals(range.getRangeType())))) {
+                throw new IllegalArgumentException("Amount-based rewards require at least one amount range");
+            }
+        }
+
         if (rewardSystemDTO.getId() != null) {
             RewardSystem existing = rewardSystemRepository.findById(rewardSystemDTO.getId())
                     .orElseThrow(() -> new RuntimeException("Reward system not found"));
@@ -56,6 +119,15 @@ public class RewardServiceImpl implements RewardService {
                 deactivateCurrentSystem();
             }
             RewardSystem newSystem = convertToEntity(rewardSystemDTO);
+
+            // Ensure reward ranges are properly set for new systems
+            if (rewardSystemDTO.getRewardRanges() != null && !rewardSystemDTO.getRewardRanges().isEmpty()) {
+                List<RewardRange> ranges = rewardSystemDTO.getRewardRanges().stream()
+                        .map(rangeDTO -> convertRangeToEntity(rangeDTO, newSystem))
+                        .collect(Collectors.toList());
+                newSystem.setRewardRanges(ranges);
+            }
+
             return convertToDTO(rewardSystemRepository.save(newSystem));
         }
     }
@@ -443,6 +515,17 @@ public class RewardServiceImpl implements RewardService {
         existing.setPercentageRate(dto.getPercentageRate());
         existing.setDescription(dto.getDescription());
         existing.setUpdatedAt(LocalDateTime.now());
+
+        if (existing.getRewardRanges() != null) {
+            existing.getRewardRanges().clear();
+        }
+
+        if (dto.getRewardRanges() != null && !dto.getRewardRanges().isEmpty()) {
+            List<RewardRange> ranges = dto.getRewardRanges().stream()
+                    .map(rangeDTO -> convertRangeToEntity(rangeDTO, existing))
+                    .collect(Collectors.toList());
+            existing.setRewardRanges(ranges);
+        }
     }
 
     private RewardSystem convertToEntity(RewardSystemDTO dto) {
@@ -482,6 +565,15 @@ public class RewardServiceImpl implements RewardService {
         dto.setDescription(entity.getDescription());
         dto.setCreatedAt(entity.getCreatedAt());
         dto.setUpdatedAt(entity.getUpdatedAt());
+
+        // Convert reward ranges
+        if (entity.getRewardRanges() != null && !entity.getRewardRanges().isEmpty()) {
+            List<RewardRangeDTO> rangeDTOs = entity.getRewardRanges().stream()
+                    .map(this::convertRangeToDTO)
+                    .collect(Collectors.toList());
+            dto.setRewardRanges(rangeDTOs);
+        }
+
         return dto;
     }
 
@@ -499,5 +591,28 @@ public class RewardServiceImpl implements RewardService {
         dto.setBalanceAfter(entity.getBalanceAfter());
         dto.setCreatedAt(entity.getCreatedAt());
         return dto;
+    }
+
+    private RewardRangeDTO convertRangeToDTO(RewardRange range) {
+        RewardRangeDTO dto = new RewardRangeDTO();
+        dto.setId(range.getId());
+        dto.setRewardSystemId(range.getRewardSystem().getId());
+        dto.setRangeType(range.getRangeType().name());
+        dto.setMinValue(range.getMinValue());
+        dto.setMaxValue(range.getMaxValue());
+        dto.setPoints(range.getPoints());
+        dto.setDescription(range.getDescription());
+        return dto;
+    }
+
+    private RewardRange convertRangeToEntity(RewardRangeDTO rangeDTO, RewardSystem rewardSystem) {
+        RewardRange range = new RewardRange();
+        range.setRewardSystem(rewardSystem);
+        range.setRangeType(RewardRange.RangeType.valueOf(rangeDTO.getRangeType()));
+        range.setMinValue(rangeDTO.getMinValue());
+        range.setMaxValue(rangeDTO.getMaxValue());
+        range.setPoints(rangeDTO.getPoints());
+        range.setDescription(rangeDTO.getDescription());
+        return range;
     }
 }
