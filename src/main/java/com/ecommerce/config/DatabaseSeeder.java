@@ -136,7 +136,6 @@ public class DatabaseSeeder implements CommandLineRunner {
         String adminLastName = System.getenv("ADMIN_LAST_NAME");
         String adminPhone = System.getenv("ADMIN_PHONE");
 
-        // Use default values if environment variables are not set
         if (adminEmail == null)
             adminEmail = "admin@example.com";
         if (adminPassword == null)

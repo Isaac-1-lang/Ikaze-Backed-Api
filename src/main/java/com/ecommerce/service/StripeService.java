@@ -71,26 +71,13 @@ public class StripeService {
                                 "orderId", order.getOrderId().toString(),
                                 "orderCode", order.getOrderCode());
 
-                String webSuccess = "http://127.0.0.1:5500/src/stripeCheckoutPayment/payment-success.html";
-                String webCancel = "http://127.0.0.1:5500/src/stripeCheckoutPayment/payment-cancel.html";
-                String mobSuccess = "snapshop://checkout-redirect";
-                String mobCancel = "snapshop://checkout-redirect";
-                String successUrl;
-                String cancelUrl;
-                if (platform != null && platform.equalsIgnoreCase("mobile")) {
-                        successUrl = mobSuccess;
-                        cancelUrl = mobCancel;
-                } else {
-                        successUrl = webSuccess;
-                        cancelUrl = webCancel;
-                }
                 SessionCreateParams params = SessionCreateParams.builder()
                                 .addPaymentMethodType(SessionCreateParams.PaymentMethodType.CARD)
                                 .setMode(SessionCreateParams.Mode.PAYMENT)
                                 .addAllLineItem(lineItems)
                                 .putAllMetadata(metadata)
-                                .setSuccessUrl(successUrl + "?session_id={CHECKOUT_SESSION_ID}")
-                                .setCancelUrl(cancelUrl + "?session_id={CHECKOUT_SESSION_ID}")
+                                .setSuccessUrl("http://localhost:5500/stripeCheckoutPayment/payment-success.html?session_id={CHECKOUT_SESSION_ID}")
+                                .setCancelUrl("http://localhost:5500/stripeCheckoutPayment/payment-cancel.html?session_id={CHECKOUT_SESSION_ID}")
                                 .build();
 
                 Session session = Session.create(params);

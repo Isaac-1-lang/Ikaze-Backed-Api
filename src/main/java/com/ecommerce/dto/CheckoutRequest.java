@@ -17,9 +17,8 @@ public class CheckoutRequest {
 
     private String currency = "usd";
 
-    // For authenticated users
     private UUID userId;
 
     @NotBlank
-    private String platform; // "web" or "mobile"
+    private String platform;
 }
