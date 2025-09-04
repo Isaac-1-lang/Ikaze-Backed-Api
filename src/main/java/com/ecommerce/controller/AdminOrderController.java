@@ -40,9 +40,12 @@ public class AdminOrderController {
 
         } catch (Exception e) {
             log.error("Error fetching all orders: {}", e.getMessage(), e);
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(Map.of(
-                    "success", false,
-                    "message", "Failed to fetch orders"));
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", false);
+            response.put("message", "An unexpected error occurred while fetching orders.");
+            response.put("errorCode", "INTERNAL_ERROR");
+            response.put("details", e.getMessage());
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(response);
         }
     }
 
@@ -59,14 +62,20 @@ public class AdminOrderController {
             return ResponseEntity.ok(response);
 
         } catch (IllegalArgumentException e) {
-            return ResponseEntity.badRequest().body(Map.of(
-                    "success", false,
-                    "message", "Invalid status: " + status));
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", false);
+            response.put("message", "Invalid status: " + status);
+            response.put("errorCode", "VALIDATION_ERROR");
+            response.put("details", e.getMessage());
+            return ResponseEntity.badRequest().body(response);
         } catch (Exception e) {
             log.error("Error fetching orders by status: {}", e.getMessage(), e);
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(Map.of(
-                    "success", false,
-                    "message", "Failed to fetch orders"));
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", false);
+            response.put("message", "An unexpected error occurred while fetching orders by status.");
+            response.put("errorCode", "INTERNAL_ERROR");
+            response.put("details", e.getMessage());
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(response);
         }
     }
 
@@ -83,14 +92,20 @@ public class AdminOrderController {
             return ResponseEntity.ok(response);
 
         } catch (EntityNotFoundException e) {
-            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of(
-                    "success", false,
-                    "message", "Order not found"));
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", false);
+            response.put("message", "Order not found");
+            response.put("errorCode", "NOT_FOUND");
+            response.put("details", e.getMessage());
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(response);
         } catch (Exception e) {
             log.error("Error fetching order by ID: {}", e.getMessage(), e);
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(Map.of(
-                    "success", false,
-                    "message", "Failed to fetch order"));
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", false);
+            response.put("message", "An unexpected error occurred while fetching order by ID.");
+            response.put("errorCode", "INTERNAL_ERROR");
+            response.put("details", e.getMessage());
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(response);
         }
     }
 
@@ -107,14 +122,20 @@ public class AdminOrderController {
             return ResponseEntity.ok(response);
 
         } catch (EntityNotFoundException e) {
-            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of(
-                    "success", false,
-                    "message", "Order not found"));
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", false);
+            response.put("message", "Order not found");
+            response.put("errorCode", "NOT_FOUND");
+            response.put("details", e.getMessage());
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(response);
         } catch (Exception e) {
             log.error("Error fetching order by number: {}", e.getMessage(), e);
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(Map.of(
-                    "success", false,
-                    "message", "Failed to fetch order"));
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", false);
+            response.put("message", "An unexpected error occurred while fetching order by number.");
+            response.put("errorCode", "INTERNAL_ERROR");
+            response.put("details", e.getMessage());
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(response);
         }
     }
 
@@ -124,9 +145,12 @@ public class AdminOrderController {
         try {
             String status = request.get("status");
             if (status == null) {
-                return ResponseEntity.badRequest().body(Map.of(
-                        "success", false,
-                        "message", "Status is required"));
+                Map<String, Object> response = new HashMap<>();
+                response.put("success", false);
+                response.put("message", "Status is required");
+                response.put("errorCode", "VALIDATION_ERROR");
+                response.put("details", "Missing status field in request body.");
+                return ResponseEntity.badRequest().body(response);
             }
 
             var order = orderService.updateOrderStatus(orderId, status);
@@ -140,18 +164,27 @@ public class AdminOrderController {
             return ResponseEntity.ok(response);
 
         } catch (EntityNotFoundException e) {
-            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of(
-                    "success", false,
-                    "message", "Order not found"));
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", false);
+            response.put("message", "Order not found");
+            response.put("errorCode", "NOT_FOUND");
+            response.put("details", e.getMessage());
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(response);
         } catch (IllegalArgumentException e) {
-            return ResponseEntity.badRequest().body(Map.of(
-                    "success", false,
-                    "message", e.getMessage()));
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", false);
+            response.put("message", e.getMessage());
+            response.put("errorCode", "VALIDATION_ERROR");
+            response.put("details", e.getMessage());
+            return ResponseEntity.badRequest().body(response);
         } catch (Exception e) {
             log.error("Error updating order status: {}", e.getMessage(), e);
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(Map.of(
-                    "success", false,
-                    "message", "Failed to update order status"));
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", false);
+            response.put("message", "An unexpected error occurred while updating order status.");
+            response.put("errorCode", "INTERNAL_ERROR");
+            response.put("details", e.getMessage());
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(response);
         }
     }
 
@@ -163,9 +196,12 @@ public class AdminOrderController {
             String estimatedDelivery = request.get("estimatedDelivery");
 
             if (trackingNumber == null) {
-                return ResponseEntity.badRequest().body(Map.of(
-                        "success", false,
-                        "message", "Tracking number is required"));
+                Map<String, Object> response = new HashMap<>();
+                response.put("success", false);
+                response.put("message", "Tracking number is required");
+                response.put("errorCode", "VALIDATION_ERROR");
+                response.put("details", "Missing trackingNumber field in request body.");
+                return ResponseEntity.badRequest().body(response);
             }
 
             var order = orderService.updateOrderTracking(orderId, trackingNumber, estimatedDelivery);
@@ -179,14 +215,20 @@ public class AdminOrderController {
             return ResponseEntity.ok(response);
 
         } catch (EntityNotFoundException e) {
-            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of(
-                    "success", false,
-                    "message", "Order not found"));
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", false);
+            response.put("message", "Order not found");
+            response.put("errorCode", "NOT_FOUND");
+            response.put("details", e.getMessage());
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(response);
         } catch (Exception e) {
             log.error("Error updating order tracking: {}", e.getMessage(), e);
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(Map.of(
-                    "success", false,
-                    "message", "Failed to update tracking information"));
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", false);
+            response.put("message", "An unexpected error occurred while updating tracking information.");
+            response.put("errorCode", "INTERNAL_ERROR");
+            response.put("details", e.getMessage());
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(response);
         }
     }
 }

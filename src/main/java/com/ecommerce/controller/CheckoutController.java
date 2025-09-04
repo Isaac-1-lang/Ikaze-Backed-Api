@@ -62,24 +62,27 @@ public class CheckoutController {
             log.warn("Invalid request for checkout session: {}", e.getMessage());
             Map<String, Object> response = new HashMap<>();
             response.put("success", false);
-            response.put("message", e.getMessage());
-            response.put("error", "VALIDATION_ERROR");
+            response.put("message", "Invalid input: " + e.getMessage());
+            response.put("errorCode", "VALIDATION_ERROR");
+            response.put("details", e.getMessage());
             return ResponseEntity.badRequest().body(response);
 
         } catch (EntityNotFoundException e) {
             log.warn("Entity not found during checkout: {}", e.getMessage());
             Map<String, Object> response = new HashMap<>();
             response.put("success", false);
-            response.put("message", e.getMessage());
-            response.put("error", "NOT_FOUND");
+            response.put("message", "Resource not found: " + e.getMessage());
+            response.put("errorCode", "NOT_FOUND");
+            response.put("details", e.getMessage());
             return ResponseEntity.status(HttpStatus.NOT_FOUND).body(response);
 
         } catch (Exception e) {
             log.error("Error creating checkout session: {}", e.getMessage(), e);
             Map<String, Object> response = new HashMap<>();
             response.put("success", false);
-            response.put("message", "Failed to create checkout session");
-            response.put("error", "INTERNAL_ERROR");
+            response.put("message", "An unexpected error occurred while creating checkout session.");
+            response.put("errorCode", "INTERNAL_ERROR");
+            response.put("details", e.getMessage());
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(response);
         }
     }
@@ -108,24 +111,27 @@ public class CheckoutController {
             log.warn("Invalid request for guest checkout: {}", e.getMessage());
             Map<String, Object> response = new HashMap<>();
             response.put("success", false);
-            response.put("message", e.getMessage());
-            response.put("error", "VALIDATION_ERROR");
+            response.put("message", "Invalid input: " + e.getMessage());
+            response.put("errorCode", "VALIDATION_ERROR");
+            response.put("details", e.getMessage());
             return ResponseEntity.badRequest().body(response);
 
         } catch (EntityNotFoundException e) {
             log.warn("Entity not found during guest checkout: {}", e.getMessage());
             Map<String, Object> response = new HashMap<>();
             response.put("success", false);
-            response.put("message", e.getMessage());
-            response.put("error", "NOT_FOUND");
+            response.put("message", "Resource not found: " + e.getMessage());
+            response.put("errorCode", "NOT_FOUND");
+            response.put("details", e.getMessage());
             return ResponseEntity.status(HttpStatus.NOT_FOUND).body(response);
 
         } catch (Exception e) {
             log.error("Error creating guest checkout session: {}", e.getMessage(), e);
             Map<String, Object> response = new HashMap<>();
             response.put("success", false);
-            response.put("message", "Failed to create guest checkout session");
-            response.put("error", "INTERNAL_ERROR");
+            response.put("message", "An unexpected error occurred while creating guest checkout session.");
+            response.put("errorCode", "INTERNAL_ERROR");
+            response.put("details", e.getMessage());
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(response);
         }
     }
@@ -154,24 +160,27 @@ public class CheckoutController {
             log.warn("Session not found: {}", e.getMessage());
             Map<String, Object> response = new HashMap<>();
             response.put("success", false);
-            response.put("message", e.getMessage());
-            response.put("error", "NOT_FOUND");
+            response.put("message", "Session not found: " + e.getMessage());
+            response.put("errorCode", "NOT_FOUND");
+            response.put("details", e.getMessage());
             return ResponseEntity.status(HttpStatus.NOT_FOUND).body(response);
 
         } catch (IllegalStateException e) {
             log.warn("Invalid session state: {}", e.getMessage());
             Map<String, Object> response = new HashMap<>();
             response.put("success", false);
-            response.put("message", e.getMessage());
-            response.put("error", "INVALID_STATE");
+            response.put("message", "Invalid session state: " + e.getMessage());
+            response.put("errorCode", "INVALID_STATE");
+            response.put("details", e.getMessage());
             return ResponseEntity.badRequest().body(response);
 
         } catch (Exception e) {
             log.error("Error verifying checkout session: {}", e.getMessage(), e);
             Map<String, Object> response = new HashMap<>();
             response.put("success", false);
-            response.put("message", "Failed to verify checkout session");
-            response.put("error", "INTERNAL_ERROR");
+            response.put("message", "An unexpected error occurred while verifying checkout session.");
+            response.put("errorCode", "INTERNAL_ERROR");
+            response.put("details", e.getMessage());
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(response);
         }
     }
