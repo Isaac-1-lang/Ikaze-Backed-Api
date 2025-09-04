@@ -61,3 +61,4 @@ uploads/
 application-dev.properties
 temp/
 *.tmp
+.backend-ecommerce-key.pem

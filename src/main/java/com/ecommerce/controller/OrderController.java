@@ -62,9 +62,12 @@ public class OrderController {
             return ResponseEntity.ok(res);
         } catch (Exception e) {
             log.error("Failed to fetch all orders", e);
-            return ResponseEntity.internalServerError().body(Map.of(
-                    "success", false,
-                    "message", "Failed to fetch all orders"));
+            Map<String, Object> res = new HashMap<>();
+            res.put("success", false);
+            res.put("message", "An unexpected error occurred while fetching all orders.");
+            res.put("errorCode", "INTERNAL_ERROR");
+            res.put("details", e.getMessage());
+            return ResponseEntity.internalServerError().body(res);
         }
     }
 
@@ -83,14 +86,20 @@ public class OrderController {
             res.put("data", dtoList);
             return ResponseEntity.ok(res);
         } catch (IllegalArgumentException e) {
-            return ResponseEntity.badRequest().body(Map.of(
-                    "success", false,
-                    "message", "Invalid userId format"));
+            Map<String, Object> res = new HashMap<>();
+            res.put("success", false);
+            res.put("message", "Invalid userId format");
+            res.put("errorCode", "VALIDATION_ERROR");
+            res.put("details", e.getMessage());
+            return ResponseEntity.badRequest().body(res);
         } catch (Exception e) {
             log.error("Failed to fetch orders by userId", e);
-            return ResponseEntity.internalServerError().body(Map.of(
-                    "success", false,
-                    "message", "Failed to fetch orders by userId"));
+            Map<String, Object> res = new HashMap<>();
+            res.put("success", false);
+            res.put("message", "An unexpected error occurred while fetching orders by userId.");
+            res.put("errorCode", "INTERNAL_ERROR");
+            res.put("details", e.getMessage());
+            return ResponseEntity.internalServerError().body(res);
         }
     }
 
@@ -104,16 +113,22 @@ public class OrderController {
         try {
             Order order = orderService.getOrderById(orderId);
             if (order == null) {
-                return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of(
-                        "success", false,
-                        "message", "Order not found"));
+                Map<String, Object> res = new HashMap<>();
+                res.put("success", false);
+                res.put("message", "Order not found");
+                res.put("errorCode", "NOT_FOUND");
+                res.put("details", "Order with id " + orderId + " not found.");
+                return ResponseEntity.status(HttpStatus.NOT_FOUND).body(res);
             }
             return ResponseEntity.ok(Map.of("success", true, "data", toDto(order)));
         } catch (Exception e) {
             log.error("Failed to fetch order by id", e);
-            return ResponseEntity.internalServerError().body(Map.of(
-                    "success", false,
-                    "message", "Failed to fetch order by id"));
+            Map<String, Object> res = new HashMap<>();
+            res.put("success", false);
+            res.put("message", "An unexpected error occurred while fetching order by id.");
+            res.put("errorCode", "INTERNAL_ERROR");
+            res.put("details", e.getMessage());
+            return ResponseEntity.internalServerError().body(res);
         }
     }
 
@@ -128,9 +143,12 @@ public class OrderController {
     public ResponseEntity<?> listUserOrders(@RequestParam(name = "userId") String userId) {
         try {
             if (userId == null || userId.isBlank()) {
-                return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of(
-                        "success", false,
-                        "message", "User ID is required as a request parameter"));
+                Map<String, Object> res = new HashMap<>();
+                res.put("success", false);
+                res.put("message", "User ID is required as a request parameter");
+                res.put("errorCode", "VALIDATION_ERROR");
+                res.put("details", "Missing userId parameter");
+                return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(res);
             }
             UUID uuid = UUID.fromString(userId);
             List<Order> orders = orderService.getOrdersForUser(uuid);
@@ -140,14 +158,20 @@ public class OrderController {
             res.put("data", dtoList);
             return ResponseEntity.ok(res);
         } catch (IllegalArgumentException e) {
-            return ResponseEntity.badRequest().body(Map.of(
-                    "success", false,
-                    "message", "Invalid userId format"));
+            Map<String, Object> res = new HashMap<>();
+            res.put("success", false);
+            res.put("message", "Invalid userId format");
+            res.put("errorCode", "VALIDATION_ERROR");
+            res.put("details", e.getMessage());
+            return ResponseEntity.badRequest().body(res);
         } catch (Exception e) {
             log.error("Failed to fetch orders", e);
-            return ResponseEntity.internalServerError().body(Map.of(
-                    "success", false,
-                    "message", "Failed to fetch orders"));
+            Map<String, Object> res = new HashMap<>();
+            res.put("success", false);
+            res.put("message", "An unexpected error occurred while fetching orders.");
+            res.put("errorCode", "INTERNAL_ERROR");
+            res.put("details", e.getMessage());
+            return ResponseEntity.internalServerError().body(res);
         }
     }
 
@@ -164,9 +188,12 @@ public class OrderController {
         try {
             log.info("Creating new order");
             if (createOrderDTO.getUserId() == null || createOrderDTO.getUserId().isBlank()) {
-                return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of(
-                        "success", false,
-                        "message", "User ID is required in the request body"));
+                Map<String, Object> response = new HashMap<>();
+                response.put("success", false);
+                response.put("message", "User ID is required in the request body");
+                response.put("errorCode", "VALIDATION_ERROR");
+                response.put("details", "Missing userId in request body");
+                return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(response);
             }
             UUID userId = java.util.UUID.fromString(createOrderDTO.getUserId());
             Order order = orderService.createOrder(userId, createOrderDTO);
@@ -185,15 +212,17 @@ public class OrderController {
             Map<String, Object> response = new HashMap<>();
             response.put("success", false);
             response.put("message", e.getMessage());
-            response.put("error", "VALIDATION_ERROR");
+            response.put("errorCode", "VALIDATION_ERROR");
+            response.put("details", e.getMessage());
             return ResponseEntity.badRequest().body(response);
 
         } catch (Exception e) {
             log.error("Error creating order: {}", e.getMessage(), e);
             Map<String, Object> response = new HashMap<>();
             response.put("success", false);
-            response.put("message", "Failed to create order");
-            response.put("error", "INTERNAL_ERROR");
+            response.put("message", "An unexpected error occurred while creating order.");
+            response.put("errorCode", "INTERNAL_ERROR");
+            response.put("details", e.getMessage());
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(response);
         }
     }
@@ -208,9 +237,12 @@ public class OrderController {
             @RequestParam(name = "userId") String userId) {
         try {
             if (userId == null || userId.isBlank()) {
-                return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of(
-                        "success", false,
-                        "message", "User ID is required as a request parameter"));
+                Map<String, Object> response = new HashMap<>();
+                response.put("success", false);
+                response.put("message", "User ID is required as a request parameter");
+                response.put("errorCode", "VALIDATION_ERROR");
+                response.put("details", "Missing userId parameter");
+                return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(response);
             }
             UUID uuid = UUID.fromString(userId);
             Order order = orderService.getOrderByNumber(uuid, orderNumber);
@@ -223,18 +255,27 @@ public class OrderController {
             return ResponseEntity.ok(response);
 
         } catch (IllegalArgumentException e) {
-            return ResponseEntity.badRequest().body(Map.of(
-                    "success", false,
-                    "message", "Invalid userId format"));
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", false);
+            response.put("message", "Invalid userId format");
+            response.put("errorCode", "VALIDATION_ERROR");
+            response.put("details", e.getMessage());
+            return ResponseEntity.badRequest().body(response);
         } catch (EntityNotFoundException e) {
-            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of(
-                    "success", false,
-                    "message", "Order not found"));
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", false);
+            response.put("message", "Order not found");
+            response.put("errorCode", "NOT_FOUND");
+            response.put("details", e.getMessage());
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(response);
         } catch (Exception e) {
             log.error("Error fetching order by number: {}", e.getMessage(), e);
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(Map.of(
-                    "success", false,
-                    "message", "Failed to fetch order"));
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", false);
+            response.put("message", "An unexpected error occurred while fetching order by number.");
+            response.put("errorCode", "INTERNAL_ERROR");
+            response.put("details", e.getMessage());
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(response);
         }
     }
 
@@ -250,23 +291,38 @@ public class OrderController {
             @PathVariable Long orderId) {
         try {
             if (userId == null || userId.isBlank()) {
-                return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of(
-                        "success", false,
-                        "message", "User ID is required as a request parameter"));
+                Map<String, Object> response = new HashMap<>();
+                response.put("success", false);
+                response.put("message", "User ID is required as a request parameter");
+                response.put("errorCode", "VALIDATION_ERROR");
+                response.put("details", "Missing userId parameter");
+                return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(response);
             }
             UUID uuid = UUID.fromString(userId);
             Order order = orderService.getOrderByIdForUser(uuid, orderId);
             return ResponseEntity.ok(Map.of("success", true, "data", toDto(order)));
         } catch (jakarta.persistence.EntityNotFoundException e) {
-            return ResponseEntity.status(404).body(Map.of("success", false, "message", "Order not found"));
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", false);
+            response.put("message", "Order not found");
+            response.put("errorCode", "NOT_FOUND");
+            response.put("details", e.getMessage());
+            return ResponseEntity.status(404).body(response);
         } catch (IllegalArgumentException e) {
-            return ResponseEntity.badRequest().body(Map.of(
-                    "success", false,
-                    "message", "Invalid userId format"));
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", false);
+            response.put("message", "Invalid userId format");
+            response.put("errorCode", "VALIDATION_ERROR");
+            response.put("details", e.getMessage());
+            return ResponseEntity.badRequest().body(response);
         } catch (Exception e) {
             log.error("Failed to fetch order", e);
-            return ResponseEntity.internalServerError()
-                    .body(Map.of("success", false, "message", "Failed to fetch order"));
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", false);
+            response.put("message", "An unexpected error occurred while fetching order.");
+            response.put("errorCode", "INTERNAL_ERROR");
+            response.put("details", e.getMessage());
+            return ResponseEntity.internalServerError().body(response);
         }
     }
 
@@ -281,9 +337,12 @@ public class OrderController {
     public ResponseEntity<?> cancelOrder(@PathVariable Long orderId, @RequestParam(name = "userId") String userId) {
         try {
             if (userId == null || userId.isBlank()) {
-                return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of(
-                        "success", false,
-                        "message", "User ID is required as a request parameter"));
+                Map<String, Object> response = new HashMap<>();
+                response.put("success", false);
+                response.put("message", "User ID is required as a request parameter");
+                response.put("errorCode", "VALIDATION_ERROR");
+                response.put("details", "Missing userId parameter");
+                return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(response);
             }
             UUID uuid = UUID.fromString(userId);
             Order order = orderService.cancelOrder(uuid, orderId);
@@ -297,18 +356,27 @@ public class OrderController {
             return ResponseEntity.ok(response);
 
         } catch (IllegalArgumentException e) {
-            return ResponseEntity.badRequest().body(Map.of(
-                    "success", false,
-                    "message", e.getMessage()));
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", false);
+            response.put("message", e.getMessage());
+            response.put("errorCode", "VALIDATION_ERROR");
+            response.put("details", e.getMessage());
+            return ResponseEntity.badRequest().body(response);
         } catch (EntityNotFoundException e) {
-            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of(
-                    "success", false,
-                    "message", "Order not found"));
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", false);
+            response.put("message", "Order not found");
+            response.put("errorCode", "NOT_FOUND");
+            response.put("details", e.getMessage());
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(response);
         } catch (Exception e) {
             log.error("Error cancelling order: {}", e.getMessage(), e);
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(Map.of(
-                    "success", false,
-                    "message", "Failed to cancel order"));
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", false);
+            response.put("message", "An unexpected error occurred while cancelling order.");
+            response.put("errorCode", "INTERNAL_ERROR");
+            response.put("details", e.getMessage());
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(response);
         }
     }
 
@@ -324,9 +392,12 @@ public class OrderController {
         try {
             String status = request.get("status");
             if (status == null) {
-                return ResponseEntity.badRequest().body(Map.of(
-                        "success", false,
-                        "message", "Status is required"));
+                Map<String, Object> response = new HashMap<>();
+                response.put("success", false);
+                response.put("message", "Status is required");
+                response.put("errorCode", "VALIDATION_ERROR");
+                response.put("details", "Missing status field in request body.");
+                return ResponseEntity.badRequest().body(response);
             }
 
             Order order = orderService.updateOrderStatus(orderId, status);
@@ -340,18 +411,27 @@ public class OrderController {
             return ResponseEntity.ok(response);
 
         } catch (EntityNotFoundException e) {
-            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of(
-                    "success", false,
-                    "message", "Order not found"));
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", false);
+            response.put("message", "Order not found");
+            response.put("errorCode", "NOT_FOUND");
+            response.put("details", e.getMessage());
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(response);
         } catch (IllegalArgumentException e) {
-            return ResponseEntity.badRequest().body(Map.of(
-                    "success", false,
-                    "message", e.getMessage()));
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", false);
+            response.put("message", e.getMessage());
+            response.put("errorCode", "VALIDATION_ERROR");
+            response.put("details", e.getMessage());
+            return ResponseEntity.badRequest().body(response);
         } catch (Exception e) {
             log.error("Error updating order status: {}", e.getMessage(), e);
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(Map.of(
-                    "success", false,
-                    "message", "Failed to update order status"));
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", false);
+            response.put("message", "An unexpected error occurred while updating order status.");
+            response.put("errorCode", "INTERNAL_ERROR");
+            response.put("details", e.getMessage());
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(response);
         }
     }
 
@@ -366,9 +446,12 @@ public class OrderController {
             @RequestParam(name = "userId") String userId) {
         try {
             if (userId == null || userId.isBlank()) {
-                return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of(
-                        "success", false,
-                        "message", "User ID is required as a request parameter"));
+                Map<String, Object> response = new HashMap<>();
+                response.put("success", false);
+                response.put("message", "User ID is required as a request parameter");
+                response.put("errorCode", "VALIDATION_ERROR");
+                response.put("details", "Missing userId parameter");
+                return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(response);
             }
             UUID uuid = UUID.fromString(userId);
             Map<String, Object> trackingInfo = orderService.getOrderTracking(uuid, orderId);
@@ -380,18 +463,27 @@ public class OrderController {
             return ResponseEntity.ok(response);
 
         } catch (IllegalArgumentException e) {
-            return ResponseEntity.badRequest().body(Map.of(
-                    "success", false,
-                    "message", e.getMessage()));
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", false);
+            response.put("message", e.getMessage());
+            response.put("errorCode", "VALIDATION_ERROR");
+            response.put("details", e.getMessage());
+            return ResponseEntity.badRequest().body(response);
         } catch (EntityNotFoundException e) {
-            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of(
-                    "success", false,
-                    "message", "Order not found"));
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", false);
+            response.put("message", "Order not found");
+            response.put("errorCode", "NOT_FOUND");
+            response.put("details", e.getMessage());
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(response);
         } catch (Exception e) {
             log.error("Error getting order tracking: {}", e.getMessage(), e);
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(Map.of(
-                    "success", false,
-                    "message", "Failed to get order tracking"));
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", false);
+            response.put("message", "An unexpected error occurred while getting order tracking.");
+            response.put("errorCode", "INTERNAL_ERROR");
+            response.put("details", e.getMessage());
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(response);
         }
     }
 
