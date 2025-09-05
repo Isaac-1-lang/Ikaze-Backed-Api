@@ -8,6 +8,8 @@ import com.ecommerce.entity.OrderCustomerInfo;
 import com.ecommerce.entity.OrderTransaction;
 import com.ecommerce.entity.Product;
 import com.ecommerce.entity.ProductVariant;
+import com.ecommerce.entity.ProductImage;
+import com.ecommerce.entity.ProductVariantImage;
 import com.ecommerce.entity.User;
 import com.ecommerce.repository.OrderRepository;
 import com.ecommerce.repository.ProductRepository;
@@ -366,32 +368,36 @@ public class OrderServiceImpl implements OrderService {
 
     // Admin methods
     @Override
+    @Transactional(readOnly = true)
     public List<AdminOrderDTO> getAllAdminOrders() {
-        List<Order> orders = orderRepository.findAll();
+        List<Order> orders = orderRepository.findAllWithDetailsForAdmin();
         return orders.stream()
                 .map(this::toAdminOrderDTO)
                 .collect(Collectors.toList());
     }
 
     @Override
+    @Transactional(readOnly = true)
     public List<AdminOrderDTO> getOrdersByStatus(String status) {
         Order.OrderStatus orderStatus = Order.OrderStatus.valueOf(status.toUpperCase());
-        List<Order> orders = orderRepository.findByOrderStatus(orderStatus);
+        List<Order> orders = orderRepository.findByOrderStatusWithDetailsForAdmin(orderStatus);
         return orders.stream()
                 .map(this::toAdminOrderDTO)
                 .collect(Collectors.toList());
     }
 
     @Override
+    @Transactional(readOnly = true)
     public AdminOrderDTO getAdminOrderById(Long orderId) {
-        Order order = orderRepository.findById(orderId)
+        Order order = orderRepository.findByIdWithDetailsForAdmin(orderId)
                 .orElseThrow(() -> new EntityNotFoundException("Order not found"));
         return toAdminOrderDTO(order);
     }
 
     @Override
+    @Transactional(readOnly = true)
     public AdminOrderDTO getAdminOrderByNumber(String orderNumber) {
-        Order order = orderRepository.findByOrderCode(orderNumber)
+        Order order = orderRepository.findByOrderCodeWithDetailsForAdmin(orderNumber)
                 .orElseThrow(() -> new EntityNotFoundException("Order not found"));
         return toAdminOrderDTO(order);
     }
@@ -478,7 +484,7 @@ public class OrderServiceImpl implements OrderService {
         return CustomerOrderDTO.CustomerOrderItemDTO.builder()
                 .id(item.getOrderItemId().toString())
                 .productId(item.getProductVariant().getProduct().getProductId().toString())
-                .product(toSimpleProductDTO(item.getProductVariant().getProduct()))
+                .product(toSimpleProductDTOWithVariant(item.getProductVariant().getProduct(), item.getProductVariant()))
                 .quantity(item.getQuantity())
                 .price(item.getPrice())
                 .totalPrice(item.getPrice().multiply(BigDecimal.valueOf(item.getQuantity())))
@@ -519,6 +525,8 @@ public class OrderServiceImpl implements OrderService {
                         ? order.getOrderCustomerInfo().getFirstName() + " " + order.getOrderCustomerInfo().getLastName()
                         : null)
                 .customerEmail(order.getOrderCustomerInfo() != null ? order.getOrderCustomerInfo().getEmail() : null)
+                .customerPhone(
+                        order.getOrderCustomerInfo() != null ? order.getOrderCustomerInfo().getPhoneNumber() : null)
                 .orderNumber(order.getOrderCode())
                 .status(order.getOrderStatus().name())
                 .items(order.getOrderItems().stream()
@@ -529,8 +537,8 @@ public class OrderServiceImpl implements OrderService {
                 .shipping(order.getOrderInfo() != null ? order.getOrderInfo().getShippingCost() : BigDecimal.ZERO)
                 .discount(order.getOrderInfo() != null ? order.getOrderInfo().getDiscountAmount() : BigDecimal.ZERO)
                 .total(order.getOrderInfo() != null ? order.getOrderInfo().getFinalAmount() : BigDecimal.ZERO)
-                .shippingAddress(toAdminOrderAddressDTO(order.getOrderAddress()))
-                .billingAddress(toAdminOrderAddressDTO(order.getOrderAddress()))
+                .shippingAddress(toAdminOrderAddressDTO(order.getOrderAddress(), order.getOrderCustomerInfo()))
+                .billingAddress(toAdminOrderAddressDTO(order.getOrderAddress(), order.getOrderCustomerInfo()))
                 .paymentInfo(toAdminPaymentInfoDTO(order.getOrderTransaction()))
                 .notes(order.getOrderInfo() != null ? order.getOrderInfo().getNotes() : null)
                 .createdAt(order.getCreatedAt())
@@ -543,7 +551,7 @@ public class OrderServiceImpl implements OrderService {
                 .id(item.getOrderItemId().toString())
                 .productId(item.getProductVariant().getProduct().getProductId().toString())
                 .variantId(item.getProductVariant().getId().toString())
-                .product(toSimpleProductDTO(item.getProductVariant().getProduct()))
+                .product(toSimpleProductDTOWithVariant(item.getProductVariant().getProduct(), item.getProductVariant()))
                 .quantity(item.getQuantity())
                 .price(item.getPrice())
                 .totalPrice(item.getPrice().multiply(BigDecimal.valueOf(item.getQuantity())))
@@ -551,9 +559,26 @@ public class OrderServiceImpl implements OrderService {
                 .build();
     }
 
-    private AdminOrderDTO.AdminOrderAddressDTO toAdminOrderAddressDTO(OrderAddress addr) {
-        if (addr == null)
+    private AdminOrderDTO.AdminOrderAddressDTO toAdminOrderAddressDTO(OrderAddress addr,
+            OrderCustomerInfo customerInfo) {
+        if (addr == null) {
+            // If no OrderAddress, try to create from OrderCustomerInfo address fields
+            if (customerInfo != null &&
+                    (customerInfo.getStreetAddress() != null ||
+                            customerInfo.getCity() != null ||
+                            customerInfo.getCountry() != null)) {
+                return AdminOrderDTO.AdminOrderAddressDTO.builder()
+                        .id("customer-info")
+                        .street(customerInfo.getStreetAddress())
+                        .city(customerInfo.getCity())
+                        .state(customerInfo.getState())
+                        .zipCode(customerInfo.getPostalCode())
+                        .country(customerInfo.getCountry())
+                        .phone(customerInfo.getPhoneNumber())
+                        .build();
+            }
             return null;
+        }
 
         String city = "", state = "";
         if (addr.getRegions() != null && !addr.getRegions().isEmpty()) {
@@ -566,6 +591,9 @@ public class OrderServiceImpl implements OrderService {
             }
         }
 
+        // Get phone number from customer info
+        String phone = customerInfo != null ? customerInfo.getPhoneNumber() : "";
+
         return AdminOrderDTO.AdminOrderAddressDTO.builder()
                 .id(addr.getOrderAddressId().toString())
                 .street(addr.getStreet())
@@ -573,7 +601,7 @@ public class OrderServiceImpl implements OrderService {
                 .state(state)
                 .zipCode(addr.getZipcode())
                 .country(addr.getCountry())
-                .phone("") // Will be set from customer info
+                .phone(phone)
                 .build();
     }
 
@@ -607,13 +635,35 @@ public class OrderServiceImpl implements OrderService {
     }
 
     private DeliveryOrderDTO.DeliveryItemDTO toDeliveryItemDTO(OrderItem item) {
+        String primaryImage = getPrimaryImageUrl(item.getProductVariant(), item.getProductVariant().getProduct());
+
         return DeliveryOrderDTO.DeliveryItemDTO.builder()
                 .productName(item.getProductVariant().getProduct().getProductName())
                 .variantSku("SKU-" + item.getProductVariant().getId()) // Generate SKU from variant ID
                 .quantity(item.getQuantity())
-                .productImage("") // You can add product image logic here
+                .productImage(primaryImage != null ? primaryImage : "")
                 .productDescription(item.getProductVariant().getProduct().getDescription())
                 .build();
+    }
+
+    private String getPrimaryImageUrl(ProductVariant variant, Product product) {
+        if (variant != null && variant.getImages() != null && !variant.getImages().isEmpty()) {
+            return variant.getImages().stream()
+                    .filter(ProductVariantImage::isPrimary)
+                    .findFirst()
+                    .map(ProductVariantImage::getImageUrl)
+                    .orElse(variant.getImages().get(0).getImageUrl());
+        }
+
+        if (product.getImages() != null && !product.getImages().isEmpty()) {
+            return product.getImages().stream()
+                    .filter(ProductImage::isPrimary)
+                    .findFirst()
+                    .map(ProductImage::getImageUrl)
+                    .orElse(product.getImages().get(0).getImageUrl());
+        }
+
+        return null;
     }
 
     private DeliveryOrderDTO.DeliveryAddressDTO toDeliveryAddressDTO(OrderAddress addr) {
@@ -651,12 +701,81 @@ public class OrderServiceImpl implements OrderService {
     }
 
     private SimpleProductDTO toSimpleProductDTO(Product product) {
+        // Get product images
+        String[] imageUrls = getProductImages(product);
+
         return new SimpleProductDTO(
                 product.getProductId().toString(),
                 product.getProductName(),
                 product.getDescription(),
                 product.getPrice().doubleValue(),
-                new String[0] // Empty images array
-        );
+                imageUrls);
+    }
+
+    private SimpleProductDTO toSimpleProductDTOWithVariant(Product product, ProductVariant variant) {
+        // Get variant images first, fallback to product images
+        String[] imageUrls = getVariantOrProductImages(variant, product);
+
+        return new SimpleProductDTO(
+                product.getProductId().toString(),
+                product.getProductName(),
+                product.getDescription(),
+                product.getPrice().doubleValue(),
+                imageUrls);
+    }
+
+    private String[] getProductImages(Product product) {
+        if (product == null || product.getImages() == null || product.getImages().isEmpty()) {
+            return new String[0];
+        }
+
+        try {
+            return product.getImages().stream()
+                    .sorted((img1, img2) -> {
+                        if (img1.isPrimary() && !img2.isPrimary())
+                            return -1;
+                        if (!img1.isPrimary() && img2.isPrimary())
+                            return 1;
+                        int sortOrder1 = img1.getSortOrder() != null ? img1.getSortOrder() : 0;
+                        int sortOrder2 = img2.getSortOrder() != null ? img2.getSortOrder() : 0;
+                        return Integer.compare(sortOrder1, sortOrder2);
+                    })
+                    .map(ProductImage::getImageUrl)
+                    .filter(url -> url != null && !url.trim().isEmpty())
+                    .toArray(String[]::new);
+        } catch (Exception e) {
+            log.warn("Error loading product images for product {}: {}", product.getProductId(), e.getMessage());
+            return new String[0];
+        }
+    }
+
+    private String[] getVariantOrProductImages(ProductVariant variant, Product product) {
+        if (variant != null) {
+            try {
+                if (variant.getImages() != null && !variant.getImages().isEmpty()) {
+                    String[] variantImages = variant.getImages().stream()
+                            .sorted((img1, img2) -> {
+                                if (img1.isPrimary() && !img2.isPrimary())
+                                    return -1;
+                                if (!img1.isPrimary() && img2.isPrimary())
+                                    return 1;
+                                int sortOrder1 = img1.getSortOrder() != null ? img1.getSortOrder() : 0;
+                                int sortOrder2 = img2.getSortOrder() != null ? img2.getSortOrder() : 0;
+                                return Integer.compare(sortOrder1, sortOrder2);
+                            })
+                            .map(ProductVariantImage::getImageUrl)
+                            .filter(url -> url != null && !url.trim().isEmpty())
+                            .toArray(String[]::new);
+
+                    if (variantImages.length > 0) {
+                        return variantImages;
+                    }
+                }
+            } catch (Exception e) {
+                log.warn("Error loading variant images for variant {}: {}", variant.getId(), e.getMessage());
+            }
+        }
+
+        return getProductImages(product);
     }
 }
