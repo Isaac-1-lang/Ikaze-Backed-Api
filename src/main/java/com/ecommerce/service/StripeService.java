@@ -3,6 +3,7 @@ package com.ecommerce.service;
 import com.ecommerce.entity.Order;
 import com.ecommerce.entity.OrderItem;
 import com.ecommerce.entity.OrderTransaction;
+import com.ecommerce.entity.Product;
 import com.ecommerce.repository.OrderRepository;
 import com.ecommerce.repository.OrderTransactionRepository;
 import com.fasterxml.jackson.core.JsonProcessingException;
@@ -47,9 +48,10 @@ public class StripeService {
                 List<SessionCreateParams.LineItem> lineItems = new ArrayList<>();
                 for (OrderItem item : order.getOrderItems()) {
                         long unitAmount = item.getPrice().multiply(BigDecimal.valueOf(100)).longValue();
+                        Product product = item.getEffectiveProduct();
                         SessionCreateParams.LineItem.PriceData.ProductData productData = SessionCreateParams.LineItem.PriceData.ProductData
                                         .builder()
-                                        .setName(item.getProductVariant().getProduct().getProductName())
+                                        .setName(product.getProductName())
                                         .build();
 
                         SessionCreateParams.LineItem.PriceData priceData = SessionCreateParams.LineItem.PriceData

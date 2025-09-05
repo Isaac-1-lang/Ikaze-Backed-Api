@@ -4,6 +4,8 @@ import com.ecommerce.dto.AddToCartDTO;
 import com.ecommerce.dto.CartDTO;
 import com.ecommerce.dto.CartItemDTO;
 import com.ecommerce.dto.UpdateCartItemDTO;
+import com.ecommerce.dto.CartProductsRequestDTO;
+import com.ecommerce.dto.CartProductsResponseDTO;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 
@@ -45,5 +47,9 @@ public interface CartService {
      * Check if user has items in cart
      */
     boolean hasItems(UUID userId);
-}
 
+    /**
+     * Get cart products information by product/variant IDs
+     */
+    CartProductsResponseDTO getCartProductsInfo(CartProductsRequestDTO request);
+}

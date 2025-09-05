@@ -3028,7 +3028,81 @@ public class ProductServiceImpl implements ProductService {
             throw new RuntimeException("Failed to map product to ManyProductsDto: " + e.getMessage(), e);
 
         }
-
     }
 
+    @Override
+    public List<Map<String, Object>> getSearchSuggestions(String query) {
+        try {
+
+            List<Map<String, Object>> suggestions = new ArrayList<>();
+            String lowerQuery = query.toLowerCase().trim();
+
+            // Get product suggestions based on name and meta keywords
+            List<Product> products = productRepository
+                    .findTop10ByProductNameContainingIgnoreCaseOrProductDetail_MetaKeywordsContainingIgnoreCase(
+                            lowerQuery, lowerQuery);
+
+            for (Product product : products) {
+                Map<String, Object> suggestion = new HashMap<>();
+                suggestion.put("id", "product-" + product.getProductId());
+                suggestion.put("text", product.getProductName());
+                suggestion.put("type", "product");
+                suggestion.put("productId", product.getProductId().toString());
+                suggestions.add(suggestion);
+            }
+
+            // Get category suggestions
+            List<Category> categories = categoryRepository.findTop5ByNameContainingIgnoreCase(lowerQuery);
+            for (Category category : categories) {
+                Map<String, Object> suggestion = new HashMap<>();
+                suggestion.put("id", "category-" + category.getId());
+                suggestion.put("text", category.getName());
+                suggestion.put("type", "category");
+                suggestion.put("categoryId", category.getId().toString());
+                suggestions.add(suggestion);
+            }
+
+            // Get brand suggestions
+            List<Brand> brands = brandRepository.findTop5ByBrandNameContainingIgnoreCase(lowerQuery);
+            for (Brand brand : brands) {
+                Map<String, Object> suggestion = new HashMap<>();
+                suggestion.put("id", "brand-" + brand.getBrandId());
+                suggestion.put("text", brand.getBrandName());
+                suggestion.put("type", "brand");
+                suggestion.put("brandId", brand.getBrandId().toString());
+                suggestions.add(suggestion);
+            }
+
+            List<String> metaKeywordsStrings = productRepository.findDistinctMetaKeywordsByQuery(lowerQuery);
+            Set<String> uniqueKeywords = new HashSet<>();
+            for (String metaKeywordsString : metaKeywordsStrings) {
+                if (metaKeywordsString != null && !metaKeywordsString.trim().isEmpty()) {
+                    String[] keywords = metaKeywordsString.split(",");
+                    for (String keyword : keywords) {
+                        String trimmedKeyword = keyword.trim();
+                        if (!trimmedKeyword.isEmpty() &&
+                                trimmedKeyword.toLowerCase().contains(lowerQuery) &&
+                                uniqueKeywords.size() < 3) {
+                            uniqueKeywords.add(trimmedKeyword);
+                        }
+                    }
+                }
+            }
+
+            for (String keyword : uniqueKeywords) {
+                Map<String, Object> suggestion = new HashMap<>();
+                suggestion.put("id", "keyword-" + keyword.hashCode());
+                suggestion.put("text", keyword);
+                suggestion.put("type", "keyword");
+                suggestions.add(suggestion);
+            }
+
+            // Limit total suggestions to 10
+            return suggestions.stream().limit(10).collect(Collectors.toList());
+
+        } catch (Exception e) {
+            log.error("Error getting search suggestions: {}", e.getMessage(), e);
+            return new ArrayList<>();
+        }
+    }
 }

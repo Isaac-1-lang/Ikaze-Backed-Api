@@ -481,10 +481,14 @@ public class OrderServiceImpl implements OrderService {
     }
 
     private CustomerOrderDTO.CustomerOrderItemDTO toCustomerOrderItemDTO(OrderItem item) {
+        Product product = item.getEffectiveProduct();
+
         return CustomerOrderDTO.CustomerOrderItemDTO.builder()
                 .id(item.getOrderItemId().toString())
-                .productId(item.getProductVariant().getProduct().getProductId().toString())
-                .product(toSimpleProductDTOWithVariant(item.getProductVariant().getProduct(), item.getProductVariant()))
+                .productId(product.getProductId().toString())
+                .product(item.isVariantBased()
+                        ? toSimpleProductDTOWithVariant(product, item.getProductVariant())
+                        : toSimpleProductDTO(product))
                 .quantity(item.getQuantity())
                 .price(item.getPrice())
                 .totalPrice(item.getPrice().multiply(BigDecimal.valueOf(item.getQuantity())))
@@ -547,15 +551,21 @@ public class OrderServiceImpl implements OrderService {
     }
 
     private AdminOrderDTO.AdminOrderItemDTO toAdminOrderItemDTO(OrderItem item) {
+        Product product = item.getEffectiveProduct();
+
         return AdminOrderDTO.AdminOrderItemDTO.builder()
                 .id(item.getOrderItemId().toString())
-                .productId(item.getProductVariant().getProduct().getProductId().toString())
-                .variantId(item.getProductVariant().getId().toString())
-                .product(toSimpleProductDTOWithVariant(item.getProductVariant().getProduct(), item.getProductVariant()))
+                .productId(product.getProductId().toString())
+                .variantId(item.isVariantBased() ? item.getProductVariant().getId().toString() : null)
+                .product(item.isVariantBased()
+                        ? toSimpleProductDTOWithVariant(product, item.getProductVariant())
+                        : toSimpleProductDTO(product))
                 .quantity(item.getQuantity())
                 .price(item.getPrice())
                 .totalPrice(item.getPrice().multiply(BigDecimal.valueOf(item.getQuantity())))
-                .availableStock(item.getProductVariant().getStockQuantity())
+                .availableStock(item.isVariantBased()
+                        ? item.getProductVariant().getStockQuantity()
+                        : product.getStockQuantity())
                 .build();
     }
 
@@ -635,14 +645,24 @@ public class OrderServiceImpl implements OrderService {
     }
 
     private DeliveryOrderDTO.DeliveryItemDTO toDeliveryItemDTO(OrderItem item) {
-        String primaryImage = getPrimaryImageUrl(item.getProductVariant(), item.getProductVariant().getProduct());
+        Product product = item.getEffectiveProduct();
+        String primaryImage;
+        String sku;
+
+        if (item.isVariantBased()) {
+            primaryImage = getPrimaryImageUrl(item.getProductVariant(), product);
+            sku = "SKU-" + item.getProductVariant().getId();
+        } else {
+            primaryImage = getPrimaryImageUrl(null, product);
+            sku = product.getSku();
+        }
 
         return DeliveryOrderDTO.DeliveryItemDTO.builder()
-                .productName(item.getProductVariant().getProduct().getProductName())
-                .variantSku("SKU-" + item.getProductVariant().getId()) // Generate SKU from variant ID
+                .productName(product.getProductName())
+                .variantSku(sku)
                 .quantity(item.getQuantity())
                 .productImage(primaryImage != null ? primaryImage : "")
-                .productDescription(item.getProductVariant().getProduct().getDescription())
+                .productDescription(product.getDescription())
                 .build();
     }
 

@@ -13,12 +13,15 @@ import com.ecommerce.dto.CheckoutVerificationResult;
 import com.ecommerce.dto.GuestCheckoutRequest;
 import com.ecommerce.entity.Order;
 import com.ecommerce.entity.OrderCustomerInfo;
+import com.ecommerce.entity.OrderInfo;
 import com.ecommerce.entity.OrderItem;
 import com.ecommerce.entity.OrderTransaction;
+import com.ecommerce.entity.Product;
 import com.ecommerce.entity.ProductVariant;
 import com.ecommerce.entity.User;
 import com.ecommerce.repository.OrderRepository;
 import com.ecommerce.repository.OrderTransactionRepository;
+import com.ecommerce.repository.ProductRepository;
 import com.ecommerce.repository.ProductVariantRepository;
 import com.ecommerce.repository.UserRepository;
 import com.stripe.model.PaymentIntent;
@@ -36,6 +39,7 @@ import lombok.extern.slf4j.Slf4j;
 public class CheckoutService {
 
     private final OrderRepository orderRepository;
+    private final ProductRepository productRepository;
     private final ProductVariantRepository variantRepository;
     private final OrderTransactionRepository transactionRepository;
     private final UserRepository userRepository;
@@ -73,22 +77,51 @@ public class CheckoutService {
         // add order items
         BigDecimal total = BigDecimal.ZERO;
         for (CartItemDTO ci : req.getItems()) {
-            ProductVariant variant = variantRepository.findById(ci.getVariantId())
-                    .orElseThrow(() -> new EntityNotFoundException("Variant not found"));
+            OrderItem oi = new OrderItem();
+            BigDecimal itemPrice;
 
-            // Check stock availability
-            if (variant.getStockQuantity() < ci.getQuantity()) {
-                throw new IllegalStateException("Insufficient stock for variant " + variant.getId());
+            if (ci.getVariantId() != null) {
+                ProductVariant variant = variantRepository.findById(ci.getVariantId())
+                        .orElseThrow(
+                                () -> new EntityNotFoundException("Variant not found with ID: " + ci.getVariantId()));
+
+                if (variant.getStockQuantity() < ci.getQuantity()) {
+                    throw new IllegalStateException("Insufficient stock for variant " + variant.getId()
+                            + ". Available: " + variant.getStockQuantity() + ", requested: " + ci.getQuantity());
+                }
+
+                oi.setProductVariant(variant);
+                itemPrice = variant.getPrice();
+            } else if (ci.getProductId() != null) {
+                Product product = productRepository.findById(ci.getProductId())
+                        .orElseThrow(
+                                () -> new EntityNotFoundException("Product not found with ID: " + ci.getProductId()));
+
+                if (product.getStockQuantity() < ci.getQuantity()) {
+                    throw new IllegalStateException("Insufficient stock for product " + product.getProductId()
+                            + ". Available: " + product.getStockQuantity() + ", requested: " + ci.getQuantity());
+                }
+
+                oi.setProduct(product);
+                itemPrice = product.getDiscountedPrice();
+            } else {
+                throw new IllegalArgumentException("Cart item must have either productId or variantId");
             }
 
-            OrderItem oi = new OrderItem();
-            oi.setProductVariant(variant);
             oi.setQuantity(ci.getQuantity());
-            oi.setPrice(ci.getPrice());
+            oi.setPrice(itemPrice);
             oi.setOrder(order);
             order.getOrderItems().add(oi);
-            total = total.add(ci.getPrice().multiply(BigDecimal.valueOf(ci.getQuantity())));
+            total = total.add(itemPrice.multiply(BigDecimal.valueOf(ci.getQuantity())));
         }
+
+        OrderInfo orderInfo = new OrderInfo();
+        orderInfo.setOrder(order);
+        orderInfo.setTotalAmount(total);
+        orderInfo.setTaxAmount(BigDecimal.ZERO);
+        orderInfo.setShippingCost(BigDecimal.ZERO);
+        orderInfo.setDiscountAmount(BigDecimal.ZERO);
+        order.setOrderInfo(orderInfo);
 
         // create OrderTransaction
         OrderTransaction tx = new OrderTransaction();
@@ -137,22 +170,57 @@ public class CheckoutService {
         // add order items
         BigDecimal total = BigDecimal.ZERO;
         for (CartItemDTO ci : req.getItems()) {
-            ProductVariant variant = variantRepository.findById(ci.getVariantId())
-                    .orElseThrow(() -> new EntityNotFoundException("Variant not found"));
-
-            // Check stock availability
-            if (variant.getStockQuantity() < ci.getQuantity()) {
-                throw new IllegalStateException("Insufficient stock for variant " + variant.getId());
-            }
+            log.info("Processing guest cart item: productId={}, variantId={}, quantity={}",
+                    ci.getProductId(), ci.getVariantId(), ci.getQuantity());
 
             OrderItem oi = new OrderItem();
-            oi.setProductVariant(variant);
+            BigDecimal itemPrice;
+
+            if (ci.getVariantId() != null) {
+                ProductVariant variant = variantRepository.findById(ci.getVariantId())
+                        .orElseThrow(
+                                () -> new EntityNotFoundException("Variant not found with ID: " + ci.getVariantId()));
+
+                if (variant.getStockQuantity() < ci.getQuantity()) {
+                    throw new IllegalStateException("Insufficient stock for variant " + variant.getId()
+                            + ". Available: " + variant.getStockQuantity() + ", requested: " + ci.getQuantity());
+                }
+
+                oi.setProductVariant(variant);
+                itemPrice = variant.getPrice();
+                log.info("Set productVariant for guest OrderItem: {}", oi.getDebugInfo());
+            } else if (ci.getProductId() != null) {
+                Product product = productRepository.findById(ci.getProductId())
+                        .orElseThrow(
+                                () -> new EntityNotFoundException("Product not found with ID: " + ci.getProductId()));
+
+                if (product.getStockQuantity() < ci.getQuantity()) {
+                    throw new IllegalStateException("Insufficient stock for product " + product.getProductId()
+                            + ". Available: " + product.getStockQuantity() + ", requested: " + ci.getQuantity());
+                }
+
+                oi.setProduct(product);
+                itemPrice = product.getDiscountedPrice();
+                log.info("Set product for guest OrderItem: {}", oi.getDebugInfo());
+            } else {
+                throw new IllegalArgumentException("Cart item must have either productId or variantId");
+            }
+
             oi.setQuantity(ci.getQuantity());
-            oi.setPrice(ci.getPrice());
+            oi.setPrice(itemPrice);
             oi.setOrder(order);
             order.getOrderItems().add(oi);
-            total = total.add(ci.getPrice().multiply(BigDecimal.valueOf(ci.getQuantity())));
+            total = total.add(itemPrice.multiply(BigDecimal.valueOf(ci.getQuantity())));
         }
+
+        // create OrderInfo with financial details
+        OrderInfo orderInfo = new OrderInfo();
+        orderInfo.setOrder(order);
+        orderInfo.setTotalAmount(total);
+        orderInfo.setTaxAmount(BigDecimal.ZERO); // Calculate tax if needed
+        orderInfo.setShippingCost(BigDecimal.ZERO); // Calculate shipping if needed
+        orderInfo.setDiscountAmount(BigDecimal.ZERO); // Calculate discount if needed
+        order.setOrderInfo(orderInfo);
 
         // create OrderTransaction
         OrderTransaction tx = new OrderTransaction();
@@ -212,15 +280,28 @@ public class CheckoutService {
         Order order = tx.getOrder();
         order.setOrderStatus(Order.OrderStatus.PROCESSING);
         for (OrderItem item : order.getOrderItems()) {
-            ProductVariant variant = variantRepository.findByIdForUpdate(item.getProductVariant().getId())
-                    .orElseThrow(() -> new EntityNotFoundException("Variant not found"));
-            int stock = variant.getStockQuantity();
-            if (stock < item.getQuantity()) {
-                throw new IllegalStateException("Insufficient stock for variant " + variant.getId());
+            if (item.isVariantBased()) {
+                ProductVariant variant = variantRepository.findByIdForUpdate(item.getProductVariant().getId())
+                        .orElseThrow(() -> new EntityNotFoundException("Variant not found"));
+                int stock = variant.getStockQuantity();
+                if (stock < item.getQuantity()) {
+                    throw new IllegalStateException("Insufficient stock for variant " + variant.getId());
+                }
+                variant.setStockQuantity(stock - item.getQuantity());
+                variantRepository.save(variant);
+                log.info("Stock reduced for variant {}: {} -> {}", variant.getId(), stock, variant.getStockQuantity());
+            } else {
+                Product product = productRepository.findById(item.getProduct().getProductId())
+                        .orElseThrow(() -> new EntityNotFoundException("Product not found"));
+                int stock = product.getStockQuantity();
+                if (stock < item.getQuantity()) {
+                    throw new IllegalStateException("Insufficient stock for product " + product.getProductId());
+                }
+                product.setStockQuantity(stock - item.getQuantity());
+                productRepository.save(product);
+                log.info("Stock reduced for product {}: {} -> {}", product.getProductId(), stock,
+                        product.getStockQuantity());
             }
-            variant.setStockQuantity(stock - item.getQuantity());
-            variantRepository.save(variant);
-            log.info("Stock reduced for variant {}: {} -> {}", variant.getId(), stock, variant.getStockQuantity());
         }
         orderRepository.save(order);
         log.info("Order status updated to processing");

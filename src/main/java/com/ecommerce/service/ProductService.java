@@ -11,6 +11,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 public interface ProductService {
@@ -86,4 +87,6 @@ public interface ProductService {
      * @return Page of ManyProductsDto for found products
      */
     Page<ManyProductsDto> searchProducts(ProductSearchDTO searchDTO);
+
+    List<Map<String, Object>> getSearchSuggestions(String query);
 }

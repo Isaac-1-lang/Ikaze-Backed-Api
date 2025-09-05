@@ -10,8 +10,6 @@ import com.ecommerce.repository.UserRepository;
 import com.ecommerce.Enum.UserRole;
 import jakarta.validation.Valid;
 import lombok.extern.slf4j.Slf4j;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
@@ -28,8 +26,6 @@ import java.util.stream.Collectors;
 @RestController
 @RequestMapping("api/v1/auth/users")
 public class UserController {
-
-    private static final Logger log = LoggerFactory.getLogger(UserController.class);
 
     @Autowired
     private AuthService authService;
