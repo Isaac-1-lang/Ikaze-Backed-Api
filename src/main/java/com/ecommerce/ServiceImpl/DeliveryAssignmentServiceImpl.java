@@ -87,6 +87,7 @@ public class DeliveryAssignmentServiceImpl implements DeliveryAssignmentService 
 
     @Override
     public DeliveryAssignmentDTO getAssignmentByOrderId(Long orderId) {
+        
         DeliveryAssignment assignment = deliveryAssignmentRepository.findByOrderOrderId(orderId)
                 .stream().findFirst().orElseThrow(() -> new EntityNotFoundException("Assignment not found"));
         return toDTO(assignment);
@@ -102,8 +103,8 @@ public class DeliveryAssignmentServiceImpl implements DeliveryAssignmentService 
     private DeliveryAssignmentDTO toDTO(DeliveryAssignment assignment) {
         DeliveryAssignmentDTO dto = new DeliveryAssignmentDTO();
         dto.setId(assignment.getId());
-        dto.setOrderId(assignment.getOrder().getOrderId()); // Ensure getOrderId() returns UUID
-        dto.setAgentId(assignment.getAgent().getId()); // Ensure getId() returns UUID
+        dto.setOrderId(assignment.getOrder().getOrderId());
+        dto.setAgentId(assignment.getAgent().getId()); 
         dto.setStatus(assignment.getStatus());
         dto.setAssignedAt(assignment.getAssignedAt());
         dto.setUpdatedAt(assignment.getUpdatedAt());

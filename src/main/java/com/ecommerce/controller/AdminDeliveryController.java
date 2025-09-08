@@ -14,7 +14,7 @@ import org.springframework.web.bind.annotation.*;
 import java.util.List;
 
 @RestController
-@RequestMapping("/api/v1/delivery/admin")
+@RequestMapping("/api/v1/delivery")
 @RequiredArgsConstructor
 public class AdminDeliveryController {
     private final DeliveryAssignmentService deliveryAssignmentService;
