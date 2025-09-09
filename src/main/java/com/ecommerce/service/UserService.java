@@ -1,6 +1,7 @@
 package com.ecommerce.service;
 
 import com.ecommerce.dto.CreateUserDTO;
+import com.ecommerce.dto.UpdateUserDto;
 import com.ecommerce.entity.User;
 
 public interface UserService {
@@ -10,7 +11,7 @@ public interface UserService {
 
     User getUserById(String id);
 
-    User updateUser(String id, CreateUserDTO dto);
+    User updateUser(String id, UpdateUserDto dto);
 
     boolean deleteUser(String id);
 

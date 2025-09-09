@@ -1,6 +1,7 @@
 package com.ecommerce.ServiceImpl;
 
 import com.ecommerce.dto.CreateUserDTO;
+import com.ecommerce.dto.UpdateUserDto;
 import com.ecommerce.entity.User;
 import com.ecommerce.Enum.UserRole;
 import com.ecommerce.repository.UserRepository;
@@ -62,7 +63,7 @@ public class UserServiceImpl implements UserService {
     }
 
     @Override
-    public User updateUser(String id, CreateUserDTO dto) {
+    public User updateUser(String id, UpdateUserDto dto) {
         java.util.Optional<User> opt = userRepository.findById(java.util.UUID.fromString(id));
         if (opt.isEmpty())
             return null;
@@ -101,7 +102,7 @@ public class UserServiceImpl implements UserService {
         String token = java.util.UUID.randomUUID().toString();
         user.createResetToken(token);
         userRepository.save(user);
-        String resetLink = "http://yourdomain.com/api/v1/admin/users/reset-password?token=" + token;
+        String resetLink = "http://44.201.144.244/api/v1/admin/users/reset-password?token=" + token;
         String subject = "Password Reset Request";
         String body = "Hello " + user.getFirstName() + ",\n\n" +
                 "You requested a password reset. Please click the link below to reset your password:\n" +

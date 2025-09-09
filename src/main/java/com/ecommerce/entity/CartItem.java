@@ -14,6 +14,64 @@ import java.time.LocalDateTime;
 @NoArgsConstructor
 @AllArgsConstructor
 public class CartItem {
+    /**
+     * Gets the stock quantity (delegates to product or variant)
+     */
+    public Integer getStockQuantity() {
+        if (productVariant != null) {
+            return productVariant.getStockQuantity();
+        }
+        if (product != null) {
+            return product.getStockQuantity();
+        }
+        return 0;
+    }
+
+    /**
+     * Gets the SKU (delegates to product or variant)
+     */
+    public String getSku() {
+        if (productVariant != null) {
+            return productVariant.getVariantSku();
+        }
+        if (product != null) {
+            return product.getSku();
+        }
+        return null;
+    }
+
+    /**
+     * Gets the product name (delegates to product or variant)
+     */
+    public String getProductName() {
+        if (productVariant != null && productVariant.getProduct() != null) {
+            return productVariant.getProduct().getProductName() + " - " + productVariant.getVariantName();
+        }
+        if (product != null) {
+            return product.getProductName();
+        }
+        return null;
+    }
+
+    /**
+     * Gets the images (delegates to product)
+     */
+    public java.util.List<ProductImage> getImages() {
+        if (product != null) {
+            return product.getImages();
+        }
+        return java.util.Collections.emptyList();
+    }
+
+    /**
+     * Gets the variants (delegates to product)
+     */
+    public java.util.List<ProductVariant> getVariants() {
+        if (product != null) {
+            return product.getVariants();
+        }
+        return java.util.Collections.emptyList();
+    }
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)

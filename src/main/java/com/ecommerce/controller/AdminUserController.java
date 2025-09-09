@@ -1,6 +1,7 @@
 package com.ecommerce.controller;
 
 import com.ecommerce.dto.CreateUserDTO;
+import com.ecommerce.dto.UpdateUserDto;
 import com.ecommerce.entity.User;
 import com.ecommerce.service.UserService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -47,7 +48,7 @@ public class AdminUserController {
     @Operation(summary = "Get all agents and employees", description = "Admin fetches all users with role DELIVERY_AGENT or EMPLOYEE.", responses = {
             @ApiResponse(responseCode = "200", description = "List of users", content = @Content(schema = @Schema(implementation = User.class)))
     })
-    @GetMapping("all")
+    @GetMapping("/all")
     public ResponseEntity<?> getAllUsers() {
         return ResponseEntity.ok(userService.getAllAgentsAndEmployees());
     }
@@ -71,7 +72,7 @@ public class AdminUserController {
             @ApiResponse(responseCode = "404", description = "User not found")
     })
     @PutMapping("/update/{id}")
-    public ResponseEntity<?> updateUser(@PathVariable("id") String id, @Valid @RequestBody CreateUserDTO dto) {
+    public ResponseEntity<?> updateUser(@PathVariable("id") String id, @Valid @RequestBody UpdateUserDto dto) {
         try {
             User updated = userService.updateUser(id, dto);
             if (updated == null) {
