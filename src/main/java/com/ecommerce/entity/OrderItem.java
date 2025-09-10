@@ -5,6 +5,7 @@ import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotNull;
 import lombok.AllArgsConstructor;
 import lombok.Data;
+import lombok.EqualsAndHashCode;
 import lombok.NoArgsConstructor;
 
 import java.math.BigDecimal;
@@ -15,6 +16,7 @@ import java.time.LocalDateTime;
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
+@EqualsAndHashCode(exclude = { "order", "product", "productVariant" })
 public class OrderItem {
 
     @Id
@@ -27,7 +29,11 @@ public class OrderItem {
     private Order order;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "variant_id", nullable = false)
+    @JoinColumn(name = "product_id")
+    private Product product;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "variant_id")
     private ProductVariant productVariant;
 
     @NotNull(message = "Quantity is required")
@@ -49,11 +55,29 @@ public class OrderItem {
     protected void onCreate() {
         createdAt = LocalDateTime.now();
         updatedAt = LocalDateTime.now();
+        validateProductReference();
     }
 
     @PreUpdate
     protected void onUpdate() {
         updatedAt = LocalDateTime.now();
+        validateProductReference();
+    }
+
+    /**
+     * Validates that exactly one of product or productVariant is set
+     */
+    private void validateProductReference() {
+        boolean hasProduct = product != null;
+        boolean hasVariant = productVariant != null;
+
+        if (!hasProduct && !hasVariant) {
+            throw new IllegalStateException("OrderItem must have either a product or a productVariant, but not both");
+        }
+
+        if (hasProduct && hasVariant) {
+            throw new IllegalStateException("OrderItem cannot have both a product and a productVariant");
+        }
     }
 
     /**
@@ -74,9 +98,16 @@ public class OrderItem {
      */
     public static OrderItem fromCartItem(CartItem cartItem) {
         OrderItem orderItem = new OrderItem();
-        orderItem.setProductVariant(cartItem.getProductVariant());
+
+        if (cartItem.isVariantBased()) {
+            orderItem.setProductVariant(cartItem.getProductVariant());
+            orderItem.setPrice(cartItem.getProductVariant().getPrice());
+        } else {
+            orderItem.setProduct(cartItem.getProduct());
+            orderItem.setPrice(cartItem.getProduct().getDiscountedPrice());
+        }
+
         orderItem.setQuantity(cartItem.getQuantity());
-        orderItem.setPrice(cartItem.getProductVariant().getPrice());
         return orderItem;
     }
 
@@ -90,11 +121,26 @@ public class OrderItem {
     }
 
     /**
+     * Sets the product
+     * 
+     * @param product The product to set
+     */
+    public void setProduct(Product product) {
+        if (product != null && this.productVariant != null) {
+            throw new IllegalStateException("Cannot set product when productVariant is already set");
+        }
+        this.product = product;
+    }
+
+    /**
      * Sets the product variant
      * 
      * @param productVariant The product variant to set
      */
     public void setProductVariant(ProductVariant productVariant) {
+        if (productVariant != null && this.product != null) {
+            throw new IllegalStateException("Cannot set productVariant when product is already set");
+        }
         this.productVariant = productVariant;
     }
 
@@ -102,7 +148,49 @@ public class OrderItem {
      * Get product (convenience method for analytics)
      */
     public Product getProduct() {
-        return productVariant != null ? productVariant.getProduct() : null;
+        if (productVariant != null) {
+            return productVariant.getProduct();
+        }
+        return product;
+    }
+
+    /**
+     * Debug method to check the state of this OrderItem
+     */
+    public String getDebugInfo() {
+        return String.format("OrderItem[ID=%d, hasProduct=%s, hasVariant=%s, productId=%s, variantId=%s]",
+                orderItemId,
+                product != null,
+                productVariant != null,
+                product != null ? product.getProductId() : "null",
+                productVariant != null ? productVariant.getId() : "null");
+    }
+
+    /**
+     * Get effective product for this order item
+     */
+    public Product getEffectiveProduct() {
+        return getProduct();
+    }
+
+    /**
+     * Check if this is a variant-based order item
+     */
+    public boolean isVariantBased() {
+        return productVariant != null;
+    }
+
+    /**
+     * Get effective price for this order item
+     */
+    public BigDecimal getEffectivePrice() {
+        if (productVariant != null) {
+            return productVariant.getPrice();
+        }
+        if (product != null) {
+            return product.getDiscountedPrice();
+        }
+        return price;
     }
 
     /**
@@ -112,5 +200,29 @@ public class OrderItem {
      */
     public void setQuantity(int quantity) {
         this.quantity = quantity;
+    }
+
+    /**
+     * Sets the price
+     * 
+     * @param price The price to set
+     */
+    public void setPrice(BigDecimal price) {
+        this.price = price;
+    }
+
+    /**
+     * Gets the available stock for this order item
+     * 
+     * @return The available stock quantity
+     */
+    public Integer getAvailableStock() {
+        if (productVariant != null) {
+            return productVariant.getTotalStockQuantity();
+        }
+        if (product != null) {
+            return product.getTotalStockQuantity();
+        }
+        return 0;
     }
 }

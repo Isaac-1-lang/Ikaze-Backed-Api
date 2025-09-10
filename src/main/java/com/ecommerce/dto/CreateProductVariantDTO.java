@@ -13,12 +13,13 @@ public class CreateProductVariantDTO {
     private BigDecimal price;
     private BigDecimal compareAtPrice;
     private BigDecimal costPrice;
-    private Integer stockQuantity;
-    private Integer lowStockThreshold;
     private Boolean isActive;
     private Integer sortOrder;
     private Map<String, String> attributes; // attribute_name -> attribute_value
     private List<MultipartFile> variantImages; // Changed from List<String> to List<MultipartFile>
     private String imageMetadata;
     private BigDecimal salePrice;
+
+    // Warehouse Assignment for Variants
+    private List<WarehouseStockDTO> warehouseStock;
 }

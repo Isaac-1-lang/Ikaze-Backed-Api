@@ -6,6 +6,7 @@ import jakarta.validation.constraints.Positive;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
+import com.fasterxml.jackson.annotation.JsonManagedReference;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -42,13 +43,6 @@ public class ProductVariant {
     @Column(name = "cost_price", precision = 10, scale = 2)
     private BigDecimal costPrice;
 
-    @NotNull(message = "Stock quantity is required")
-    @Column(name = "stock_quantity", nullable = false)
-    private Integer stockQuantity = 0;
-
-    @Column(name = "low_stock_threshold")
-    private Integer lowStockThreshold = 5;
-
     @Column(name = "is_active")
     private boolean isActive = true;
 
@@ -66,6 +60,10 @@ public class ProductVariant {
 
     @OneToMany(mappedBy = "productVariant", fetch = FetchType.LAZY)
     private java.util.List<OrderItem> orderItems;
+
+    @OneToMany(mappedBy = "productVariant", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
+    @JsonManagedReference
+    private java.util.List<Stock> stocks;
 
     @Column(name = "created_at")
     private LocalDateTime createdAt;
@@ -85,15 +83,6 @@ public class ProductVariant {
     }
 
     /**
-     * Gets the stock quantity
-     * 
-     * @return The stock quantity
-     */
-    public Integer getStockQuantity() {
-        return stockQuantity;
-    }
-
-    /**
      * Gets the price
      * 
      * @return The price
@@ -103,15 +92,24 @@ public class ProductVariant {
     }
 
     public boolean isInStock() {
-        return stockQuantity > 0;
+        return stocks != null && stocks.stream()
+                .anyMatch(stock -> stock.getQuantity() > 0);
     }
 
     public boolean isLowStock() {
-        return stockQuantity <= lowStockThreshold && stockQuantity > 0;
+        return stocks != null && stocks.stream()
+                .anyMatch(stock -> stock.getQuantity() <= stock.getLowStockThreshold() && stock.getQuantity() > 0);
     }
 
     public boolean isOutOfStock() {
-        return stockQuantity <= 0;
+        return stocks == null || stocks.stream()
+                .allMatch(stock -> stock.getQuantity() <= 0);
+    }
+
+    public Integer getTotalStockQuantity() {
+        return stocks != null ? stocks.stream()
+                .mapToInt(Stock::getQuantity)
+                .sum() : 0;
     }
 
     public String getVariantName() {
@@ -138,7 +136,64 @@ public class ProductVariant {
         return product;
     }
 
-    public void setStockQuantity(Integer stockQuantity) {
-        this.stockQuantity = stockQuantity;
+    /**
+     * Adds a stock entry for this product variant
+     * 
+     * @param stock The stock to add
+     */
+    public void addStock(Stock stock) {
+        if (stocks == null) {
+            stocks = new java.util.ArrayList<>();
+        }
+        stocks.add(stock);
+        stock.setProductVariant(this);
+    }
+
+    /**
+     * Removes a stock entry from this product variant
+     * 
+     * @param stock The stock to remove
+     */
+    public void removeStock(Stock stock) {
+        if (stocks != null) {
+            stocks.remove(stock);
+            stock.setProductVariant(null);
+        }
+    }
+
+    /**
+     * Gets the variant SKU
+     * 
+     * @return The variant SKU
+     */
+    public String getVariantSku() {
+        return variantSku;
+    }
+
+    /**
+     * Sets the variant SKU
+     * 
+     * @param variantSku The variant SKU to set
+     */
+    public void setVariantSku(String variantSku) {
+        this.variantSku = variantSku;
+    }
+
+    /**
+     * Gets the ID
+     * 
+     * @return The ID
+     */
+    public Long getId() {
+        return id;
+    }
+
+    /**
+     * Sets the ID
+     * 
+     * @param id The ID to set
+     */
+    public void setId(Long id) {
+        this.id = id;
     }
 }

@@ -4,7 +4,6 @@ import com.ecommerce.Enum.UserRole;
 import com.ecommerce.entity.Order;
 import com.ecommerce.entity.OrderItem;
 import com.ecommerce.entity.Product;
-import com.ecommerce.entity.User;
 import com.ecommerce.repository.OrderRepository;
 import com.ecommerce.repository.ProductRepository;
 import com.ecommerce.repository.UserRepository;
@@ -13,7 +12,6 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
-import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
@@ -92,7 +90,7 @@ public class OrderAnalyticsServiceImpl implements OrderAnalyticsService {
             Map<String, Object> stats = new HashMap<>();
             
             // Total customers
-            long totalCustomers = userRepository.countByRole(UserRole.CUSTOMER);
+            long totalCustomers = userRepository.countByRole(UserRole.CUSTOMER.toString());
             stats.put("totalCustomers", totalCustomers);
             
             // Customers with orders

@@ -36,13 +36,6 @@ public class CreateProductDTO {
 
     @Positive(message = "Cost price must be positive")
     private BigDecimal costPrice;
-
-    @Positive(message = "Stock quantity must be positive")
-    private Integer stockQuantity;
-
-    @Positive(message = "Low stock threshold must be positive")
-    private Integer lowStockThreshold;
-
     @NotNull(message = "Category ID is required")
     private Long categoryId;
 
@@ -65,45 +58,45 @@ public class CreateProductDTO {
     // Product Details
     @Size(max = 2000, message = "Full description must not exceed 2000 characters")
     private String fullDescription;
-    
+
     @Size(max = 255, message = "Meta title must not exceed 255 characters")
     private String metaTitle;
-    
+
     @Size(max = 500, message = "Meta description must not exceed 500 characters")
     private String metaDescription;
-    
+
     @Size(max = 500, message = "Meta keywords must not exceed 500 characters")
     private String metaKeywords;
-    
+
     @Size(max = 500, message = "Search keywords must not exceed 500 characters")
     private String searchKeywords;
 
     // Physical Dimensions and Weight
     @Positive(message = "Height must be positive")
     private BigDecimal heightCm;
-    
+
     @Positive(message = "Width must be positive")
     private BigDecimal widthCm;
-    
+
     @Positive(message = "Length must be positive")
     private BigDecimal lengthCm;
-    
+
     @Positive(message = "Weight must be positive")
     private BigDecimal weightKg;
 
     // Product Specifications
     @Size(max = 100, message = "Material must not exceed 100 characters")
     private String material;
-    
+
     @Size(max = 500, message = "Care instructions must not exceed 500 characters")
     private String careInstructions;
-    
+
     @Size(max = 500, message = "Warranty info must not exceed 500 characters")
     private String warrantyInfo;
-    
+
     @Size(max = 500, message = "Shipping info must not exceed 500 characters")
     private String shippingInfo;
-    
+
     @Size(max = 500, message = "Return policy must not exceed 500 characters")
     private String returnPolicy;
 
@@ -115,7 +108,7 @@ public class CreateProductDTO {
     private List<ImageMetadata> imageMetadata;
     private List<String> productVideos;
     private String videoMetadata;
-    
+
     // Variants
     private List<CreateProductVariantDTO> variants;
 
@@ -229,13 +222,14 @@ public class CreateProductDTO {
         return costPrice;
     }
 
-    public Integer getStockQuantity() {
-        return stockQuantity;
-    }
+    // TODO: These methods are deprecated - use warehouseStock instead
+    // public Integer getStockQuantity() {
+    // return stockQuantity;
+    // }
 
-    public Integer getLowStockThreshold() {
-        return lowStockThreshold;
-    }
+    // public Integer getLowStockThreshold() {
+    // return lowStockThreshold;
+    // }
 
     public Long getCategoryId() {
         return categoryId;

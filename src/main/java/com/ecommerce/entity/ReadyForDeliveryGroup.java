@@ -43,6 +43,18 @@ public class ReadyForDeliveryGroup {
     @Column(name = "scheduled_at")
     private LocalDateTime scheduledAt;
 
+    @Column(name = "has_delivery_started", nullable = false)
+    private Boolean hasDeliveryStarted = false;
+
+    @Column(name = "delivery_started_at")
+    private LocalDateTime deliveryStartedAt;
+
+    @Column(name = "has_delivery_finished", nullable = false)
+    private Boolean hasDeliveryFinished = false;
+
+    @Column(name = "delivery_finished_at")
+    private LocalDateTime deliveryFinishedAt;
+
     @PrePersist
     protected void onCreate() {
         createdAt = LocalDateTime.now();

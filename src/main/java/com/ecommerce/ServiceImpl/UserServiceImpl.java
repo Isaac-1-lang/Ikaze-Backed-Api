@@ -35,7 +35,7 @@ public class UserServiceImpl implements UserService {
         } else {
             throw new IllegalArgumentException("Role must be DELIVERY_AGENT or EMPLOYEE.");
         }
-        if (userRepository.existsByUserEmail(dto.getEmail())) {
+        if (userRepository.findByUserEmail(dto.getEmail()).isPresent()) {
             throw new IllegalArgumentException("Email already exists.");
         }
         User user = new User();

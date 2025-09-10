@@ -5,19 +5,33 @@ import com.ecommerce.dto.UserDTO;
 import com.ecommerce.service.AuthService;
 import com.ecommerce.dto.LoginDto;
 import com.ecommerce.dto.LoginResponseDto;
+import com.ecommerce.entity.User;
+import com.ecommerce.repository.UserRepository;
+import com.ecommerce.Enum.UserRole;
 import jakarta.validation.Valid;
+import lombok.extern.slf4j.Slf4j;
+
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 
+@Slf4j
 @RestController
 @RequestMapping("api/v1/auth/users")
 public class UserController {
 
     @Autowired
     private AuthService authService;
+
+    @Autowired
+    private UserRepository userRepository;
 
     @PostMapping("/register")
     public ResponseEntity<String> registerUser(@Valid @RequestBody UserRegistrationDTO registrationDTO) {
@@ -61,5 +75,45 @@ public class UserController {
         String email = authService.extractEmailFromToken(token.replace("Bearer ", ""));
         UserDTO user = authService.getCurrentUser(email);
         return ResponseEntity.ok(user);
+    }
+
+    @GetMapping("/delivery-agents")
+    public ResponseEntity<Map<String, Object>> getDeliveryAgents(
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "10") int size) {
+        try {
+            Pageable pageable = PageRequest.of(page, size);
+            Page<User> deliveryAgentsPage = userRepository.findByRole(UserRole.DELIVERY_AGENT, pageable);
+
+            List<UserDTO> deliveryAgents = deliveryAgentsPage.getContent().stream()
+
+                    .map(user -> {
+                        UserDTO dto = new UserDTO();
+                        dto.setId(user.getId());
+                        dto.setFirstName(user.getFirstName());
+                        dto.setLastName(user.getLastName());
+                        dto.setUserEmail(user.getUserEmail());
+                        dto.setPhoneNumber(user.getPhoneNumber());
+                        dto.setRole(user.getRole());
+                        dto.setEnabled(user.isEnabled());
+                        dto.setCreatedAt(user.getCreatedAt());
+                        return dto;
+                    })
+                    .collect(Collectors.toList());
+
+            Map<String, Object> response = Map.of(
+                    "content", deliveryAgents,
+                    "totalElements", deliveryAgentsPage.getTotalElements(),
+                    "totalPages", deliveryAgentsPage.getTotalPages(),
+                    "currentPage", deliveryAgentsPage.getNumber(),
+                    "size", deliveryAgentsPage.getSize(),
+                    "first", deliveryAgentsPage.isFirst(),
+                    "last", deliveryAgentsPage.isLast());
+
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            log.error("Failed to fetch delivery agents", e);
+            return ResponseEntity.internalServerError().body(Map.of("error", "Failed to fetch delivery agents"));
+        }
     }
 }

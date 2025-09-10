@@ -46,12 +46,15 @@ public class SecurityConfig {
                                 "/api/v1/auth/users/reset-password",
                                 "/api/v1/products/**",
                                 "/api/v1/categories/**",
+                                "/api/v1/rewards/**",
+                                "/api/v1/warehouses/countries/**",
                                 "/api/v1/brands/**",
                                 "/api/v1/landing/**",
                                 "/api/v1/brands/featured",
                                 "/api/v1/product-attribute-types/**",
                                 "/api/v1/product-attribute-values/**",
-                                "/api/v1/checkout/verify/**",
+                                "/api/v1/checkout/**",
+                                "/api/v1/cart/products",
                                 "/api/v1/checkout/guest/**",
                                 "/v3/api-docs/**",
                                 "/swagger-ui/**",
@@ -66,7 +69,8 @@ public class SecurityConfig {
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration configuration = new CorsConfiguration();
-        configuration.setAllowedOriginPatterns(Arrays.asList("http://localhost:3000", "http://127.0.0.1:3000"));
+        configuration.setAllowedOriginPatterns(
+                Arrays.asList("http://localhost:3000", "http://127.0.0.1:3000", "http://localhost:3001"));
         configuration.setAllowedMethods(Arrays.asList("GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"));
         configuration.setAllowedHeaders(Arrays.asList("*"));
         configuration.setAllowCredentials(true);

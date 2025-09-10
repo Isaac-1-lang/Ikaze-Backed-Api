@@ -19,10 +19,10 @@ public class CartItem {
      */
     public Integer getStockQuantity() {
         if (productVariant != null) {
-            return productVariant.getStockQuantity();
+            return productVariant.getTotalStockQuantity();
         }
         if (product != null) {
-            return product.getStockQuantity();
+            return product.getTotalStockQuantity();
         }
         return 0;
     }
@@ -110,13 +110,13 @@ public class CartItem {
      * @throws IllegalArgumentException if quantity exceeds available stock
      */
     public void setQuantity(int quantity) {
-        if (productVariant != null && quantity > productVariant.getStockQuantity()) {
+        if (productVariant != null && quantity > productVariant.getTotalStockQuantity()) {
             throw new IllegalArgumentException(
-                    "Quantity cannot exceed available stock of " + productVariant.getStockQuantity());
+                    "Quantity cannot exceed available stock of " + productVariant.getTotalStockQuantity());
         }
-        if (product != null && quantity > product.getStockQuantity()) {
+        if (product != null && quantity > product.getTotalStockQuantity()) {
             throw new IllegalArgumentException(
-                    "Quantity cannot exceed available stock of " + product.getStockQuantity());
+                    "Quantity cannot exceed available stock of " + product.getTotalStockQuantity());
         }
         this.quantity = quantity;
     }
@@ -195,10 +195,10 @@ public class CartItem {
      */
     public Integer getEffectiveStockQuantity() {
         if (productVariant != null) {
-            return productVariant.getStockQuantity();
+            return productVariant.getTotalStockQuantity();
         }
         if (product != null) {
-            return product.getStockQuantity();
+            return product.getTotalStockQuantity();
         }
         return 0;
     }

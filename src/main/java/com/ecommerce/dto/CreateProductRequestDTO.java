@@ -90,8 +90,9 @@ public class CreateProductRequestDTO {
         dto.setBasePrice(this.basePrice);
         dto.setSalePrice(this.salePrice);
         dto.setCostPrice(this.costPrice);
-        dto.setStockQuantity(this.stockQuantity);
-        dto.setLowStockThreshold(this.lowStockThreshold);
+        // TODO: These methods are deprecated - use warehouseStock instead
+        // dto.setStockQuantity(this.stockQuantity);
+        // dto.setLowStockThreshold(this.lowStockThreshold);
         dto.setCategoryId(this.categoryId);
         dto.setBrandId(this.brandId);
         dto.setDiscountId(this.discountId);

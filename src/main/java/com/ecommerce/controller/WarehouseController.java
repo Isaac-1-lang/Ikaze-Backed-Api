@@ -1,107 +1,254 @@
 package com.ecommerce.controller;
 
+import com.ecommerce.dto.CreateWarehouseDTO;
+import com.ecommerce.dto.UpdateWarehouseDTO;
 import com.ecommerce.dto.WarehouseDTO;
-import com.ecommerce.dto.WarehouseInventoryDTO;
+import com.ecommerce.dto.WarehouseProductDTO;
+import com.ecommerce.dto.CountryValidationRequest;
 import com.ecommerce.service.WarehouseService;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
+import java.util.UUID;
 
 @RestController
-@RequestMapping("/api/warehouses")
+@RequestMapping("/api/v1/warehouses")
 @RequiredArgsConstructor
 @Slf4j
 public class WarehouseController {
 
     private final WarehouseService warehouseService;
 
-    @GetMapping
-    public ResponseEntity<List<WarehouseDTO>> getAllWarehouses() {
+    @PostMapping
+    @PreAuthorize("hasRole('EMPLOYEE') or hasRole('ADMIN')")
+    public ResponseEntity<WarehouseDTO> createWarehouse(
+            @RequestParam("warehouse") String warehouseJson,
+            @RequestParam(value = "images", required = false) List<MultipartFile> images) {
         try {
-            List<WarehouseDTO> warehouses = warehouseService.getAllActiveWarehouses();
-            log.info("Retrieved {} active warehouses", warehouses.size());
-            return ResponseEntity.ok(warehouses);
+            // Parse JSON string to CreateWarehouseDTO
+            ObjectMapper objectMapper = new ObjectMapper();
+            CreateWarehouseDTO createWarehouseDTO = objectMapper.readValue(warehouseJson, CreateWarehouseDTO.class);
+
+            log.info("Creating warehouse: {}", createWarehouseDTO.getName());
+            WarehouseDTO warehouse = warehouseService.createWarehouse(createWarehouseDTO, images);
+            return ResponseEntity.status(HttpStatus.CREATED).body(warehouse);
         } catch (Exception e) {
-            log.error("Error retrieving warehouses", e);
-            return ResponseEntity.internalServerError().build();
+            log.error("Error creating warehouse: {}", e.getMessage(), e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
         }
     }
 
-    @GetMapping("/{id}")
-    public ResponseEntity<WarehouseDTO> getWarehouseById(@PathVariable Long id) {
+    @GetMapping("/{warehouseId}")
+    @PreAuthorize("hasRole('EMPLOYEE') or hasRole('ADMIN')")
+    public ResponseEntity<WarehouseDTO> getWarehouseById(@PathVariable Long warehouseId) {
         try {
-            WarehouseDTO warehouse = warehouseService.getWarehouseById(id);
+            WarehouseDTO warehouse = warehouseService.getWarehouseById(warehouseId);
             return ResponseEntity.ok(warehouse);
         } catch (Exception e) {
-            log.error("Error retrieving warehouse with ID: {}", id, e);
-            return ResponseEntity.internalServerError().build();
+            log.error("Error getting warehouse by ID {}: {}", warehouseId, e.getMessage(), e);
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).build();
         }
     }
 
-    @PostMapping
-    @PreAuthorize("hasRole('ADMIN')")
-    public ResponseEntity<WarehouseDTO> createWarehouse(@RequestBody WarehouseDTO warehouseDTO) {
+    @GetMapping
+    @PreAuthorize("hasRole('EMPLOYEE') or hasRole('ADMIN')")
+    public ResponseEntity<Page<WarehouseDTO>> getAllWarehouses(Pageable pageable) {
         try {
-            WarehouseDTO savedWarehouse = warehouseService.createWarehouse(warehouseDTO);
-            log.info("Created warehouse: {}", savedWarehouse.getName());
-            return ResponseEntity.ok(savedWarehouse);
+            Page<WarehouseDTO> warehouses = warehouseService.getAllWarehouses(pageable);
+            return ResponseEntity.ok(warehouses);
         } catch (Exception e) {
-            log.error("Error creating warehouse", e);
-            return ResponseEntity.internalServerError().build();
+            log.error("Error getting all warehouses: {}", e.getMessage(), e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
         }
     }
 
-    @PutMapping("/{id}")
-    @PreAuthorize("hasRole('ADMIN')")
-    public ResponseEntity<WarehouseDTO> updateWarehouse(@PathVariable Long id, @RequestBody WarehouseDTO warehouseDTO) {
+    @GetMapping("/all")
+    @PreAuthorize("hasRole('EMPLOYEE') or hasRole('ADMIN')")
+    public ResponseEntity<List<WarehouseDTO>> getAllWarehousesList() {
         try {
-            WarehouseDTO updatedWarehouse = warehouseService.updateWarehouse(id, warehouseDTO);
-            log.info("Updated warehouse: {}", updatedWarehouse.getName());
-            return ResponseEntity.ok(updatedWarehouse);
+            List<WarehouseDTO> warehouses = warehouseService.getAllWarehouses();
+            return ResponseEntity.ok(warehouses);
         } catch (Exception e) {
-            log.error("Error updating warehouse with ID: {}", id, e);
-            return ResponseEntity.internalServerError().build();
+            log.error("Error getting all warehouses list: {}", e.getMessage(), e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
         }
     }
 
-    @DeleteMapping("/{id}")
-    @PreAuthorize("hasRole('ADMIN')")
-    public ResponseEntity<Void> deleteWarehouse(@PathVariable Long id) {
+    @PutMapping("/{warehouseId}")
+    @PreAuthorize("hasRole('EMPLOYEE') or hasRole('ADMIN')")
+    public ResponseEntity<WarehouseDTO> updateWarehouse(
+            @PathVariable Long warehouseId,
+            @Valid @RequestBody UpdateWarehouseDTO updateWarehouseDTO,
+            @RequestParam(value = "images", required = false) List<MultipartFile> images) {
         try {
-            warehouseService.deleteWarehouse(id);
-            log.info("Deactivated warehouse with ID: {}", id);
-            return ResponseEntity.ok().<Void>build();
+            log.info("Updating warehouse with ID: {}", warehouseId);
+            WarehouseDTO warehouse = warehouseService.updateWarehouse(warehouseId, updateWarehouseDTO, images);
+            return ResponseEntity.ok(warehouse);
         } catch (Exception e) {
-            log.error("Error deleting warehouse with ID: {}", id, e);
-            return ResponseEntity.internalServerError().build();
+            log.error("Error updating warehouse with ID {}: {}", warehouseId, e.getMessage(), e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
         }
     }
 
-    @GetMapping("/{id}/inventory")
-    public ResponseEntity<List<WarehouseInventoryDTO>> getWarehouseInventory(@PathVariable Long id) {
+    @DeleteMapping("/{warehouseId}")
+    @PreAuthorize("hasRole('EMPLOYEE') or hasRole('ADMIN')")
+    public ResponseEntity<Void> deleteWarehouse(@PathVariable Long warehouseId) {
         try {
-            List<WarehouseInventoryDTO> inventory = warehouseService.getWarehouseInventory(id);
-            log.info("Retrieved inventory for warehouse ID: {} with {} items", id, inventory.size());
-            return ResponseEntity.ok(inventory);
+            log.info("Deleting warehouse with ID: {}", warehouseId);
+            boolean deleted = warehouseService.deleteWarehouse(warehouseId);
+            if (deleted) {
+                return ResponseEntity.noContent().build();
+            } else {
+                return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
+            }
         } catch (Exception e) {
-            log.error("Error retrieving inventory for warehouse ID: {}", id, e);
-            return ResponseEntity.internalServerError().build();
+            log.error("Error deleting warehouse with ID {}: {}", warehouseId, e.getMessage(), e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
         }
     }
 
-    @GetMapping("/inventory/all")
-    public ResponseEntity<List<WarehouseInventoryDTO>> getAllWarehouseInventory() {
+    @GetMapping("/{warehouseId}/products")
+    @PreAuthorize("hasRole('EMPLOYEE') or hasRole('ADMIN')")
+    public ResponseEntity<Page<WarehouseProductDTO>> getProductsInWarehouse(
+            @PathVariable Long warehouseId,
+            Pageable pageable) {
         try {
-            List<WarehouseInventoryDTO> inventory = warehouseService.getAllWarehouseInventory();
-            log.info("Retrieved all warehouse inventory with {} items", inventory.size());
-            return ResponseEntity.ok(inventory);
+            Page<WarehouseProductDTO> products = warehouseService.getProductsInWarehouse(warehouseId, pageable);
+            return ResponseEntity.ok(products);
         } catch (Exception e) {
-            log.error("Error retrieving all warehouse inventory", e);
-            return ResponseEntity.internalServerError().build();
+            log.error("Error getting products in warehouse {}: {}", warehouseId, e.getMessage(), e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
         }
+    }
+
+    @DeleteMapping("/{warehouseId}/products/{productId}")
+    @PreAuthorize("hasRole('EMPLOYEE') or hasRole('ADMIN')")
+    public ResponseEntity<Void> removeProductFromWarehouse(
+            @PathVariable Long warehouseId,
+            @PathVariable UUID productId) {
+        try {
+            log.info("Removing product {} from warehouse {}", productId, warehouseId);
+            boolean removed = warehouseService.removeProductFromWarehouse(warehouseId, productId);
+            if (removed) {
+                return ResponseEntity.noContent().build();
+            } else {
+                return ResponseEntity.status(HttpStatus.NOT_FOUND).build();
+            }
+        } catch (Exception e) {
+            log.error("Error removing product {} from warehouse {}: {}", productId, warehouseId, e.getMessage(), e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
+        }
+    }
+
+    @DeleteMapping("/{warehouseId}/variants/{variantId}")
+    @PreAuthorize("hasRole('EMPLOYEE') or hasRole('ADMIN')")
+    public ResponseEntity<Void> removeVariantFromWarehouse(
+            @PathVariable Long warehouseId,
+            @PathVariable Long variantId) {
+        try {
+            log.info("Removing variant {} from warehouse {}", variantId, warehouseId);
+            boolean removed = warehouseService.removeVariantFromWarehouse(warehouseId, variantId);
+            if (removed) {
+                return ResponseEntity.noContent().build();
+            } else {
+                return ResponseEntity.status(HttpStatus.NOT_FOUND).build();
+            }
+        } catch (Exception e) {
+            log.error("Error removing variant {} from warehouse {}: {}", variantId, warehouseId, e.getMessage(), e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
+        }
+    }
+
+    @PostMapping("/{warehouseId}/images")
+    @PreAuthorize("hasRole('EMPLOYEE') or hasRole('ADMIN')")
+    public ResponseEntity<WarehouseDTO> addImagesToWarehouse(
+            @PathVariable Long warehouseId,
+            @RequestParam("images") List<MultipartFile> images) {
+        try {
+            log.info("Adding {} images to warehouse {}", images.size(), warehouseId);
+            WarehouseDTO warehouse = warehouseService.addImagesToWarehouse(warehouseId, images);
+            return ResponseEntity.ok(warehouse);
+        } catch (Exception e) {
+            log.error("Error adding images to warehouse {}: {}", warehouseId, e.getMessage(), e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
+        }
+    }
+
+    @DeleteMapping("/{warehouseId}/images/{imageId}")
+    @PreAuthorize("hasRole('EMPLOYEE') or hasRole('ADMIN')")
+    public ResponseEntity<Void> removeImageFromWarehouse(
+            @PathVariable Long warehouseId,
+            @PathVariable Long imageId) {
+        try {
+            log.info("Removing image {} from warehouse {}", imageId, warehouseId);
+            boolean removed = warehouseService.removeImageFromWarehouse(warehouseId, imageId);
+            if (removed) {
+                return ResponseEntity.noContent().build();
+            } else {
+                return ResponseEntity.status(HttpStatus.NOT_FOUND).build();
+            }
+        } catch (Exception e) {
+            log.error("Error removing image {} from warehouse {}: {}", imageId, warehouseId, e.getMessage(), e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
+        }
+    }
+
+    @GetMapping("/location")
+    @PreAuthorize("hasRole('EMPLOYEE') or hasRole('ADMIN')")
+    public ResponseEntity<List<WarehouseDTO>> getWarehousesByLocation(
+            @RequestParam String location) {
+        try {
+            List<WarehouseDTO> warehouses = warehouseService.getWarehousesByLocation(location);
+            return ResponseEntity.ok(warehouses);
+        } catch (Exception e) {
+            log.error("Error getting warehouses by location: {}", e.getMessage(), e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
+        }
+    }
+
+    @GetMapping("/nearby")
+    public ResponseEntity<List<WarehouseDTO>> getWarehousesNearLocation(
+            @RequestParam Double latitude,
+            @RequestParam Double longitude,
+            @RequestParam Double radiusKm) {
+        try {
+            List<WarehouseDTO> warehouses = warehouseService.getWarehousesNearLocation(latitude, longitude, radiusKm);
+            return ResponseEntity.ok(warehouses);
+        } catch (Exception e) {
+            log.error("Error getting warehouses near location: {}", e.getMessage(), e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
+        }
+    }
+
+    @GetMapping("/countries")
+    public ResponseEntity<List<String>> getWarehouseCountries() {
+        log.info("Fetching all countries with warehouses");
+        List<String> countries = warehouseService.getWarehouseCountries();
+        return ResponseEntity.ok(countries);
+    }
+
+    @GetMapping("/countries/paginated")
+    public ResponseEntity<Page<String>> getWarehouseCountriesPaginated(Pageable pageable) {
+        log.info("Fetching countries with warehouses - page: {}, size: {}", pageable.getPageNumber(),
+                pageable.getPageSize());
+        Page<String> countries = warehouseService.getWarehouseCountriesPaginated(pageable);
+        return ResponseEntity.ok(countries);
+    }
+
+    @PostMapping("/countries/validate-country")
+    public ResponseEntity<Boolean> validateCountry(@RequestBody CountryValidationRequest request) {
+        log.info("Validating country: {}", request.getCountry());
+        boolean isValid = warehouseService.hasWarehouseInCountry(request.getCountry());
+        return ResponseEntity.ok(isValid);
     }
 }

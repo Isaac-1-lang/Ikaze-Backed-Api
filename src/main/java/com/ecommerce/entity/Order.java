@@ -3,10 +3,10 @@ package com.ecommerce.entity;
 import jakarta.persistence.*;
 import lombok.Data;
 import lombok.NoArgsConstructor;
-import lombok.AllArgsConstructor;
-import lombok.Getter;
 import lombok.Setter;
+import lombok.AllArgsConstructor;
 import lombok.EqualsAndHashCode;
+import lombok.Getter;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -20,7 +20,8 @@ import java.util.UUID;
 @Setter
 @NoArgsConstructor
 @AllArgsConstructor
-@EqualsAndHashCode(exclude = "orderTransaction")
+@EqualsAndHashCode(exclude = { "orderTransaction", "orderAddress", "orderInfo", "orderCustomerInfo", "orderItems",
+        "user", "readyForDeliveryGroup" })
 public class Order {
 
     @Id

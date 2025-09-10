@@ -4,10 +4,14 @@ import com.ecommerce.dto.AddToCartDTO;
 import com.ecommerce.dto.CartDTO;
 import com.ecommerce.dto.CartItemDTO;
 import com.ecommerce.dto.UpdateCartItemDTO;
+import com.ecommerce.dto.CartProductsRequestDTO;
+import com.ecommerce.dto.CartProductsResponseDTO;
 import com.ecommerce.entity.Cart;
 import com.ecommerce.entity.CartItem;
 import com.ecommerce.entity.Product;
 import com.ecommerce.entity.ProductVariant;
+import com.ecommerce.entity.ProductImage;
+import com.ecommerce.entity.ProductVariantImage;
 import com.ecommerce.entity.User;
 import com.ecommerce.repository.CartItemRepository;
 import com.ecommerce.repository.CartRepository;
@@ -25,7 +29,9 @@ import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
@@ -59,8 +65,8 @@ public class CartServiceImpl implements CartService {
                 throw new IllegalArgumentException("Product variant is not active");
             }
 
-            if (variant.getStockQuantity() < addToCartDTO.getQuantity()) {
-                throw new IllegalArgumentException("Insufficient stock. Available: " + variant.getStockQuantity());
+            if (variant.getTotalStockQuantity() < addToCartDTO.getQuantity()) {
+                throw new IllegalArgumentException("Insufficient stock. Available: " + variant.getTotalStockQuantity());
             }
 
             existingItem = cartItemRepository.findByCartIdAndProductVariantId(cart.getId(), variant.getId())
@@ -68,7 +74,7 @@ public class CartServiceImpl implements CartService {
 
             if (existingItem != null) {
                 int newQuantity = existingItem.getQuantity() + addToCartDTO.getQuantity();
-                if (newQuantity > variant.getStockQuantity()) {
+                if (newQuantity > variant.getTotalStockQuantity()) {
                     throw new IllegalArgumentException("Total quantity would exceed available stock");
                 }
                 existingItem.setQuantity(newQuantity);
@@ -96,8 +102,8 @@ public class CartServiceImpl implements CartService {
                 throw new IllegalArgumentException("Product is not active");
             }
 
-            if (product.getStockQuantity() < addToCartDTO.getQuantity()) {
-                throw new IllegalArgumentException("Insufficient stock. Available: " + product.getStockQuantity());
+            if (product.getTotalStockQuantity() < addToCartDTO.getQuantity()) {
+                throw new IllegalArgumentException("Insufficient stock. Available: " + product.getTotalStockQuantity());
             }
 
             existingItem = cartItemRepository.findByCartIdAndProductProductId(cart.getId(), product.getProductId())
@@ -105,7 +111,7 @@ public class CartServiceImpl implements CartService {
 
             if (existingItem != null) {
                 int newQuantity = existingItem.getQuantity() + addToCartDTO.getQuantity();
-                if (newQuantity > product.getStockQuantity()) {
+                if (newQuantity > product.getTotalStockQuantity()) {
                     throw new IllegalArgumentException("Total quantity would exceed available stock");
                 }
                 existingItem.setQuantity(newQuantity);
@@ -147,15 +153,15 @@ public class CartServiceImpl implements CartService {
         // Check stock based on whether it's a variant or product
         if (cartItem.isVariantBased()) {
             ProductVariant variant = cartItem.getProductVariant();
-            if (updateCartItemDTO.getQuantity() > variant.getStockQuantity()) {
+            if (updateCartItemDTO.getQuantity() > variant.getTotalStockQuantity()) {
                 throw new IllegalArgumentException(
-                        "Quantity cannot exceed available stock of " + variant.getStockQuantity());
+                        "Quantity cannot exceed available stock of " + variant.getTotalStockQuantity());
             }
         } else if (cartItem.isProductBased()) {
             Product product = cartItem.getProduct();
-            if (updateCartItemDTO.getQuantity() > product.getStockQuantity()) {
+            if (updateCartItemDTO.getQuantity() > product.getTotalStockQuantity()) {
                 throw new IllegalArgumentException(
-                        "Quantity cannot exceed available stock of " + product.getStockQuantity());
+                        "Quantity cannot exceed available stock of " + product.getTotalStockQuantity());
             }
         }
 
@@ -283,7 +289,7 @@ public class CartServiceImpl implements CartService {
             productName = variant.getProduct().getProductName() + " - " + variant.getVariantName();
             sku = variant.getVariantSku();
             inStock = variant.isInStock();
-            availableStock = variant.getStockQuantity();
+            availableStock = variant.getTotalStockQuantity();
 
             if (variant.getImages() != null && !variant.getImages().isEmpty()) {
                 productImage = variant.getImages().stream()
@@ -299,7 +305,7 @@ public class CartServiceImpl implements CartService {
             productName = product.getProductName();
             sku = product.getSku();
             inStock = product.isInStock();
-            availableStock = product.getStockQuantity();
+            availableStock = product.getTotalStockQuantity();
 
             if (product.getImages() != null && !product.getImages().isEmpty()) {
                 productImage = product.getImages().stream()
@@ -332,5 +338,142 @@ public class CartServiceImpl implements CartService {
         return cartItems.stream()
                 .map(item -> item.getEffectivePrice().multiply(BigDecimal.valueOf(item.getQuantity())))
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
+    }
+
+    @Override
+    public CartProductsResponseDTO getCartProductsInfo(CartProductsRequestDTO request) {
+        try {
+            List<CartProductsResponseDTO.CartProductDTO> cartProducts = new ArrayList<>();
+            BigDecimal subtotal = BigDecimal.ZERO;
+            int totalItems = 0;
+
+            for (CartProductsRequestDTO.CartItemRequestDTO item : request.getItems()) {
+                try {
+                    CartProductsResponseDTO.CartProductDTO cartProduct;
+
+                    if (item.getVariantId() != null) {
+                        // Handle variant - get product from variant
+                        ProductVariant variant = productVariantRepository.findById(item.getVariantId())
+                                .orElseThrow(() -> new EntityNotFoundException(
+                                        "Variant not found with ID: " + item.getVariantId()));
+
+                        Product product = variant.getProduct();
+
+                        // Get variant images, fallback to product images
+                        String imageUrl = getVariantOrProductImage(variant, product);
+
+                        // Build variant attributes
+                        List<CartProductsResponseDTO.CartProductDTO.VariantAttributeDTO> attributes = variant
+                                .getAttributeValues() != null ? variant.getAttributeValues().stream()
+                                        .map(attr -> CartProductsResponseDTO.CartProductDTO.VariantAttributeDTO
+                                                .builder()
+                                                .attributeTypeName(
+                                                        attr.getAttributeValue().getAttributeType().getName())
+                                                .attributeValue(attr.getAttributeValue().getValue())
+                                                .build())
+                                        .collect(Collectors.toList()) : new ArrayList<>();
+
+                        cartProduct = CartProductsResponseDTO.CartProductDTO.builder()
+                                .itemId(item.getItemId())
+                                .productId(product.getProductId().toString())
+                                .variantId(variant.getId())
+                                .productName(product.getProductName())
+                                .productDescription(product.getDescription())
+                                .price(variant.getPrice())
+                                .previousPrice(product.getSalePercentage() != null && product.getSalePercentage() > 0
+                                        ? product.getPrice()
+                                        : null)
+                                .productImage(imageUrl)
+                                .quantity(item.getQuantity())
+                                .availableStock(variant.getTotalStockQuantity())
+                                .totalPrice(variant.getPrice().multiply(BigDecimal.valueOf(item.getQuantity())))
+                                .averageRating(product.getAverageRating())
+                                .reviewCount(product.getReviewCount())
+                                .variantSku(variant.getVariantSku())
+                                .variantAttributes(attributes)
+                                .build();
+                    } else {
+                        UUID productId;
+                        try {
+                            productId = UUID.fromString(item.getProductId());
+                        } catch (IllegalArgumentException e) {
+                            log.warn("Invalid product ID format: {}", item.getProductId());
+                            continue;
+                        }
+
+                        Product product = productRepository.findById(productId)
+                                .orElseThrow(() -> new EntityNotFoundException(
+                                        "Product not found with ID: " + item.getProductId()));
+
+                        String imageUrl = getProductMainImage(product);
+
+                        cartProduct = CartProductsResponseDTO.CartProductDTO.builder()
+                                .itemId(item.getItemId())
+                                .productId(product.getProductId().toString())
+                                .variantId(null)
+                                .productName(product.getProductName())
+                                .productDescription(product.getDescription())
+                                .price(product.getDiscountedPrice())
+                                .previousPrice(product.getSalePercentage() != null && product.getSalePercentage() > 0
+                                        ? product.getPrice()
+                                        : null)
+                                .productImage(imageUrl)
+                                .quantity(item.getQuantity())
+                                .availableStock(product.getTotalStockQuantity())
+                                .totalPrice(
+                                        product.getDiscountedPrice().multiply(BigDecimal.valueOf(item.getQuantity())))
+                                .averageRating(product.getAverageRating())
+                                .reviewCount(product.getReviewCount())
+                                .variantSku(null)
+                                .variantAttributes(new ArrayList<>())
+                                .build();
+                    }
+
+                    cartProducts.add(cartProduct);
+                    subtotal = subtotal.add(cartProduct.getTotalPrice());
+                    totalItems += item.getQuantity();
+
+                } catch (EntityNotFoundException e) {
+                    log.warn("Product or variant not found for cart item: {}", e.getMessage());
+                    // Skip this item and continue with others
+                    continue;
+                }
+            }
+
+            return CartProductsResponseDTO.builder()
+                    .items(cartProducts)
+                    .subtotal(subtotal)
+                    .totalItems(totalItems)
+                    .build();
+
+        } catch (Exception e) {
+            log.error("Error getting cart products info: {}", e.getMessage(), e);
+            throw new RuntimeException("Failed to get cart products information", e);
+        }
+    }
+
+    private String getVariantOrProductImage(ProductVariant variant, Product product) {
+        // Try to get variant primary image first
+        if (variant.getImages() != null && !variant.getImages().isEmpty()) {
+            return variant.getImages().stream()
+                    .filter(ProductVariantImage::isPrimary)
+                    .findFirst()
+                    .map(ProductVariantImage::getImageUrl)
+                    .orElse(variant.getImages().get(0).getImageUrl());
+        }
+
+        // Fallback to product image
+        return getProductMainImage(product);
+    }
+
+    private String getProductMainImage(Product product) {
+        if (product.getImages() != null && !product.getImages().isEmpty()) {
+            return product.getImages().stream()
+                    .filter(ProductImage::isPrimary)
+                    .findFirst()
+                    .map(ProductImage::getImageUrl)
+                    .orElse(product.getImages().get(0).getImageUrl());
+        }
+        return ""; // Return empty string if no image found
     }
 }

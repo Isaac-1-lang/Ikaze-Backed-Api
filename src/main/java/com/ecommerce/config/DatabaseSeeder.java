@@ -41,21 +41,12 @@ public class DatabaseSeeder implements CommandLineRunner {
     private final ProductVideoRepository productVideoRepository;
     private final VariantAttributeValueRepository variantAttributeValueRepository;
 
-    // Warehouse related
-    private final WarehouseRepository warehouseRepository;
-    private final StockRepository stockRepository;
 
     @Override
     @Transactional
     public void run(String... args) throws Exception {
         // Always ensure core users exist
         seedUsers();
-
-        // Always ensure warehouses exist (independent of other data)
-        if (warehouseRepository.count() == 0) {
-            log.info("No warehouses found. Seeding warehouses...");
-            seedWarehouses();
-        }
 
         // Always ensure categories exist (independent of other data)
         if (categoryRepository.count() == 0) {
@@ -318,31 +309,6 @@ public class DatabaseSeeder implements CommandLineRunner {
         log.info("Created {} attribute values", colorValues.size() + sizeValues.size() + storageValues.size());
     }
 
-    @Transactional
-    public void seedWarehouses() {
-        log.info("Seeding warehouses...");
-
-        List<Warehouse> warehouses = Arrays.asList(
-                createWarehouse("Main Distribution Center", "123 Industrial Blvd, New York, NY 10001", "+1-555-0101",
-                        "main.warehouse@company.com"),
-                createWarehouse("West Coast Hub", "456 Commerce Way, Los Angeles, CA 90210", "+1-555-0102",
-                        "west.warehouse@company.com"),
-                createWarehouse("Central Distribution", "789 Logistics Ave, Chicago, IL 60601", "+1-555-0103",
-                        "central.warehouse@company.com"),
-                createWarehouse("Southern Regional", "321 Warehouse Dr, Houston, TX 77001", "+1-555-0104",
-                        "south.warehouse@company.com"),
-                createWarehouse("Northeast Branch", "654 Storage St, Boston, MA 02101", "+1-555-0105",
-                        "northeast.warehouse@company.com"),
-                createWarehouse("Pacific Northwest", "987 Harbor Blvd, Seattle, WA 98101", "+1-555-0106",
-                        "pacific.warehouse@company.com"),
-                createWarehouse("Midwest Hub", "147 Distribution Rd, Detroit, MI 48201", "+1-555-0107",
-                        "midwest.warehouse@company.com"),
-                createWarehouse("Southeast Center", "258 Logistics Ln, Atlanta, GA 30301", "+1-555-0108",
-                        "southeast.warehouse@company.com"));
-
-        warehouseRepository.saveAll(warehouses);
-        log.info("Created {} warehouses", warehouses.size());
-    }
 
     @Transactional
     public void seedProducts() {
@@ -404,8 +370,9 @@ public class DatabaseSeeder implements CommandLineRunner {
         product.setPrice(new BigDecimal("17.00"));
         product.setCompareAtPrice(new BigDecimal("20.00"));
         product.setCostPrice(new BigDecimal("12.00"));
-        product.setStockQuantity(30);
-        product.setLowStockThreshold(5);
+        // TODO: Implement proper stock management through Stock entities
+        // product.setStockQuantity(30);
+        // product.setLowStockThreshold(5);
         product.setCategory(category);
         product.setBrand(brand);
         product.setModel("A2084");
@@ -535,7 +502,8 @@ public class DatabaseSeeder implements CommandLineRunner {
         iphone.setSku("IPHONE-15-PRO-001");
         iphone.setPrice(new BigDecimal("999.00"));
         iphone.setCompareAtPrice(new BigDecimal("1099.00"));
-        iphone.setStockQuantity(50);
+        // TODO: Implement proper stock management through Stock entities
+        // iphone.setStockQuantity(50);
         iphone.setCategory(category);
         iphone.setBrand(brand);
         iphone.setSlug("iphone-15-pro");
@@ -646,20 +614,12 @@ public class DatabaseSeeder implements CommandLineRunner {
         variant.setProduct(product);
         variant.setVariantSku(sku);
         variant.setPrice(price);
-        variant.setStockQuantity(stock);
-        variant.setLowStockThreshold(2);
+        // TODO: Implement proper stock management through Stock entities
+        // variant.setStockQuantity(stock);
+        // variant.setLowStockThreshold(2);
         variant.setActive(true);
         variant.setSortOrder(0);
         return variant;
     }
 
-    private Warehouse createWarehouse(String name, String location, String contactNumber, String email) {
-        Warehouse warehouse = new Warehouse();
-        warehouse.setName(name);
-        warehouse.setLocation(location);
-        warehouse.setContactNumber(contactNumber);
-        warehouse.setEmail(email);
-        warehouse.setActive(true);
-        return warehouse;
-    }
 }

@@ -15,15 +15,22 @@ import com.ecommerce.dto.UserDTO;
 import com.ecommerce.entity.User;
 import com.ecommerce.repository.UserRepository;
 import com.ecommerce.service.AuthService;
+import com.ecommerce.service.RewardService;
+
+import lombok.extern.slf4j.Slf4j;
+
 import com.ecommerce.dto.LoginResponseDto;
 
 @Service
+@Slf4j
+
 public class AuthServiceImpl implements AuthService {
 
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
     private final AuthenticationManager authenticationManager;
     private final JwtService jwtService;
+    private final RewardService rewardService;
     @Autowired
     private EmailService emailService;
 
@@ -31,12 +38,13 @@ public class AuthServiceImpl implements AuthService {
     public AuthServiceImpl(UserRepository userRepository,
             PasswordEncoder passwordEncoder,
             AuthenticationManager authenticationManager,
-            JwtService jwtService) {
+            JwtService jwtService,
+            RewardService rewardService) {
         this.userRepository = userRepository;
         this.passwordEncoder = passwordEncoder;
         this.authenticationManager = authenticationManager;
         this.jwtService = jwtService;
-
+        this.rewardService = rewardService;
     }
 
     @Override
@@ -61,6 +69,12 @@ public class AuthServiceImpl implements AuthService {
                 savedUser.getUserEmail(),
                 "Welcome to Our App!",
                 "Hello " + savedUser.getFirstName() + ",\n\nThank you for signing up!");
+
+        try {
+            rewardService.awardPointsForSignup(savedUser.getId());
+        } catch (Exception e) {
+            log.warn("Failed to award signup points for user {}: {}", savedUser.getId(), e.getMessage());
+        }
 
         return "User registered successfully with ID: " + savedUser.getId().toString();
     }
