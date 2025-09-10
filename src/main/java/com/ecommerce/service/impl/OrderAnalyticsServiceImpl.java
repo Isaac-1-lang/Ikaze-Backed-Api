@@ -1,5 +1,6 @@
 package com.ecommerce.service.impl;
 
+import com.ecommerce.Enum.UserRole;
 import com.ecommerce.entity.Order;
 import com.ecommerce.entity.OrderItem;
 import com.ecommerce.entity.Product;
@@ -89,7 +90,7 @@ public class OrderAnalyticsServiceImpl implements OrderAnalyticsService {
             Map<String, Object> stats = new HashMap<>();
             
             // Total customers
-            long totalCustomers = userRepository.countByRole("CUSTOMER");
+            long totalCustomers = userRepository.countByRole(UserRole.CUSTOMER.toString());
             stats.put("totalCustomers", totalCustomers);
             
             // Customers with orders

@@ -105,10 +105,11 @@ public class EmailServiceImpl implements EmailService {
         }
     }
 
-    private void sendEmail(String to, String subject, String body) {
+    @Override
+    public void sendEmail(String toEmail, String subject, String body) {
         SimpleMailMessage message = new SimpleMailMessage();
         message.setFrom(fromEmail);
-        message.setTo(to);
+        message.setTo(toEmail);
         message.setSubject(subject);
         message.setText(body);
 

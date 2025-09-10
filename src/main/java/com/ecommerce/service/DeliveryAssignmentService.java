@@ -1,9 +1,6 @@
 package com.ecommerce.service;
 
 import com.ecommerce.dto.DeliveryAssignmentDTO;
-import com.ecommerce.entity.DeliveryAssignment;
-import com.ecommerce.entity.Order;
-import com.ecommerce.entity.User;
 import com.ecommerce.Enum.DeliveryStatus;
 import java.util.List;
 
