@@ -5,6 +5,7 @@ import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotNull;
 import lombok.AllArgsConstructor;
 import lombok.Data;
+import lombok.EqualsAndHashCode;
 import lombok.NoArgsConstructor;
 
 import java.math.BigDecimal;
@@ -15,6 +16,7 @@ import java.time.LocalDateTime;
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
+@EqualsAndHashCode(exclude = { "order", "product", "productVariant" })
 public class OrderItem {
 
     @Id
@@ -192,24 +194,35 @@ public class OrderItem {
     }
 
     /**
-     * Get available stock for this order item
-     */
-    public Integer getAvailableStock() {
-        if (productVariant != null) {
-            return productVariant.getStockQuantity();
-        }
-        if (product != null) {
-            return product.getStockQuantity();
-        }
-        return 0;
-    }
-
-    /**
      * Sets the quantity
      * 
      * @param quantity The quantity to set
      */
     public void setQuantity(int quantity) {
         this.quantity = quantity;
+    }
+
+    /**
+     * Sets the price
+     * 
+     * @param price The price to set
+     */
+    public void setPrice(BigDecimal price) {
+        this.price = price;
+    }
+
+    /**
+     * Gets the available stock for this order item
+     * 
+     * @return The available stock quantity
+     */
+    public Integer getAvailableStock() {
+        if (productVariant != null) {
+            return productVariant.getTotalStockQuantity();
+        }
+        if (product != null) {
+            return product.getTotalStockQuantity();
+        }
+        return 0;
     }
 }

@@ -487,6 +487,15 @@ public class RewardServiceImpl implements RewardService {
         return productPrice.divide(pointsValue, 0, java.math.RoundingMode.HALF_UP).intValue();
     }
 
+    @Override
+    public Integer getPreviewPointsForOrder(Integer productCount, BigDecimal orderAmount) {
+        RewardSystem activeSystem = getActiveRewardSystemEntity();
+        if (activeSystem == null || !activeSystem.getIsSystemEnabled() || !activeSystem.getIsPurchasePointsEnabled()) {
+            return 0;
+        }
+        return activeSystem.calculatePurchasePoints(productCount, orderAmount);
+    }
+
     private RewardSystem getActiveRewardSystemEntity() {
         return rewardSystemRepository.findByIsActiveTrue().orElse(null);
     }

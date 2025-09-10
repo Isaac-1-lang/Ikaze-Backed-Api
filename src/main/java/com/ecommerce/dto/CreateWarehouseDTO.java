@@ -9,45 +9,42 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
-import java.time.LocalDateTime;
-import java.util.List;
-
 @Data
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-public class WarehouseDTO {
-    private Long id;
+public class CreateWarehouseDTO {
+    @NotBlank(message = "Warehouse name is required")
     private String name;
+
     private String description;
+
+    @NotBlank(message = "Address is required")
     private String address;
+
+    @NotBlank(message = "City is required")
     private String city;
+
+    @NotBlank(message = "State is required")
     private String state;
+
+    @NotBlank(message = "Zip code is required")
     private String zipCode;
+
+    @NotBlank(message = "Country is required")
     private String country;
+
     private String phone;
+
+    @Email(message = "Email should be valid")
     private String email;
+
+    @NotNull(message = "Capacity is required")
+    @Positive(message = "Capacity must be positive")
     private Integer capacity;
+
     private Double latitude;
     private Double longitude;
-    private Boolean isActive;
-    private Integer productCount;
-    private LocalDateTime createdAt;
-    private LocalDateTime updatedAt;
-    private List<WarehouseImageDTO> images;
 
-    @Data
-    @Builder
-    @NoArgsConstructor
-    @AllArgsConstructor
-    public static class WarehouseImageDTO {
-        private Long id;
-        private String imageUrl;
-        private Boolean isPrimary;
-        private Integer sortOrder;
-        private Integer width;
-        private Integer height;
-        private Long fileSize;
-        private String mimeType;
-    }
+    private Boolean isActive;
 }

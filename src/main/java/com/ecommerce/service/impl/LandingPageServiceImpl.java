@@ -205,7 +205,7 @@ public class LandingPageServiceImpl implements LandingPageService {
                 .price(product.getDiscountedPrice() != null ? product.getDiscountedPrice() : product.getPrice())
                 .originalPrice(originalPrice)
                 .discountPercentage(discountPercentage)
-                .stockQuantity(product.getStockQuantity())
+                .stockQuantity(product.getTotalStockQuantity())
                 .primaryImageUrl(primaryImageUrl)
                 .primaryImageAlt(primaryImageAlt)
                 .averageRating(0.0) // Will be calculated from reviews if needed
@@ -213,7 +213,7 @@ public class LandingPageServiceImpl implements LandingPageService {
                 .isNew(product.getCreatedAt().isAfter(LocalDateTime.now().minusDays(30)))
                 .isBestseller(product.isBestseller())
                 .isFeatured(product.isFeatured())
-                .isInStock(product.getStockQuantity() > 0)
+                .isInStock(product.getTotalStockQuantity() > 0)
                 .brandName(product.getBrand() != null ? product.getBrand().getBrandName() : null)
                 .categoryName(product.getCategory() != null ? product.getCategory().getName() : null)
                 .slug(product.getSlug())

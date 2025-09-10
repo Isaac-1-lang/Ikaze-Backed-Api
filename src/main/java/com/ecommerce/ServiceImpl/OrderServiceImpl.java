@@ -121,7 +121,7 @@ public class OrderServiceImpl implements OrderService {
             Product product = variant.getProduct();
 
             // Check stock
-            if (variant.getStockQuantity() < itemDTO.getQuantity()) {
+            if (variant.getTotalStockQuantity() < itemDTO.getQuantity()) {
                 throw new IllegalArgumentException("Insufficient stock for product: " + product.getProductName());
             }
 
@@ -139,7 +139,9 @@ public class OrderServiceImpl implements OrderService {
             totalProductCount += itemDTO.getQuantity();
 
             // Update stock
-            variant.setStockQuantity(variant.getStockQuantity() - itemDTO.getQuantity());
+            // TODO: Implement proper stock reduction through Stock entities
+            // variant.setStockQuantity(variant.getTotalStockQuantity() -
+            // itemDTO.getQuantity());
             productVariantRepository.save(variant);
         }
 
@@ -248,7 +250,9 @@ public class OrderServiceImpl implements OrderService {
         // Restore stock
         for (OrderItem item : order.getOrderItems()) {
             ProductVariant variant = item.getProductVariant();
-            variant.setStockQuantity(variant.getStockQuantity() + item.getQuantity());
+            // TODO: Implement proper stock increase through Stock entities
+            // variant.setStockQuantity(variant.getTotalStockQuantity() +
+            // item.getQuantity());
             productVariantRepository.save(variant);
         }
 
@@ -564,8 +568,8 @@ public class OrderServiceImpl implements OrderService {
                 .price(item.getPrice())
                 .totalPrice(item.getPrice().multiply(BigDecimal.valueOf(item.getQuantity())))
                 .availableStock(item.isVariantBased()
-                        ? item.getProductVariant().getStockQuantity()
-                        : product.getStockQuantity())
+                        ? item.getProductVariant().getTotalStockQuantity()
+                        : product.getTotalStockQuantity())
                 .build();
     }
 

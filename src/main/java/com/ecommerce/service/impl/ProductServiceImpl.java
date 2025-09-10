@@ -22,6 +22,7 @@ import com.ecommerce.dto.VariantImageMetadata;
 
 import com.ecommerce.dto.VideoMetadata;
 import com.ecommerce.dto.ReviewDTO;
+import com.ecommerce.dto.WarehouseStockDTO;
 
 import com.ecommerce.entity.*;
 
@@ -112,6 +113,10 @@ public class ProductServiceImpl implements ProductService {
 
     private final WishlistRepository wishlistRepository;
 
+    private final WarehouseRepository warehouseRepository;
+
+    private final StockRepository stockRepository;
+
     private final CloudinaryService cloudinaryService;
 
     // Using thread pool for concurrent image/video uploads
@@ -128,8 +133,6 @@ public class ProductServiceImpl implements ProductService {
         try {
 
             log.info("Starting product creation for: {}", createProductDTO.getName());
-
-            // Validate category exists and is active
 
             Category category = validateAndGetCategory(createProductDTO.getCategoryId());
 
@@ -184,6 +187,14 @@ public class ProductServiceImpl implements ProductService {
 
             // Flush to ensure the product is committed to the database
             productRepository.flush();
+
+            // Handle warehouse stock assignments for products without variants
+            if (createProductDTO.getVariants() == null || createProductDTO.getVariants().isEmpty()) {
+                log.info("Product has no variants, creating warehouse stock assignments for product");
+                createProductStockAssignments(savedProduct, createProductDTO.getWarehouseStock());
+            } else {
+                log.info("Product has variants, warehouse stock will be assigned to variants instead");
+            }
 
             if (productImages != null && !productImages.isEmpty()) {
                 try {
@@ -432,11 +443,11 @@ public class ProductServiceImpl implements ProductService {
 
         product.setCostPrice(createProductDTO.getCostPrice());
 
-        product.setStockQuantity(createProductDTO.getStockQuantity() != null ? createProductDTO.getStockQuantity() : 0);
-
-        product.setLowStockThreshold(
-
-                createProductDTO.getLowStockThreshold() != null ? createProductDTO.getLowStockThreshold() : 5);
+        // TODO: Implement proper stock management through Stock entities
+        // product.setStockQuantity(createProductDTO.getStockQuantity() != null ?
+        // createProductDTO.getStockQuantity() : 0);
+        // product.setLowStockThreshold(createProductDTO.getLowStockThreshold() != null
+        // ? createProductDTO.getLowStockThreshold() : 5);
 
         product.setCategory(category);
 
@@ -1149,37 +1160,23 @@ public class ProductServiceImpl implements ProductService {
 
             }
 
+            // TODO: Implement proper stock management through Stock entities
             // Stock filters
-
-            if (searchDTO.getStockQuantityMin() != null) {
-
-                predicates.add(criteriaBuilder.greaterThanOrEqualTo(root.get("stockQuantity"),
-
-                        searchDTO.getStockQuantityMin()));
-
-            }
-
-            if (searchDTO.getStockQuantityMax() != null) {
-
-                predicates.add(
-
-                        criteriaBuilder.lessThanOrEqualTo(root.get("stockQuantity"), searchDTO.getStockQuantityMax()));
-
-            }
-
-            if (searchDTO.getInStock() != null) {
-
-                if (searchDTO.getInStock()) {
-
-                    predicates.add(criteriaBuilder.greaterThan(root.get("stockQuantity"), 0));
-
-                } else {
-
-                    predicates.add(criteriaBuilder.equal(root.get("stockQuantity"), 0));
-
-                }
-
-            }
+            // if (searchDTO.getStockQuantityMin() != null) {
+            // predicates.add(criteriaBuilder.greaterThanOrEqualTo(root.get("stockQuantity"),
+            // searchDTO.getStockQuantityMin()));
+            // }
+            // if (searchDTO.getStockQuantityMax() != null) {
+            // predicates.add(criteriaBuilder.lessThanOrEqualTo(root.get("stockQuantity"),
+            // searchDTO.getStockQuantityMax()));
+            // }
+            // if (searchDTO.getInStock() != null) {
+            // if (searchDTO.getInStock()) {
+            // predicates.add(criteriaBuilder.greaterThan(root.get("stockQuantity"), 0));
+            // } else {
+            // predicates.add(criteriaBuilder.equal(root.get("stockQuantity"), 0));
+            // }
+            // }
 
             // Category filters
 
@@ -1742,6 +1739,9 @@ public class ProductServiceImpl implements ProductService {
                 ProductVariant savedVariant = productVariantRepository.save(variant);
                 log.info("Saved variant with ID: {} and SKU: {}", savedVariant.getId(), savedVariant.getVariantSku());
 
+                // Handle warehouse stock assignments for this variant
+                createVariantStockAssignments(savedVariant, variantDTO.getWarehouseStock());
+
                 // Process variant attributes if any
                 if (variantDTO.getAttributes() != null && !variantDTO.getAttributes().isEmpty()) {
                     log.debug("Processing {} attributes for variant {}", variantDTO.getAttributes().size(),
@@ -1855,11 +1855,11 @@ public class ProductServiceImpl implements ProductService {
 
         variant.setCostPrice(variantDTO.getCostPrice());
 
-        variant.setStockQuantity(variantDTO.getStockQuantity() != null ? variantDTO.getStockQuantity() : 0);
-
-        variant.setLowStockThreshold(variantDTO.getLowStockThreshold() != null ? variantDTO.getLowStockThreshold()
-
-                : product.getLowStockThreshold());
+        // TODO: Implement proper stock management through Stock entities
+        // variant.setStockQuantity(variantDTO.getStockQuantity() != null ?
+        // variantDTO.getStockQuantity() : 0);
+        // variant.setLowStockThreshold(variantDTO.getLowStockThreshold() != null ?
+        // variantDTO.getLowStockThreshold() : product.getLowStockThreshold());
 
         variant.setActive(variantDTO.getIsActive() != null ? variantDTO.getIsActive() : true);
 
@@ -2089,17 +2089,13 @@ public class ProductServiceImpl implements ProductService {
 
         }
 
-        if (updateDTO.getStockQuantity() != null) {
-
-            product.setStockQuantity(updateDTO.getStockQuantity());
-
-        }
-
-        if (updateDTO.getLowStockThreshold() != null) {
-
-            product.setLowStockThreshold(updateDTO.getLowStockThreshold());
-
-        }
+        // TODO: Implement proper stock management through Stock entities
+        // if (updateDTO.getStockQuantity() != null) {
+        // product.setStockQuantity(updateDTO.getStockQuantity());
+        // }
+        // if (updateDTO.getLowStockThreshold() != null) {
+        // product.setLowStockThreshold(updateDTO.getLowStockThreshold());
+        // }
 
         if (updateDTO.getModel() != null) {
 
@@ -2471,7 +2467,7 @@ public class ProductServiceImpl implements ProductService {
 
         dto.setDiscountedPrice(product.getDiscountedPrice());
 
-        dto.setStockQuantity(product.getStockQuantity());
+        dto.setStockQuantity(product.getTotalStockQuantity());
 
         dto.setCategoryId(product.getCategory() != null ? product.getCategory().getId() : null);
 
@@ -2648,7 +2644,7 @@ public class ProductServiceImpl implements ProductService {
 
         dto.setCostPrice(variant.getCostPrice());
 
-        dto.setStockQuantity(variant.getStockQuantity());
+        dto.setStockQuantity(variant.getTotalStockQuantity());
 
         dto.setIsActive(variant.isActive());
 
@@ -3005,7 +3001,7 @@ public class ProductServiceImpl implements ProductService {
 
                     .compareAtPrice(product.getCompareAtPrice())
 
-                    .stockQuantity(product.getStockQuantity())
+                    .stockQuantity(product.getTotalStockQuantity())
 
                     .category(categoryDto)
                     .brand(brandDto)
@@ -3103,6 +3099,92 @@ public class ProductServiceImpl implements ProductService {
         } catch (Exception e) {
             log.error("Error getting search suggestions: {}", e.getMessage(), e);
             return new ArrayList<>();
+        }
+    }
+
+    /**
+     * Creates Stock entities for a product based on warehouse assignments
+     * 
+     * @param product            The product to assign stock to
+     * @param warehouseStockList List of warehouse stock assignments
+     */
+    private void createProductStockAssignments(Product product, List<WarehouseStockDTO> warehouseStockList) {
+        if (warehouseStockList == null || warehouseStockList.isEmpty()) {
+            log.warn("No warehouse stock assignments provided for product: {}", product.getProductName());
+            return;
+        }
+
+        for (WarehouseStockDTO warehouseStock : warehouseStockList) {
+            try {
+                // Validate warehouse exists
+                Warehouse warehouse = warehouseRepository.findById(warehouseStock.getWarehouseId())
+                        .orElseThrow(() -> new EntityNotFoundException(
+                                "Warehouse not found with ID: " + warehouseStock.getWarehouseId()));
+
+                // Create Stock entity
+                Stock stock = new Stock();
+                stock.setWarehouse(warehouse);
+                stock.setProduct(product);
+                stock.setProductVariant(null); // Product-level stock, not variant
+                stock.setQuantity(warehouseStock.getStockQuantity() != null ? warehouseStock.getStockQuantity() : 0);
+                stock.setLowStockThreshold(
+                        warehouseStock.getLowStockThreshold() != null ? warehouseStock.getLowStockThreshold() : 5);
+
+                // Save the stock entry
+                stockRepository.save(stock);
+
+                log.info("Created stock entry for product {} in warehouse {}: quantity={}, threshold={}",
+                        product.getProductName(), warehouse.getName(),
+                        stock.getQuantity(), stock.getLowStockThreshold());
+
+            } catch (Exception e) {
+                log.error("Error creating stock assignment for product {} in warehouse {}: {}",
+                        product.getProductName(), warehouseStock.getWarehouseId(), e.getMessage(), e);
+                throw new RuntimeException("Failed to create stock assignment: " + e.getMessage(), e);
+            }
+        }
+    }
+
+    /**
+     * Creates Stock entities for a product variant based on warehouse assignments
+     * 
+     * @param variant            The product variant to assign stock to
+     * @param warehouseStockList List of warehouse stock assignments
+     */
+    private void createVariantStockAssignments(ProductVariant variant, List<WarehouseStockDTO> warehouseStockList) {
+        if (warehouseStockList == null || warehouseStockList.isEmpty()) {
+            log.warn("No warehouse stock assignments provided for variant: {}", variant.getId());
+            return;
+        }
+
+        for (WarehouseStockDTO warehouseStock : warehouseStockList) {
+            try {
+                // Validate warehouse exists
+                Warehouse warehouse = warehouseRepository.findById(warehouseStock.getWarehouseId())
+                        .orElseThrow(() -> new EntityNotFoundException(
+                                "Warehouse not found with ID: " + warehouseStock.getWarehouseId()));
+
+                // Create Stock entity
+                Stock stock = new Stock();
+                stock.setWarehouse(warehouse);
+                stock.setProduct(null); // Variant-level stock, not product
+                stock.setProductVariant(variant);
+                stock.setQuantity(warehouseStock.getStockQuantity() != null ? warehouseStock.getStockQuantity() : 0);
+                stock.setLowStockThreshold(
+                        warehouseStock.getLowStockThreshold() != null ? warehouseStock.getLowStockThreshold() : 5);
+
+                // Save the stock entry
+                stockRepository.save(stock);
+
+                log.info("Created stock entry for variant {} in warehouse {}: quantity={}, threshold={}",
+                        variant.getId(), warehouse.getName(),
+                        stock.getQuantity(), stock.getLowStockThreshold());
+
+            } catch (Exception e) {
+                log.error("Error creating stock assignment for variant {} in warehouse {}: {}",
+                        variant.getId(), warehouseStock.getWarehouseId(), e.getMessage(), e);
+                throw new RuntimeException("Failed to create variant stock assignment: " + e.getMessage(), e);
+            }
         }
     }
 }

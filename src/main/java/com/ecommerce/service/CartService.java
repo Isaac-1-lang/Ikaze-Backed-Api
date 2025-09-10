@@ -6,7 +6,6 @@ import com.ecommerce.dto.CartItemDTO;
 import com.ecommerce.dto.UpdateCartItemDTO;
 import com.ecommerce.dto.CartProductsRequestDTO;
 import com.ecommerce.dto.CartProductsResponseDTO;
-import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 
 import java.util.UUID;

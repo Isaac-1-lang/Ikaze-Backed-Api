@@ -71,11 +71,9 @@ public class StripeWebhookController {
                     return; // already processed
                 }
 
-               
                 processSuccessfulPayment(tx, session);
             });
         }
-        
 
         return ResponseEntity.ok("received");
     }
@@ -98,13 +96,14 @@ public class StripeWebhookController {
             ProductVariant variant = variantRepository.findByIdForUpdate(item.getProductVariant().getId())
                     .orElseThrow(() -> new EntityNotFoundException("Variant not found"));
 
-            int currentStock = variant.getStockQuantity();
+            int currentStock = variant.getTotalStockQuantity();
             if (currentStock < item.getQuantity()) {
                 // optionally raise alert and mark order as CANCELLED or BACKORDER
                 throw new IllegalStateException("Insufficient stock for variant " + variant.getId());
             }
 
-            variant.setStockQuantity(currentStock - item.getQuantity());
+            // TODO: Implement proper stock reduction through Stock entities
+            // variant.setStockQuantity(currentStock - item.getQuantity());
             // Optionally set low stock flags
             variantRepository.save(variant);
         }

@@ -2,11 +2,13 @@ package com.ecommerce.service;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 import org.springframework.stereotype.Service;
 
-import com.ecommerce.dto.CartDTO;
+import com.ecommerce.dto.AddressDto;
 import com.ecommerce.dto.CartItemDTO;
 import com.ecommerce.dto.CheckoutRequest;
 import com.ecommerce.dto.CheckoutVerificationResult;
@@ -19,14 +21,15 @@ import com.ecommerce.entity.OrderTransaction;
 import com.ecommerce.entity.Product;
 import com.ecommerce.entity.ProductVariant;
 import com.ecommerce.entity.User;
+import com.ecommerce.entity.Discount;
 import com.ecommerce.repository.OrderRepository;
 import com.ecommerce.repository.OrderTransactionRepository;
 import com.ecommerce.repository.ProductRepository;
 import com.ecommerce.repository.ProductVariantRepository;
 import com.ecommerce.repository.UserRepository;
+import com.ecommerce.repository.DiscountRepository;
 import com.stripe.model.PaymentIntent;
 import com.stripe.model.checkout.Session;
-import com.stripe.param.checkout.SessionRetrieveParams;
 
 import jakarta.persistence.EntityNotFoundException;
 import jakarta.transaction.Transactional;
@@ -44,16 +47,28 @@ public class CheckoutService {
     private final OrderTransactionRepository transactionRepository;
     private final UserRepository userRepository;
     private final StripeService stripeService;
+    private final StockLockService stockLockService;
+    private final WarehouseFinderService warehouseFinderService;
+    private final MultiWarehouseStockAllocator multiWarehouseStockAllocator;
+    private final com.ecommerce.service.ShippingCostService shippingCostService;
+    private final DiscountRepository discountRepository;
+    private final com.ecommerce.service.RewardService rewardService;
 
-    @Transactional
     public String createCheckoutSession(CheckoutRequest req) throws Exception {
         log.info("Creating checkout session for user");
 
-        // Validate user exists
         User user = userRepository.findById(req.getUserId())
                 .orElseThrow(() -> new EntityNotFoundException("User not found with ID: " + req.getUserId()));
 
-        // 1. build order
+        String sessionId = java.util.UUID.randomUUID().toString();
+
+        if (req.getShippingAddress() != null) {
+            boolean stockLocked = lockStockForItems(sessionId, req.getItems(), req.getShippingAddress());
+            if (!stockLocked) {
+                throw new IllegalStateException("Unable to lock stock for all items");
+            }
+        }
+
         Order order = new Order();
         order.setOrderStatus(Order.OrderStatus.PENDING);
         order.setUser(user);
@@ -63,7 +78,6 @@ public class CheckoutService {
         customerInfo.setLastName(user.getLastName());
         customerInfo.setEmail(user.getUserEmail());
         customerInfo.setPhoneNumber(user.getPhoneNumber());
-        // Map address from req.getShippingAddress() if present
         if (req.getShippingAddress() != null) {
             customerInfo.setStreetAddress(req.getShippingAddress().getStreetAddress());
             customerInfo.setCity(req.getShippingAddress().getCity());
@@ -74,7 +88,9 @@ public class CheckoutService {
         order.setOrderCustomerInfo(customerInfo);
         customerInfo.setOrder(order);
 
-        // add order items
+        com.ecommerce.dto.PaymentSummaryDTO paymentSummary = calculatePaymentSummary(req.getShippingAddress(),
+                req.getItems(), user.getId());
+
         BigDecimal total = BigDecimal.ZERO;
         for (CartItemDTO ci : req.getItems()) {
             OrderItem oi = new OrderItem();
@@ -85,22 +101,12 @@ public class CheckoutService {
                         .orElseThrow(
                                 () -> new EntityNotFoundException("Variant not found with ID: " + ci.getVariantId()));
 
-                if (variant.getStockQuantity() < ci.getQuantity()) {
-                    throw new IllegalStateException("Insufficient stock for variant " + variant.getId()
-                            + ". Available: " + variant.getStockQuantity() + ", requested: " + ci.getQuantity());
-                }
-
                 oi.setProductVariant(variant);
                 itemPrice = variant.getPrice();
             } else if (ci.getProductId() != null) {
                 Product product = productRepository.findById(ci.getProductId())
                         .orElseThrow(
                                 () -> new EntityNotFoundException("Product not found with ID: " + ci.getProductId()));
-
-                if (product.getStockQuantity() < ci.getQuantity()) {
-                    throw new IllegalStateException("Insufficient stock for product " + product.getProductId()
-                            + ". Available: " + product.getStockQuantity() + ", requested: " + ci.getQuantity());
-                }
 
                 oi.setProduct(product);
                 itemPrice = product.getDiscountedPrice();
@@ -117,46 +123,47 @@ public class CheckoutService {
 
         OrderInfo orderInfo = new OrderInfo();
         orderInfo.setOrder(order);
-        orderInfo.setTotalAmount(total);
-        orderInfo.setTaxAmount(BigDecimal.ZERO);
-        orderInfo.setShippingCost(BigDecimal.ZERO);
-        orderInfo.setDiscountAmount(BigDecimal.ZERO);
+        orderInfo.setTotalAmount(paymentSummary.getTotalAmount());
+        orderInfo.setTaxAmount(paymentSummary.getTaxAmount());
+        orderInfo.setShippingCost(paymentSummary.getShippingCost());
+        orderInfo.setDiscountAmount(paymentSummary.getDiscountAmount());
         order.setOrderInfo(orderInfo);
 
-        // create OrderTransaction
         OrderTransaction tx = new OrderTransaction();
-        tx.setOrderAmount(total);
+        tx.setOrderAmount(paymentSummary.getTotalAmount());
         tx.setPaymentMethod(OrderTransaction.PaymentMethod.CREDIT_CARD);
         tx.setStatus(OrderTransaction.TransactionStatus.PENDING);
-        // link both ways
         order.setOrderTransaction(tx);
         tx.setOrder(order);
 
-        // persist order (cascade will save items/customer/transaction)
         Order saved = orderRepository.save(order);
         log.info("Order created with ID: {}", saved.getOrderId());
 
-        // 2. create stripe session
         String sessionUrl = stripeService.createCheckoutSessionForOrder(saved, req.getCurrency(), req.getPlatform());
         log.info("Stripe session created successfully");
 
         return sessionUrl;
     }
 
-    @Transactional
     public String createGuestCheckoutSession(GuestCheckoutRequest req) throws Exception {
         log.info("Creating guest checkout session");
 
-        // 1. build order
+        String sessionId = java.util.UUID.randomUUID().toString();
+
+        if (req.getAddress() != null) {
+            boolean stockLocked = lockStockForItems(sessionId, req.getItems(), req.getAddress());
+            if (!stockLocked) {
+                throw new IllegalStateException("Unable to lock stock for all items");
+            }
+        }
+
         Order order = new Order();
         order.setOrderStatus(Order.OrderStatus.PENDING);
-        // order.user remains null for guest
         OrderCustomerInfo customerInfo = new OrderCustomerInfo();
         customerInfo.setFirstName(req.getGuestName());
         customerInfo.setLastName(req.getGuestLastName());
         customerInfo.setEmail(req.getGuestEmail());
         customerInfo.setPhoneNumber(req.getGuestPhone());
-        // Map address from req.getAddress()
         if (req.getAddress() != null) {
             customerInfo.setStreetAddress(req.getAddress().getStreetAddress());
             customerInfo.setCity(req.getAddress().getCity());
@@ -167,7 +174,6 @@ public class CheckoutService {
         order.setOrderCustomerInfo(customerInfo);
         customerInfo.setOrder(order);
 
-        // add order items
         BigDecimal total = BigDecimal.ZERO;
         for (CartItemDTO ci : req.getItems()) {
             log.info("Processing guest cart item: productId={}, variantId={}, quantity={}",
@@ -181,11 +187,6 @@ public class CheckoutService {
                         .orElseThrow(
                                 () -> new EntityNotFoundException("Variant not found with ID: " + ci.getVariantId()));
 
-                if (variant.getStockQuantity() < ci.getQuantity()) {
-                    throw new IllegalStateException("Insufficient stock for variant " + variant.getId()
-                            + ". Available: " + variant.getStockQuantity() + ", requested: " + ci.getQuantity());
-                }
-
                 oi.setProductVariant(variant);
                 itemPrice = variant.getPrice();
                 log.info("Set productVariant for guest OrderItem: {}", oi.getDebugInfo());
@@ -193,11 +194,6 @@ public class CheckoutService {
                 Product product = productRepository.findById(ci.getProductId())
                         .orElseThrow(
                                 () -> new EntityNotFoundException("Product not found with ID: " + ci.getProductId()));
-
-                if (product.getStockQuantity() < ci.getQuantity()) {
-                    throw new IllegalStateException("Insufficient stock for product " + product.getProductId()
-                            + ". Available: " + product.getStockQuantity() + ", requested: " + ci.getQuantity());
-                }
 
                 oi.setProduct(product);
                 itemPrice = product.getDiscountedPrice();
@@ -213,29 +209,28 @@ public class CheckoutService {
             total = total.add(itemPrice.multiply(BigDecimal.valueOf(ci.getQuantity())));
         }
 
-        // create OrderInfo with financial details
+        // Calculate payment summary including shipping costs for guest checkout
+        com.ecommerce.dto.PaymentSummaryDTO paymentSummary = calculatePaymentSummary(req.getAddress(), req.getItems(),
+                null);
+
         OrderInfo orderInfo = new OrderInfo();
         orderInfo.setOrder(order);
-        orderInfo.setTotalAmount(total);
-        orderInfo.setTaxAmount(BigDecimal.ZERO); // Calculate tax if needed
-        orderInfo.setShippingCost(BigDecimal.ZERO); // Calculate shipping if needed
-        orderInfo.setDiscountAmount(BigDecimal.ZERO); // Calculate discount if needed
+        orderInfo.setTotalAmount(paymentSummary.getTotalAmount());
+        orderInfo.setTaxAmount(paymentSummary.getTaxAmount());
+        orderInfo.setShippingCost(paymentSummary.getShippingCost());
+        orderInfo.setDiscountAmount(paymentSummary.getDiscountAmount());
         order.setOrderInfo(orderInfo);
 
-        // create OrderTransaction
         OrderTransaction tx = new OrderTransaction();
-        tx.setOrderAmount(total);
+        tx.setOrderAmount(paymentSummary.getTotalAmount());
         tx.setPaymentMethod(OrderTransaction.PaymentMethod.CREDIT_CARD);
         tx.setStatus(OrderTransaction.TransactionStatus.PENDING);
-        // link both ways
         order.setOrderTransaction(tx);
         tx.setOrder(order);
 
-        // persist order (cascade will save items/customer/transaction)
         Order saved = orderRepository.save(order);
         log.info("Guest order created with ID: {}", saved.getOrderId());
 
-        // 2. create stripe session
         String sessionUrl = stripeService.createCheckoutSessionForOrder(saved, "usd", req.getPlatform());
         log.info("Guest Stripe session created successfully");
 
@@ -246,27 +241,26 @@ public class CheckoutService {
     public CheckoutVerificationResult verifyCheckoutSession(String sessionId) throws Exception {
         log.info("Verifying checkout session: {}", sessionId);
 
-        // Lookup transaction in DB
         OrderTransaction tx = transactionRepository.findByStripeSessionId(sessionId)
                 .orElseThrow(() -> new EntityNotFoundException("No matching payment record"));
 
-        // Retrieve Stripe session
         Session session = stripeService.retrieveSession(sessionId);
 
         if (session == null) {
             throw new EntityNotFoundException("Session not found on Stripe");
         }
 
-        // Check payment status
         if (!"paid".equalsIgnoreCase(session.getPaymentStatus())) {
+            Order order = tx.getOrder();
+            orderRepository.delete(order);
+            stockLockService.releaseStock(sessionId);
+            log.info("Payment failed, order deleted: {}", order.getOrderId());
             throw new IllegalStateException("Payment not completed or session expired");
         }
 
-        // Extract receipt URL & intent details
         PaymentIntent intent = (PaymentIntent) session.getPaymentIntentObject();
         String receiptUrl = session.getPaymentStatus().equals("paid") ? session.getUrl() : null;
 
-        // Update transaction & order
         tx.setStatus(OrderTransaction.TransactionStatus.COMPLETED);
         tx.setPaymentDate(LocalDateTime.now());
         if (intent != null) {
@@ -276,34 +270,40 @@ public class CheckoutService {
         transactionRepository.save(tx);
         log.info("Transaction updated to completed status");
 
-        // Reduce inventory
         Order order = tx.getOrder();
         order.setOrderStatus(Order.OrderStatus.PROCESSING);
         for (OrderItem item : order.getOrderItems()) {
             if (item.isVariantBased()) {
                 ProductVariant variant = variantRepository.findByIdForUpdate(item.getProductVariant().getId())
                         .orElseThrow(() -> new EntityNotFoundException("Variant not found"));
-                int stock = variant.getStockQuantity();
-                if (stock < item.getQuantity()) {
+                int totalStock = variant.getTotalStockQuantity();
+                if (totalStock < item.getQuantity()) {
                     throw new IllegalStateException("Insufficient stock for variant " + variant.getId());
                 }
-                variant.setStockQuantity(stock - item.getQuantity());
-                variantRepository.save(variant);
-                log.info("Stock reduced for variant {}: {} -> {}", variant.getId(), stock, variant.getStockQuantity());
+                log.info("Stock check passed for variant {}: available {}, requested {}",
+                        variant.getId(), totalStock, item.getQuantity());
             } else {
                 Product product = productRepository.findById(item.getProduct().getProductId())
                         .orElseThrow(() -> new EntityNotFoundException("Product not found"));
-                int stock = product.getStockQuantity();
-                if (stock < item.getQuantity()) {
+                int totalStock = product.getTotalStockQuantity();
+                if (totalStock < item.getQuantity()) {
                     throw new IllegalStateException("Insufficient stock for product " + product.getProductId());
                 }
-                product.setStockQuantity(stock - item.getQuantity());
-                productRepository.save(product);
-                log.info("Stock reduced for product {}: {} -> {}", product.getProductId(), stock,
-                        product.getStockQuantity());
+                log.info("Stock check passed for product {}: available {}, requested {}",
+                        product.getProductId(), totalStock, item.getQuantity());
             }
         }
         orderRepository.save(order);
+        stockLockService.confirmStock(sessionId);
+
+        if (order.getUser() != null) {
+            int totalProductCount = order.getOrderItems().stream()
+                    .mapToInt(OrderItem::getQuantity)
+                    .sum();
+            rewardService.checkRewardableOnOrderAndReward(order.getUser().getId(), order.getOrderId(),
+                    totalProductCount, order.getOrderInfo().getTotalAmount());
+        }
+
         log.info("Order status updated to processing");
 
         return new CheckoutVerificationResult(
@@ -315,5 +315,148 @@ public class CheckoutService {
                 intent != null ? intent.getId() : null,
                 session.getId(),
                 true);
+    }
+
+    @Transactional
+    public void cleanupFailedOrder(String sessionId) {
+        try {
+            OrderTransaction tx = transactionRepository.findByStripeSessionId(sessionId).orElse(null);
+            if (tx != null && tx.getStatus() == OrderTransaction.TransactionStatus.PENDING) {
+                Order order = tx.getOrder();
+                orderRepository.delete(order);
+                log.info("Cleaned up failed order: {}", order.getOrderId());
+            }
+            stockLockService.releaseStock(sessionId);
+        } catch (Exception e) {
+            log.error("Error cleaning up failed order for session {}: {}", sessionId, e.getMessage());
+        }
+    }
+
+    private boolean lockStockForItems(String sessionId, List<CartItemDTO> items, AddressDto address) {
+        try {
+            Map<Long, List<MultiWarehouseStockAllocator.StockAllocation>> allocations = multiWarehouseStockAllocator
+                    .allocateStockAcrossWarehouses(items, address);
+
+            if (allocations.isEmpty()) {
+                log.error("No stock allocation found for items");
+                return false;
+            }
+
+            boolean locked = stockLockService.lockStockFromMultipleWarehouses(sessionId, allocations);
+            if (!locked) {
+                log.error("Failed to lock stock from multiple warehouses");
+                return false;
+            }
+
+            log.info("Successfully allocated stock across {} warehouses for session {}",
+                    allocations.size(), sessionId);
+            return true;
+        } catch (Exception e) {
+            log.error("Error locking stock: {}", e.getMessage());
+            stockLockService.releaseStock(sessionId);
+            return false;
+        }
+    }
+
+    public BigDecimal calculateShippingCost(AddressDto deliveryAddress, List<CartItemDTO> items,
+            BigDecimal orderValue) {
+        try {
+            return shippingCostService.calculateOrderShippingCost(deliveryAddress, items, orderValue);
+        } catch (Exception e) {
+            log.error("Error calculating shipping cost: {}", e.getMessage());
+            return BigDecimal.ZERO;
+        }
+    }
+
+    public com.ecommerce.dto.PaymentSummaryDTO calculatePaymentSummary(AddressDto deliveryAddress,
+            List<CartItemDTO> items, UUID userId) {
+        log.info("Calculating payment summary for {} items, userId: {}", items.size(), userId);
+
+        BigDecimal subtotal = BigDecimal.ZERO;
+        BigDecimal discountAmount = BigDecimal.ZERO;
+        int totalProductCount = 0;
+
+        for (CartItemDTO item : items) {
+            log.info("Processing cart item: productId={}, variantId={}, quantity={}",
+                    item.getProductId(), item.getVariantId(), item.getQuantity());
+
+            BigDecimal itemPrice = BigDecimal.ZERO;
+            BigDecimal originalPrice = BigDecimal.ZERO;
+
+            if (item.getVariantId() != null) {
+                try {
+                    ProductVariant variant = variantRepository.findById(item.getVariantId())
+                            .orElseThrow(
+                                    () -> new EntityNotFoundException(
+                                            "Variant not found with ID: " + item.getVariantId()));
+                    originalPrice = variant.getPrice();
+                    itemPrice = originalPrice;
+                    log.info("Found variant: {}, price: {}", variant.getId(), originalPrice);
+                } catch (Exception e) {
+                    log.error("Error finding variant {}: {}", item.getVariantId(), e.getMessage());
+                    throw new EntityNotFoundException("Variant not found with ID: " + item.getVariantId());
+                }
+            } else if (item.getProductId() != null) {
+                try {
+                    Product product = productRepository.findById(item.getProductId())
+                            .orElseThrow(
+                                    () -> new EntityNotFoundException(
+                                            "Product not found with ID: " + item.getProductId()));
+                    originalPrice = product.getPrice();
+                    itemPrice = product.getDiscountedPrice();
+                    log.info("Found product: {}, originalPrice: {}, discountedPrice: {}",
+                            product.getProductId(), originalPrice, itemPrice);
+                } catch (Exception e) {
+                    log.error("Error finding product {}: {}", item.getProductId(), e.getMessage());
+                    throw new EntityNotFoundException("Product not found with ID: " + item.getProductId());
+                }
+            } else {
+                log.warn("Cart item has neither productId nor variantId: {}", item);
+                continue;
+            }
+
+            BigDecimal itemTotal = itemPrice.multiply(BigDecimal.valueOf(item.getQuantity()));
+            BigDecimal itemDiscount = originalPrice.subtract(itemPrice)
+                    .multiply(BigDecimal.valueOf(item.getQuantity()));
+
+            subtotal = subtotal.add(itemTotal);
+            discountAmount = discountAmount.add(itemDiscount);
+            totalProductCount += item.getQuantity();
+        }
+
+        BigDecimal shippingCost = calculateShippingCost(deliveryAddress, items, subtotal);
+        BigDecimal taxAmount = BigDecimal.ZERO;
+        BigDecimal totalAmount = subtotal.add(shippingCost).add(taxAmount);
+
+        Integer rewardPoints = 0;
+        BigDecimal rewardPointsValue = BigDecimal.ZERO;
+        if (userId != null) {
+            rewardPoints = rewardService.getPreviewPointsForOrder(totalProductCount, subtotal);
+            rewardPointsValue = rewardService.calculatePointsValue(rewardPoints);
+        }
+
+        // Get detailed shipping information
+        com.ecommerce.dto.ShippingDetailsDTO shippingDetails = shippingCostService
+                .calculateShippingDetails(deliveryAddress, items, subtotal);
+
+        return com.ecommerce.dto.PaymentSummaryDTO.builder()
+                .subtotal(subtotal)
+                .discountAmount(discountAmount)
+                .shippingCost(shippingCost)
+                .taxAmount(taxAmount)
+                .totalAmount(totalAmount)
+                .rewardPoints(rewardPoints)
+                .rewardPointsValue(rewardPointsValue)
+                .currency("USD")
+                .distanceKm(shippingDetails.getDistanceKm())
+                .costPerKm(shippingDetails.getCostPerKm())
+                .selectedWarehouseName(shippingDetails.getSelectedWarehouseName())
+                .selectedWarehouseCountry(shippingDetails.getSelectedWarehouseCountry())
+                .isInternationalShipping(shippingDetails.getIsInternationalShipping())
+                .build();
+    }
+
+    public Map<String, Object> getLockedStockInfo(String sessionId) {
+        return stockLockService.getLockedStockInfo(sessionId);
     }
 }

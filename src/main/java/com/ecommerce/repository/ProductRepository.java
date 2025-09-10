@@ -20,7 +20,8 @@ public interface ProductRepository extends JpaRepository<Product, UUID>, JpaSpec
 
         Optional<Product> findBySku(String sku);
 
-        @Query("select count(p) from Product p where p.stockQuantity > 0 and p.stockQuantity <= p.lowStockThreshold")
+        @Query("select count(p) from Product p where p.id in " +
+                        "(select s.product.id from Stock s where s.product is not null and s.quantity > 0 and s.quantity <= s.lowStockThreshold)")
         long countLowStock();
 
         @Query("select count(p) from Product p where p.isActive = true")

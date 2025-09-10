@@ -68,13 +68,41 @@ public class StripeService {
                         lineItems.add(li);
                 }
 
+                // Add shipping cost as a separate line item if it exists
+                if (order.getOrderInfo() != null && order.getOrderInfo().getShippingCost() != null
+                                && order.getOrderInfo().getShippingCost().compareTo(BigDecimal.ZERO) > 0) {
+
+                        long shippingAmount = order.getOrderInfo().getShippingCost().multiply(BigDecimal.valueOf(100))
+                                        .longValue();
+
+                        SessionCreateParams.LineItem.PriceData.ProductData shippingProductData = SessionCreateParams.LineItem.PriceData.ProductData
+                                        .builder()
+                                        .setName("Shipping Cost")
+                                        .build();
+
+                        SessionCreateParams.LineItem.PriceData shippingPriceData = SessionCreateParams.LineItem.PriceData
+                                        .builder()
+                                        .setCurrency(currency)
+                                        .setUnitAmount(shippingAmount)
+                                        .setProductData(shippingProductData)
+                                        .build();
+
+                        SessionCreateParams.LineItem shippingItem = SessionCreateParams.LineItem.builder()
+                                        .setPriceData(shippingPriceData)
+                                        .setQuantity(1L)
+                                        .build();
+                        lineItems.add(shippingItem);
+
+                        log.info("Added shipping cost to Stripe session: {}", order.getOrderInfo().getShippingCost());
+                }
+
                 // pass orderId in metadata for later lookup
                 Map<String, String> metadata = Map.of(
                                 "orderId", order.getOrderId().toString(),
                                 "orderCode", order.getOrderCode());
 
-                String webSuccess = "http://127.0.0.1:5500/src/stripeCheckoutPayment/payment-success.html";
-                String webCancel = "http://127.0.0.1:5500/src/stripeCheckoutPayment/payment-cancel.html";
+                String webSuccess = "http://localhost:3000/payment-success";
+                String webCancel = "http://localhost:3000/payment-cancel";
                 String mobSuccess = "snapshop://checkout-redirect";
                 String mobCancel = "snapshop://checkout-redirect";
                 String successUrl;

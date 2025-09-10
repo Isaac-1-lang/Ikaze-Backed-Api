@@ -12,13 +12,13 @@ import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.persistence.EntityNotFoundException;
 import jakarta.validation.Valid;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
+import java.math.BigDecimal;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -179,6 +179,106 @@ public class CheckoutController {
             Map<String, Object> response = new HashMap<>();
             response.put("success", false);
             response.put("message", "An unexpected error occurred while verifying checkout session.");
+            response.put("errorCode", "INTERNAL_ERROR");
+            response.put("details", e.getMessage());
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(response);
+        }
+    }
+
+    @PostMapping("/webhook/cancel")
+    @Operation(summary = "Handle payment cancellation", description = "Handle payment cancellation and cleanup order", responses = {
+            @ApiResponse(responseCode = "200", description = "Order cleaned up successfully"),
+            @ApiResponse(responseCode = "404", description = "Session not found"),
+            @ApiResponse(responseCode = "500", description = "Internal server error")
+    })
+    public ResponseEntity<?> handlePaymentCancellation(@RequestParam String session_id) {
+        try {
+            log.info("Handling payment cancellation for session: {}", session_id);
+            checkoutService.cleanupFailedOrder(session_id);
+
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", true);
+            response.put("message", "Order cleaned up successfully after payment cancellation");
+
+            log.info("Order cleaned up successfully after payment cancellation: {}", session_id);
+            return ResponseEntity.ok(response);
+
+        } catch (Exception e) {
+            log.error("Error handling payment cancellation: {}", e.getMessage(), e);
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", false);
+            response.put("message", "An unexpected error occurred while handling payment cancellation.");
+            response.put("errorCode", "INTERNAL_ERROR");
+            response.put("details", e.getMessage());
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(response);
+        }
+    }
+
+    @PostMapping("/calculate-shipping")
+    public ResponseEntity<BigDecimal> calculateShippingCost(
+            @RequestBody com.ecommerce.dto.CalculateOrderShippingRequest request) {
+        try {
+            BigDecimal shippingCost = checkoutService.calculateShippingCost(
+                    request.getDeliveryAddress(),
+                    request.getItems(),
+                    request.getOrderValue());
+            return ResponseEntity.ok(shippingCost);
+        } catch (Exception e) {
+            log.error("Error calculating shipping cost: {}", e.getMessage(), e);
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(BigDecimal.ZERO);
+        }
+    }
+
+    @PostMapping("/payment-summary")
+    public ResponseEntity<com.ecommerce.dto.PaymentSummaryDTO> getPaymentSummary(
+            @RequestBody com.ecommerce.dto.CalculateOrderShippingRequest request) {
+        try {
+            log.info("Received payment summary request: address={}, items={}, userId={}",
+                    request.getDeliveryAddress(), request.getItems().size(), request.getUserId());
+
+            java.util.UUID userId = null;
+            if (request.getUserId() != null) {
+                userId = java.util.UUID.fromString(request.getUserId());
+            }
+
+            com.ecommerce.dto.PaymentSummaryDTO summary = checkoutService.calculatePaymentSummary(
+                    request.getDeliveryAddress(),
+                    request.getItems(),
+                    userId);
+
+            log.info("Payment summary calculated successfully: totalAmount={}", summary.getTotalAmount());
+            return ResponseEntity.ok(summary);
+        } catch (Exception e) {
+            log.error("Error calculating payment summary: {}", e.getMessage(), e);
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).build();
+        }
+    }
+
+    @GetMapping("/stock-locks/{sessionId}")
+    @Operation(summary = "Get locked stock information", description = "Get information about locked stock for a session", responses = {
+            @ApiResponse(responseCode = "200", description = "Locked stock information retrieved successfully"),
+            @ApiResponse(responseCode = "404", description = "Session not found"),
+            @ApiResponse(responseCode = "500", description = "Internal server error")
+    })
+    public ResponseEntity<?> getLockedStockInfo(@PathVariable String sessionId) {
+        try {
+            log.info("Getting locked stock info for session: {}", sessionId);
+
+            Map<String, Object> lockInfo = checkoutService.getLockedStockInfo(sessionId);
+
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", true);
+            response.put("message", "Locked stock information retrieved successfully");
+            response.put("data", lockInfo);
+
+            log.info("Locked stock info retrieved successfully for session: {}", sessionId);
+            return ResponseEntity.ok(response);
+
+        } catch (Exception e) {
+            log.error("Error getting locked stock info: {}", e.getMessage(), e);
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", false);
+            response.put("message", "An unexpected error occurred while getting locked stock info.");
             response.put("errorCode", "INTERNAL_ERROR");
             response.put("details", e.getMessage());
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(response);

@@ -58,4 +58,6 @@ public interface RewardService {
     boolean hasEnoughPoints(UUID userId, Integer requiredPoints);
 
     Integer getPointsRequiredForProduct(BigDecimal productPrice);
+
+    Integer getPreviewPointsForOrder(Integer productCount, BigDecimal orderAmount);
 }

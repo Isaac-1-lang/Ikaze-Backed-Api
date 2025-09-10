@@ -65,8 +65,8 @@ public class CartServiceImpl implements CartService {
                 throw new IllegalArgumentException("Product variant is not active");
             }
 
-            if (variant.getStockQuantity() < addToCartDTO.getQuantity()) {
-                throw new IllegalArgumentException("Insufficient stock. Available: " + variant.getStockQuantity());
+            if (variant.getTotalStockQuantity() < addToCartDTO.getQuantity()) {
+                throw new IllegalArgumentException("Insufficient stock. Available: " + variant.getTotalStockQuantity());
             }
 
             existingItem = cartItemRepository.findByCartIdAndProductVariantId(cart.getId(), variant.getId())
@@ -74,7 +74,7 @@ public class CartServiceImpl implements CartService {
 
             if (existingItem != null) {
                 int newQuantity = existingItem.getQuantity() + addToCartDTO.getQuantity();
-                if (newQuantity > variant.getStockQuantity()) {
+                if (newQuantity > variant.getTotalStockQuantity()) {
                     throw new IllegalArgumentException("Total quantity would exceed available stock");
                 }
                 existingItem.setQuantity(newQuantity);
@@ -102,8 +102,8 @@ public class CartServiceImpl implements CartService {
                 throw new IllegalArgumentException("Product is not active");
             }
 
-            if (product.getStockQuantity() < addToCartDTO.getQuantity()) {
-                throw new IllegalArgumentException("Insufficient stock. Available: " + product.getStockQuantity());
+            if (product.getTotalStockQuantity() < addToCartDTO.getQuantity()) {
+                throw new IllegalArgumentException("Insufficient stock. Available: " + product.getTotalStockQuantity());
             }
 
             existingItem = cartItemRepository.findByCartIdAndProductProductId(cart.getId(), product.getProductId())
@@ -111,7 +111,7 @@ public class CartServiceImpl implements CartService {
 
             if (existingItem != null) {
                 int newQuantity = existingItem.getQuantity() + addToCartDTO.getQuantity();
-                if (newQuantity > product.getStockQuantity()) {
+                if (newQuantity > product.getTotalStockQuantity()) {
                     throw new IllegalArgumentException("Total quantity would exceed available stock");
                 }
                 existingItem.setQuantity(newQuantity);
@@ -153,15 +153,15 @@ public class CartServiceImpl implements CartService {
         // Check stock based on whether it's a variant or product
         if (cartItem.isVariantBased()) {
             ProductVariant variant = cartItem.getProductVariant();
-            if (updateCartItemDTO.getQuantity() > variant.getStockQuantity()) {
+            if (updateCartItemDTO.getQuantity() > variant.getTotalStockQuantity()) {
                 throw new IllegalArgumentException(
-                        "Quantity cannot exceed available stock of " + variant.getStockQuantity());
+                        "Quantity cannot exceed available stock of " + variant.getTotalStockQuantity());
             }
         } else if (cartItem.isProductBased()) {
             Product product = cartItem.getProduct();
-            if (updateCartItemDTO.getQuantity() > product.getStockQuantity()) {
+            if (updateCartItemDTO.getQuantity() > product.getTotalStockQuantity()) {
                 throw new IllegalArgumentException(
-                        "Quantity cannot exceed available stock of " + product.getStockQuantity());
+                        "Quantity cannot exceed available stock of " + product.getTotalStockQuantity());
             }
         }
 
@@ -289,7 +289,7 @@ public class CartServiceImpl implements CartService {
             productName = variant.getProduct().getProductName() + " - " + variant.getVariantName();
             sku = variant.getVariantSku();
             inStock = variant.isInStock();
-            availableStock = variant.getStockQuantity();
+            availableStock = variant.getTotalStockQuantity();
 
             if (variant.getImages() != null && !variant.getImages().isEmpty()) {
                 productImage = variant.getImages().stream()
@@ -305,7 +305,7 @@ public class CartServiceImpl implements CartService {
             productName = product.getProductName();
             sku = product.getSku();
             inStock = product.isInStock();
-            availableStock = product.getStockQuantity();
+            availableStock = product.getTotalStockQuantity();
 
             if (product.getImages() != null && !product.getImages().isEmpty()) {
                 productImage = product.getImages().stream()
@@ -385,7 +385,7 @@ public class CartServiceImpl implements CartService {
                                         : null)
                                 .productImage(imageUrl)
                                 .quantity(item.getQuantity())
-                                .availableStock(variant.getStockQuantity())
+                                .availableStock(variant.getTotalStockQuantity())
                                 .totalPrice(variant.getPrice().multiply(BigDecimal.valueOf(item.getQuantity())))
                                 .averageRating(product.getAverageRating())
                                 .reviewCount(product.getReviewCount())
@@ -419,7 +419,7 @@ public class CartServiceImpl implements CartService {
                                         : null)
                                 .productImage(imageUrl)
                                 .quantity(item.getQuantity())
-                                .availableStock(product.getStockQuantity())
+                                .availableStock(product.getTotalStockQuantity())
                                 .totalPrice(
                                         product.getDiscountedPrice().multiply(BigDecimal.valueOf(item.getQuantity())))
                                 .averageRating(product.getAverageRating())

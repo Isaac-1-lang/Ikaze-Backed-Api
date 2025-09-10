@@ -54,13 +54,6 @@ public class Product {
     @Column(name = "cost_price", precision = 10, scale = 2)
     private BigDecimal costPrice;
 
-    @NotNull(message = "Stock quantity is required")
-    @Column(name = "stock_quantity", nullable = false)
-    private Integer stockQuantity = 0;
-
-    @Column(name = "low_stock_threshold")
-    private Integer lowStockThreshold = 5;
-
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "category_id")
     @JsonBackReference
@@ -119,6 +112,10 @@ public class Product {
     @JsonManagedReference
     private List<ProductVideo> videos = new ArrayList<>();
 
+    @OneToMany(mappedBy = "product", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
+    @JsonManagedReference
+    private List<Stock> stocks = new ArrayList<>();
+
     @Column(name = "created_at")
     private LocalDateTime createdAt;
 
@@ -148,15 +145,29 @@ public class Product {
     }
 
     public boolean isInStock() {
-        return stockQuantity > 0;
+        return stocks != null && stocks.stream()
+                .anyMatch(stock -> stock.getQuantity() > 0);
     }
 
     public boolean isLowStock() {
-        return stockQuantity <= lowStockThreshold && stockQuantity > 0;
+        return stocks != null && stocks.stream()
+                .anyMatch(stock -> stock.getQuantity() <= stock.getLowStockThreshold() && stock.getQuantity() > 0);
     }
 
     public boolean isOutOfStock() {
-        return stockQuantity <= 0;
+        return stocks == null || stocks.stream()
+                .allMatch(stock -> stock.getQuantity() <= 0);
+    }
+
+    public Integer getTotalStockQuantity() {
+        if (variants != null && !variants.isEmpty()) {
+            return variants.stream()
+                    .mapToInt(ProductVariant::getTotalStockQuantity)
+                    .sum();
+        }
+        return stocks != null ? stocks.stream()
+                .mapToInt(Stock::getQuantity)
+                .sum() : 0;
     }
 
     public BigDecimal getDiscountedPrice() {
@@ -239,21 +250,28 @@ public class Product {
     }
 
     /**
-     * Sets the stock quantity
+     * Adds a stock entry for this product
      * 
-     * @param stockQuantity The stock quantity to set
+     * @param stock The stock to add
      */
-    public void setStockQuantity(Integer stockQuantity) {
-        this.stockQuantity = stockQuantity;
+    public void addStock(Stock stock) {
+        if (stocks == null) {
+            stocks = new ArrayList<>();
+        }
+        stocks.add(stock);
+        stock.setProduct(this);
     }
 
     /**
-     * Sets the low stock threshold
+     * Removes a stock entry from this product
      * 
-     * @param lowStockThreshold The low stock threshold to set
+     * @param stock The stock to remove
      */
-    public void setLowStockThreshold(Integer lowStockThreshold) {
-        this.lowStockThreshold = lowStockThreshold;
+    public void removeStock(Stock stock) {
+        if (stocks != null) {
+            stocks.remove(stock);
+            stock.setProduct(null);
+        }
     }
 
     /**
@@ -353,5 +371,41 @@ public class Product {
      */
     public void setProductDetail(ProductDetail productDetail) {
         this.productDetail = productDetail;
+    }
+
+    /**
+     * Gets the product name
+     * 
+     * @return The product name
+     */
+    public String getProductName() {
+        return productName;
+    }
+
+    /**
+     * Sets the product name
+     * 
+     * @param productName The product name to set
+     */
+    public void setProductName(String productName) {
+        this.productName = productName;
+    }
+
+    /**
+     * Gets the SKU
+     * 
+     * @return The SKU
+     */
+    public String getSku() {
+        return sku;
+    }
+
+    /**
+     * Sets the SKU
+     * 
+     * @param sku The SKU to set
+     */
+    public void setSku(String sku) {
+        this.sku = sku;
     }
 }
