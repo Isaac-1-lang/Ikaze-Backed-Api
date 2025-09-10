@@ -23,7 +23,7 @@ public class AdminUserController {
             @ApiResponse(responseCode = "201", description = "User created", content = @Content(schema = @Schema(implementation = User.class))),
             @ApiResponse(responseCode = "400", description = "Invalid input")
     })
-    @PostMapping("create")
+    @PostMapping("/create")
     public ResponseEntity<?> createUser(@Valid @RequestBody CreateUserDTO dto) {
         try {
             User user = userService.createUserWithRole(dto);

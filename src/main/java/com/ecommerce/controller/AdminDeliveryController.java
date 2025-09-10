@@ -6,7 +6,6 @@ import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.Schema;
 
 import com.ecommerce.dto.DeliveryAssignmentDTO;
-import com.ecommerce.Enum.DeliveryStatus;
 import com.ecommerce.service.DeliveryAssignmentService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
