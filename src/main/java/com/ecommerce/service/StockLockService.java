@@ -98,19 +98,33 @@ public class StockLockService {
     public boolean lockStockFromMultipleWarehouses(String sessionId,
             Map<Long, List<MultiWarehouseStockAllocator.StockAllocation>> allocations) {
         try {
+            log.info("Starting stock locking for session {} with {} allocation groups", sessionId, allocations.size());
             Map<Long, Integer> totalLocks = new HashMap<>();
             Map<Long, Integer> specificLocks = new HashMap<>();
 
             for (Map.Entry<Long, List<MultiWarehouseStockAllocator.StockAllocation>> entry : allocations.entrySet()) {
+                log.info("Processing allocation group with key: {}", entry.getKey());
                 for (MultiWarehouseStockAllocator.StockAllocation allocation : entry.getValue()) {
                     Long warehouseId = allocation.getWarehouseId();
                     Long stockId = allocation.getStockId();
                     Integer quantity = allocation.getQuantity();
 
+                    log.info("Attempting to lock: stockId={}, warehouseId={}, quantity={}", stockId, warehouseId,
+                            quantity);
+
                     Stock stock = stockRepository.findById(stockId).orElse(null);
-                    if (stock == null || stock.getQuantity() < quantity) {
-                        log.warn("Insufficient stock for allocation: warehouse {}, stock {}, quantity {}",
-                                warehouseId, stockId, quantity);
+                    if (stock == null) {
+                        log.error("Stock not found for stockId: {}", stockId);
+                        releaseStock(sessionId);
+                        return false;
+                    }
+
+                    log.info("Current stock quantity: {}, requested: {}", stock.getQuantity(), quantity);
+
+                    if (stock.getQuantity() < quantity) {
+                        log.warn(
+                                "Insufficient stock for allocation: warehouse {}, stock {}, available {}, requested {}",
+                                warehouseId, stockId, stock.getQuantity(), quantity);
                         releaseStock(sessionId);
                         return false;
                     }
@@ -122,16 +136,18 @@ public class StockLockService {
                     totalLocks.merge(warehouseId, quantity, Integer::sum);
                     specificLocks.put(stockId, quantity);
 
-                    log.info("Locked {} units from stock ID {} in warehouse {} (distance: {} km)",
+                    log.info("Successfully locked {} units from stock ID {} in warehouse {} (distance: {} km)",
                             quantity, stockId, allocation.getWarehouseName(), allocation.getDistance());
                 }
             }
 
             stockLocks.put(sessionId, totalLocks);
             specificStockLocks.put(sessionId, specificLocks);
+            log.info("Successfully locked stock for session {}: {} total locks, {} specific locks",
+                    sessionId, totalLocks.size(), specificLocks.size());
             return true;
         } catch (Exception e) {
-            log.error("Error locking stock from multiple warehouses: {}", e.getMessage());
+            log.error("Error locking stock from multiple warehouses: {}", e.getMessage(), e);
             releaseStock(sessionId);
             return false;
         }

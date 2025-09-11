@@ -30,6 +30,10 @@ import com.ecommerce.repository.UserRepository;
 import com.ecommerce.repository.DiscountRepository;
 import com.stripe.model.PaymentIntent;
 import com.stripe.model.checkout.Session;
+import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.core.userdetails.UserDetails;
 
 import jakarta.persistence.EntityNotFoundException;
 import jakarta.transaction.Transactional;
@@ -48,17 +52,15 @@ public class CheckoutService {
     private final UserRepository userRepository;
     private final StripeService stripeService;
     private final StockLockService stockLockService;
-    private final WarehouseFinderService warehouseFinderService;
     private final MultiWarehouseStockAllocator multiWarehouseStockAllocator;
     private final com.ecommerce.service.ShippingCostService shippingCostService;
-    private final DiscountRepository discountRepository;
     private final com.ecommerce.service.RewardService rewardService;
 
     public String createCheckoutSession(CheckoutRequest req) throws Exception {
         log.info("Creating checkout session for user");
 
-        User user = userRepository.findById(req.getUserId())
-                .orElseThrow(() -> new EntityNotFoundException("User not found with ID: " + req.getUserId()));
+        User user = userRepository.findById(getCurrentUserId())
+                .orElseThrow(() -> new EntityNotFoundException("User not found with ID: " + getCurrentUserId()));
 
         String sessionId = java.util.UUID.randomUUID().toString();
 
@@ -334,8 +336,25 @@ public class CheckoutService {
 
     private boolean lockStockForItems(String sessionId, List<CartItemDTO> items, AddressDto address) {
         try {
+            log.info("Starting stock locking for session {} with {} items", sessionId, items.size());
+            for (CartItemDTO item : items) {
+                log.info(
+                        "Item to lock: productId={}, variantId={}, isVariantBased={}, isVariantBasedItem={}, quantity={}",
+                        item.getProductId(), item.getVariantId(), item.isVariantBased(), item.isVariantBasedItem(),
+                        item.getQuantity());
+            }
+
             Map<Long, List<MultiWarehouseStockAllocator.StockAllocation>> allocations = multiWarehouseStockAllocator
                     .allocateStockAcrossWarehouses(items, address);
+
+            log.info("Stock allocation result: {} allocations", allocations.size());
+            for (Map.Entry<Long, List<MultiWarehouseStockAllocator.StockAllocation>> entry : allocations.entrySet()) {
+                log.info("Key {} has {} allocations", entry.getKey(), entry.getValue().size());
+                for (MultiWarehouseStockAllocator.StockAllocation allocation : entry.getValue()) {
+                    log.info("Allocation: warehouseId={}, stockId={}, quantity={}",
+                            allocation.getWarehouseId(), allocation.getStockId(), allocation.getQuantity());
+                }
+            }
 
             if (allocations.isEmpty()) {
                 log.error("No stock allocation found for items");
@@ -352,7 +371,7 @@ public class CheckoutService {
                     allocations.size(), sessionId);
             return true;
         } catch (Exception e) {
-            log.error("Error locking stock: {}", e.getMessage());
+            log.error("Error locking stock: {}", e.getMessage(), e);
             stockLockService.releaseStock(sessionId);
             return false;
         }
@@ -458,5 +477,42 @@ public class CheckoutService {
 
     public Map<String, Object> getLockedStockInfo(String sessionId) {
         return stockLockService.getLockedStockInfo(sessionId);
+    }
+
+    private UUID getCurrentUserId() {
+        try {
+            Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+            if (auth == null || !auth.isAuthenticated()) {
+                return null;
+            }
+
+            Object principal = auth.getPrincipal();
+
+            // If principal is CustomUserDetails, extract email and find user
+            if (principal instanceof com.ecommerce.ServiceImpl.CustomUserDetails customUserDetails) {
+                String email = customUserDetails.getUsername();
+                return userRepository.findByUserEmail(email).map(com.ecommerce.entity.User::getId).orElse(null);
+            }
+
+            // If principal is User entity
+            if (principal instanceof com.ecommerce.entity.User user && user.getId() != null) {
+                return user.getId();
+            }
+
+            // If principal is UserDetails
+            if (principal instanceof UserDetails userDetails) {
+                String email = userDetails.getUsername();
+                return userRepository.findByUserEmail(email).map(com.ecommerce.entity.User::getId).orElse(null);
+            }
+
+            // Fallback to auth name
+            String name = auth.getName();
+            if (name != null && !name.isBlank()) {
+                return userRepository.findByUserEmail(name).map(com.ecommerce.entity.User::getId).orElse(null);
+            }
+        } catch (Exception e) {
+            log.error("Error getting current user ID: {}", e.getMessage(), e);
+        }
+        return null;
     }
 }

@@ -615,6 +615,7 @@ public class AdminInvitationController {
     }
 
     @GetMapping("/validate/{invitationToken}")
+    
     @Operation(summary = "Validate invitation", description = "Check if an invitation is valid and can be accepted.")
     @ApiResponses(value = {
             @ApiResponse(responseCode = "200", description = "Validation completed successfully"),

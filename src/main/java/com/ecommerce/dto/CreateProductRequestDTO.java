@@ -80,6 +80,9 @@ public class CreateProductRequestDTO {
 
     private String variantImageMapping; // JSON string mapping variant index to image indices
 
+    // Warehouse stock for products without variants
+    private String warehouseStock;
+
     // Convert to CreateProductDTO for service layer
     public CreateProductDTO toCreateProductDTO() {
         CreateProductDTO dto = new CreateProductDTO();
@@ -90,9 +93,7 @@ public class CreateProductRequestDTO {
         dto.setBasePrice(this.basePrice);
         dto.setSalePrice(this.salePrice);
         dto.setCostPrice(this.costPrice);
-        // TODO: These methods are deprecated - use warehouseStock instead
-        // dto.setStockQuantity(this.stockQuantity);
-        // dto.setLowStockThreshold(this.lowStockThreshold);
+
         dto.setCategoryId(this.categoryId);
         dto.setBrandId(this.brandId);
         dto.setDiscountId(this.discountId);
@@ -131,6 +132,20 @@ public class CreateProductRequestDTO {
         dto.setVariantImages(this.variantImages);
         dto.setVariantImageMapping(this.variantImageMapping);
 
+        if (this.warehouseStock != null && !this.warehouseStock.trim().isEmpty()) {
+            try {
+                System.out.println("Raw warehouseStock JSON: " + this.warehouseStock);
+                List<WarehouseStockDTO> parsedWarehouseStock = parseWarehouseStockFromJson(this.warehouseStock);
+                System.out.println("Parsed warehouseStock count: " + parsedWarehouseStock.size());
+                dto.setWarehouseStock(parsedWarehouseStock);
+            } catch (Exception e) {
+                System.err.println("Failed to parse warehouseStock JSON: " + e.getMessage());
+                e.printStackTrace();
+            }
+        } else {
+            System.out.println("No warehouseStock provided or warehouseStock is empty");
+        }
+
         return dto;
     }
 
@@ -163,6 +178,23 @@ public class CreateProductRequestDTO {
                     objectMapper.getTypeFactory().constructCollectionType(List.class, ImageMetadata.class));
         } catch (Exception e) {
             System.err.println("Failed to parse image metadata JSON: " + e.getMessage());
+            e.printStackTrace();
+            return new ArrayList<>();
+        }
+    }
+
+    // Helper method to parse warehouse stock from JSON
+    private List<WarehouseStockDTO> parseWarehouseStockFromJson(String warehouseStockJson) {
+        try {
+            // Use Jackson ObjectMapper to parse JSON
+            ObjectMapper objectMapper = new ObjectMapper();
+            objectMapper.configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
+
+            // Parse the JSON string to List<WarehouseStockDTO>
+            return objectMapper.readValue(warehouseStockJson,
+                    objectMapper.getTypeFactory().constructCollectionType(List.class, WarehouseStockDTO.class));
+        } catch (Exception e) {
+            System.err.println("Failed to parse warehouseStock JSON: " + e.getMessage());
             e.printStackTrace();
             return new ArrayList<>();
         }

@@ -34,15 +34,35 @@ public class UserController {
     private UserRepository userRepository;
 
     @PostMapping("/register")
-    public ResponseEntity<String> registerUser(@Valid @RequestBody UserRegistrationDTO registrationDTO) {
-        String response = authService.registerUser(registrationDTO);
-        return ResponseEntity.ok(response);
+    public ResponseEntity<?> registerUser(@Valid @RequestBody UserRegistrationDTO registrationDTO) {
+        try {
+            String response = authService.registerUser(registrationDTO);
+            return ResponseEntity.ok(Map.of(
+                    "success", true,
+                    "message", response,
+                    "data", Map.of("message", response)));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(Map.of(
+                    "success", false,
+                    "error", e.getMessage(),
+                    "message", e.getMessage()));
+        }
     }
 
     @PostMapping("/login")
-    public ResponseEntity<LoginResponseDto> loginUser(@Valid @RequestBody LoginDto loginDto) {
-        LoginResponseDto response = authService.loginUser(loginDto.getEmail(), loginDto.getPassword());
-        return ResponseEntity.ok(response);
+    public ResponseEntity<?> loginUser(@Valid @RequestBody LoginDto loginDto) {
+        try {
+            LoginResponseDto response = authService.loginUser(loginDto.getEmail(), loginDto.getPassword());
+            return ResponseEntity.ok(Map.of(
+                    "success", true,
+                    "data", response,
+                    "message", "Login successful"));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(Map.of(
+                    "success", false,
+                    "error", e.getMessage(),
+                    "message", e.getMessage()));
+        }
     }
 
     @PostMapping("/request-password-reset")
@@ -70,11 +90,20 @@ public class UserController {
     }
 
     @GetMapping("/me")
-    public ResponseEntity<UserDTO> getCurrentUser(@RequestHeader("Authorization") String token) {
-        // Extract email from JWT token
-        String email = authService.extractEmailFromToken(token.replace("Bearer ", ""));
-        UserDTO user = authService.getCurrentUser(email);
-        return ResponseEntity.ok(user);
+    public ResponseEntity<?> getCurrentUser(@RequestHeader("Authorization") String token) {
+        try {
+            String email = authService.extractEmailFromToken(token.replace("Bearer ", ""));
+            UserDTO user = authService.getCurrentUser(email);
+            return ResponseEntity.ok(Map.of(
+                    "success", true,
+                    "data", user,
+                    "message", "User data retrieved successfully"));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(Map.of(
+                    "success", false,
+                    "error", e.getMessage(),
+                    "message", e.getMessage()));
+        }
     }
 
     @GetMapping("/delivery-agents")

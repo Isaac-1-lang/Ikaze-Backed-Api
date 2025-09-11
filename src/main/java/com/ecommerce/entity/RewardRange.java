@@ -35,7 +35,6 @@ public class RewardRange {
     private Double maxValue;
 
     @NotNull(message = "Points are required")
-    @Positive(message = "Points must be positive")
     @Column(name = "points", nullable = false)
     private Integer points;
 
