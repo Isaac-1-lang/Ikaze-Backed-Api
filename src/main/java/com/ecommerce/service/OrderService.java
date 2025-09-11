@@ -52,4 +52,9 @@ public interface OrderService {
     DeliveryOrderDTO getDeliveryOrderByNumber(String orderNumber);
 
     Order updateOrderTracking(Long orderId, String trackingNumber, String estimatedDelivery);
+
+    // Public tracking methods
+    Order getOrderByOrderCode(String orderCode);
+
+    Order getOrderByPickupToken(String pickupToken);
 }

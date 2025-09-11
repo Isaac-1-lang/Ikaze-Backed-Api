@@ -1,7 +1,6 @@
 package com.ecommerce.entity;
 
 import jakarta.persistence.*;
-import lombok.Data;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 import lombok.AllArgsConstructor;
@@ -31,6 +30,9 @@ public class Order {
 
     @Column(name = "order_code", unique = true, nullable = false)
     private String orderCode;
+
+    @Column(name = "pickup_token", unique = true, nullable = false)
+    private String pickupToken;
 
     @Enumerated(EnumType.STRING)
     @Column(name = "order_status", nullable = false)
@@ -71,6 +73,9 @@ public class Order {
         updatedAt = LocalDateTime.now();
         if (orderCode == null || orderCode.isEmpty()) {
             orderCode = generateOrderCode();
+        }
+        if (pickupToken == null || pickupToken.isEmpty()) {
+            pickupToken = generatePickupToken();
         }
     }
 
@@ -155,6 +160,21 @@ public class Order {
      */
     private String generateOrderCode() {
         return "ORD-" + System.currentTimeMillis() + "-" + UUID.randomUUID().toString().substring(0, 8).toUpperCase();
+    }
+
+    /**
+     * Generates a unique pickup token for order verification
+     * 
+     * @return A unique pickup token
+     */
+    private String generatePickupToken() {
+        // Create a long-encoded token using Base64 encoding
+        String timestamp = String.valueOf(System.currentTimeMillis());
+        String randomPart = UUID.randomUUID().toString().replace("-", "");
+        String combined = timestamp + "-" + randomPart + "-" + orderId;
+
+        // Encode the combined string using Base64
+        return java.util.Base64.getEncoder().encodeToString(combined.getBytes());
     }
 
     /**

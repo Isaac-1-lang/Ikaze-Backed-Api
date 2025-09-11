@@ -107,6 +107,11 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
         Optional<Order> findByOrderCode(String orderCode);
 
         /**
+         * Find order by pickup token
+         */
+        Optional<Order> findByPickupToken(String pickupToken);
+
+        /**
          * Find all orders with all details for admin (includes all relationships except
          * images)
          */
