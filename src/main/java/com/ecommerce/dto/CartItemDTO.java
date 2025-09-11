@@ -28,4 +28,23 @@ public class CartItemDTO {
     private boolean inStock;
     private Integer availableStock;
     private boolean isVariantBased; // Flag to indicate if this is a variant-based item
+
+    /**
+     * Determines if this cart item is variant-based
+     * A cart item is variant-based if it has a variantId (regardless of the
+     * isVariantBased flag)
+     * This method ensures consistent logic regardless of how the frontend sends the
+     * data
+     */
+    public boolean isVariantBasedItem() {
+        return variantId != null;
+    }
+
+    /**
+     * Determines if this cart item is product-based (no variants)
+     * A cart item is product-based if it has a productId but no variantId
+     */
+    public boolean isProductBasedItem() {
+        return productId != null && variantId == null;
+    }
 }

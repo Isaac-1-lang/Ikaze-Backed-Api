@@ -23,8 +23,8 @@ import com.ecommerce.dto.AdminOrderDTO;
 import com.ecommerce.dto.DeliveryOrderDTO;
 import com.ecommerce.dto.SimpleProductDTO;
 import jakarta.persistence.EntityNotFoundException;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -37,8 +37,8 @@ import java.util.UUID;
 import java.util.stream.Collectors;
 
 @Service
-@RequiredArgsConstructor
 @Slf4j
+@Transactional
 public class OrderServiceImpl implements OrderService {
     @Override
     public List<Order> getAllOrders() {
@@ -56,6 +56,18 @@ public class OrderServiceImpl implements OrderService {
     private final ProductVariantRepository productVariantRepository;
     private final UserRepository userRepository;
     private final RewardService rewardService;
+
+    public OrderServiceImpl(OrderRepository orderRepository,
+            ProductRepository productRepository,
+            ProductVariantRepository productVariantRepository,
+            UserRepository userRepository,
+            @Autowired(required = false) RewardService rewardService) {
+        this.orderRepository = orderRepository;
+        this.productRepository = productRepository;
+        this.productVariantRepository = productVariantRepository;
+        this.userRepository = userRepository;
+        this.rewardService = rewardService;
+    }
 
     @Override
     public List<Order> getOrdersForUser(UUID userId) {
@@ -220,10 +232,16 @@ public class OrderServiceImpl implements OrderService {
         Order savedOrder = orderRepository.save(order);
 
         log.info("Order created successfully with ID: {}", savedOrder.getOrderId());
-        try {
-            rewardService.checkRewardableOnOrderAndReward(userId, savedOrder.getOrderId(), totalProductCount, subtotal);
-        } catch (Exception e) {
-            log.error("Error checking reward eligibility for order {}: {}", savedOrder.getOrderId(), e.getMessage(), e);
+        if (rewardService != null) {
+            try {
+                rewardService.checkRewardableOnOrderAndReward(userId, savedOrder.getOrderId(), totalProductCount,
+                        subtotal);
+            } catch (Exception e) {
+                log.error("Error checking reward eligibility for order {}: {}", savedOrder.getOrderId(), e.getMessage(),
+                        e);
+            }
+        } else {
+            log.warn("RewardService not available, skipping reward processing for order {}", savedOrder.getOrderId());
         }
 
         return savedOrder;

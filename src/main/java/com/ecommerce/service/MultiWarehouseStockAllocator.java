@@ -6,6 +6,7 @@ import com.ecommerce.entity.Stock;
 import com.ecommerce.entity.Warehouse;
 import com.ecommerce.repository.StockRepository;
 import com.ecommerce.repository.WarehouseRepository;
+import com.ecommerce.service.GeocodingService;
 import com.ecommerce.util.DistanceCalculator;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -29,10 +30,21 @@ public class MultiWarehouseStockAllocator {
 
     public Map<Long, List<StockAllocation>> allocateStockAcrossWarehouses(List<CartItemDTO> items, AddressDto address) {
         try {
+            log.info("Starting stock allocation for {} items", items.size());
+            for (CartItemDTO item : items) {
+                log.info("Item details: productId={}, variantId={}, isVariantBased={}, quantity={}",
+                        item.getProductId(), item.getVariantId(), item.isVariantBased(), item.getQuantity());
+            }
+
             Map<String, Double> coordinates = geocodingService.getCoordinates(address);
             if (coordinates == null) {
                 log.warn("Could not get coordinates for address, using first available warehouse");
-                return allocateFromSingleWarehouse(items, warehouseRepository.findAll().get(0));
+                List<Warehouse> warehouses = warehouseRepository.findAll();
+                if (warehouses.isEmpty()) {
+                    log.error("No warehouses found in database");
+                    return new HashMap<>();
+                }
+                return allocateFromSingleWarehouse(items, warehouses.get(0));
             }
 
             double userLat = coordinates.get("latitude");
@@ -106,8 +118,8 @@ public class MultiWarehouseStockAllocator {
                 return new HashMap<>();
             }
 
-            Long key = item.getVariantId() != null ? item.getVariantId()
-                    : (item.getProductId() != null ? item.getProductId().hashCode() : 0L);
+            // Use a consistent key generation strategy
+            Long key = generateItemKey(item);
             allocationMap.put(key, allocations);
         }
 
@@ -115,13 +127,42 @@ public class MultiWarehouseStockAllocator {
     }
 
     private Stock findStockForItem(CartItemDTO item, Warehouse warehouse) {
-        if (item.getVariantId() != null) {
-            return stockRepository.findByProductVariantVariantIdAndWarehouseWarehouseId(
-                    item.getVariantId(), warehouse.getId()).orElse(null);
-        } else if (item.getProductId() != null) {
-            return stockRepository.findByProductProductIdAndWarehouseWarehouseId(
-                    item.getProductId(), warehouse.getId()).orElse(null);
+        log.info(
+                "Finding stock for item: productId={}, variantId={}, isVariantBased={}, warehouseId={}, warehouseName={}",
+                item.getProductId(), item.getVariantId(), item.isVariantBased(), warehouse.getId(),
+                warehouse.getName());
+
+        if (item.isVariantBasedItem()) {
+            log.info("Looking for variant-based stock: variantId={}, warehouseId={}",
+                    item.getVariantId(), warehouse.getId());
+            Optional<Stock> stockOpt = stockRepository.findByProductVariantVariantIdAndWarehouseWarehouseId(
+                    item.getVariantId(), warehouse.getId());
+            if (stockOpt.isPresent()) {
+                Stock stock = stockOpt.get();
+                log.info("Found variant stock: stockId={}, quantity={}", stock.getId(), stock.getQuantity());
+                return stock;
+            } else {
+                log.warn("No variant stock found for variantId={}, warehouseId={}",
+                        item.getVariantId(), warehouse.getId());
+                return null;
+            }
+        } else if (item.isProductBasedItem()) {
+            log.info("Looking for product-based stock: productId={}, warehouseId={}",
+                    item.getProductId(), warehouse.getId());
+            Optional<Stock> stockOpt = stockRepository.findByProductProductIdAndWarehouseWarehouseId(
+                    item.getProductId(), warehouse.getId());
+            if (stockOpt.isPresent()) {
+                Stock stock = stockOpt.get();
+                log.info("Found product stock: stockId={}, quantity={}", stock.getId(), stock.getQuantity());
+                return stock;
+            } else {
+                log.warn("No product stock found for productId={}, warehouseId={}",
+                        item.getProductId(), warehouse.getId());
+                return null;
+            }
         }
+        log.error("Cannot find stock for item: productId={}, variantId={}, isVariantBased={}",
+                item.getProductId(), item.getVariantId(), item.isVariantBased());
         return null;
     }
 
@@ -139,12 +180,30 @@ public class MultiWarehouseStockAllocator {
                     new StockAllocation(warehouse.getId(), warehouse.getName(),
                             stock.getId(), item.getQuantity(), 0.0));
 
-            Long key = item.getVariantId() != null ? item.getVariantId()
-                    : (item.getProductId() != null ? item.getProductId().hashCode() : 0L);
+            // Use a consistent key generation strategy
+            Long key = generateItemKey(item);
             allocationMap.put(key, allocations);
         }
 
         return allocationMap;
+    }
+
+    /**
+     * Generate a consistent key for cart items
+     * For variant-based items: use variantId
+     * For non-variant items: use productId converted to Long
+     */
+    private Long generateItemKey(CartItemDTO item) {
+        if (item.isVariantBasedItem()) {
+            return item.getVariantId();
+        } else if (item.isProductBasedItem()) {
+            // Convert UUID to a consistent Long value
+            return Math.abs((long) item.getProductId().hashCode());
+        } else {
+            log.warn("Cannot generate key for item: productId={}, variantId={}, isVariantBased={}",
+                    item.getProductId(), item.getVariantId(), item.isVariantBased());
+            return 0L;
+        }
     }
 
     public static class StockAllocation {

@@ -13,12 +13,9 @@ public class CheckoutRequest {
     @NotEmpty(message = "Items list cannot be empty")
     private List<CartItemDTO> items; // variantId, quantity, price, etc.
 
-    private AddressDto shippingAddress; // or flat fields
+    private AddressDto shippingAddress;
 
     private String currency = "usd";
-
-    private UUID userId;
-
     @NotBlank
     private String platform;
 }

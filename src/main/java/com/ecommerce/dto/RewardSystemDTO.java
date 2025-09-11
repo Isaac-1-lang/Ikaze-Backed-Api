@@ -1,5 +1,8 @@
 package com.ecommerce.dto;
 
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.DecimalMin;
+import jakarta.validation.constraints.NotNull;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
@@ -14,7 +17,11 @@ import java.util.List;
 public class RewardSystemDTO {
 
     private Long id;
+
+    @NotNull(message = "Point value is required")
+    @DecimalMin(value = "0.01", message = "Point value must be greater than 0")
     private BigDecimal pointValue;
+
     private Boolean isActive;
     private Boolean isSystemEnabled;
     private Boolean isReviewPointsEnabled;
@@ -29,5 +36,7 @@ public class RewardSystemDTO {
     private String description;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
+
+    @Valid
     private List<RewardRangeDTO> rewardRanges;
 }

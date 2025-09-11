@@ -53,6 +53,11 @@ public class AuthServiceImpl implements AuthService {
             throw new CustomException("Email already exists");
         }
 
+        // Validate phone number if provided
+        if (registrationDTO.getPhoneNumber() != null && !registrationDTO.getPhoneNumber().trim().isEmpty()) {
+            validatePhoneNumber(registrationDTO.getPhoneNumber());
+        }
+
         String hashedPassword = passwordEncoder.encode(registrationDTO.getPassword());
 
         User user = new User();
@@ -170,5 +175,33 @@ public class AuthServiceImpl implements AuthService {
     @Override
     public String extractEmailFromToken(String token) {
         return jwtService.extractUsername(token);
+    }
+
+    private void validatePhoneNumber(String phoneNumber) {
+        if (phoneNumber == null || phoneNumber.trim().isEmpty()) {
+            return; // Phone number is optional
+        }
+
+        // Remove all non-digit characters except + at the beginning
+        String cleaned = phoneNumber.replaceAll("[^\\d+]", "");
+
+        // Check if it starts with + and remove it for length validation
+        boolean hasCountryCode = cleaned.startsWith("+");
+        String digitsOnly = hasCountryCode ? cleaned.substring(1) : cleaned;
+
+        // Validate length: international phone numbers are typically 7-15 digits
+        if (digitsOnly.length() < 7 || digitsOnly.length() > 15) {
+            throw new CustomException("Phone number must be between 7 and 15 digits");
+        }
+
+        // Check if all remaining characters are digits
+        if (!digitsOnly.matches("\\d+")) {
+            throw new CustomException("Phone number contains invalid characters");
+        }
+
+        // Additional validation: should not start with 0 (except for some countries)
+        if (digitsOnly.startsWith("0") && digitsOnly.length() > 8) {
+            throw new CustomException("Phone number format is invalid");
+        }
     }
 }

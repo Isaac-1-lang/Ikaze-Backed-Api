@@ -93,6 +93,18 @@ public class RewardServiceImpl implements RewardService {
 
     @Override
     public RewardSystemDTO saveRewardSystem(RewardSystemDTO rewardSystemDTO) {
+        log.info("Saving reward system: {}", rewardSystemDTO.getDescription());
+        log.info("Received reward ranges count: {}",
+                rewardSystemDTO.getRewardRanges() != null ? rewardSystemDTO.getRewardRanges().size() : 0);
+
+        if (rewardSystemDTO.getRewardRanges() != null) {
+            for (int i = 0; i < rewardSystemDTO.getRewardRanges().size(); i++) {
+                RewardRangeDTO range = rewardSystemDTO.getRewardRanges().get(i);
+                log.info("RewardRange[{}]: rangeType={}, minValue={}, maxValue={}, points={}",
+                        i, range.getRangeType(), range.getMinValue(), range.getMaxValue(), range.getPoints());
+            }
+        }
+
         if (rewardSystemDTO.getIsPurchasePointsEnabled()) {
             if (rewardSystemDTO.getIsQuantityBasedEnabled() &&
                     (rewardSystemDTO.getRewardRanges() == null ||
@@ -615,6 +627,9 @@ public class RewardServiceImpl implements RewardService {
     }
 
     private RewardRange convertRangeToEntity(RewardRangeDTO rangeDTO, RewardSystem rewardSystem) {
+        log.info("Converting RewardRangeDTO to entity: rangeType={}, minValue={}, maxValue={}, points={}",
+                rangeDTO.getRangeType(), rangeDTO.getMinValue(), rangeDTO.getMaxValue(), rangeDTO.getPoints());
+
         RewardRange range = new RewardRange();
         range.setRewardSystem(rewardSystem);
         range.setRangeType(RewardRange.RangeType.valueOf(rangeDTO.getRangeType()));
@@ -622,6 +637,10 @@ public class RewardServiceImpl implements RewardService {
         range.setMaxValue(rangeDTO.getMaxValue());
         range.setPoints(rangeDTO.getPoints());
         range.setDescription(rangeDTO.getDescription());
+
+        log.info("Created RewardRange entity: rangeType={}, minValue={}, maxValue={}, points={}",
+                range.getRangeType(), range.getMinValue(), range.getMaxValue(), range.getPoints());
+
         return range;
     }
 }

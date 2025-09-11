@@ -51,7 +51,6 @@ public class User implements UserDetails {
     @Column(unique = true, nullable = false)
     private String userEmail;
 
-    @Pattern(regexp = "^\\+?[1-9]\\d{1,14}$", message = "Phone number should be valid")
     @Column(name = "phone_number")
     private String phoneNumber;
 
