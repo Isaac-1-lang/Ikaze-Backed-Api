@@ -15,6 +15,7 @@ public class OrderResponseDTO {
     private String id;
     private String userId;
     private String orderNumber;
+    private String pickupToken;
     private String status;
     private List<OrderItemDTO> items;
     private BigDecimal subtotal;
@@ -32,5 +33,3 @@ public class OrderResponseDTO {
     private String estimatedDelivery;
     private String trackingNumber;
 }
-
-

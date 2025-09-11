@@ -820,4 +820,14 @@ public class OrderServiceImpl implements OrderService {
 
         return getProductImages(product);
     }
+
+    @Override
+    public Order getOrderByOrderCode(String orderCode) {
+        return orderRepository.findByOrderCode(orderCode).orElse(null);
+    }
+
+    @Override
+    public Order getOrderByPickupToken(String pickupToken) {
+        return orderRepository.findByPickupToken(pickupToken).orElse(null);
+    }
 }

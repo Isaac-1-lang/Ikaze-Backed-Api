@@ -483,6 +483,7 @@ public class OrderController {
         dto.setUserId(
                 order.getUser() != null && order.getUser().getId() != null ? order.getUser().getId().toString() : null);
         dto.setOrderNumber(order.getOrderCode());
+        dto.setPickupToken(order.getPickupToken());
         dto.setStatus(order.getOrderStatus() != null ? order.getOrderStatus().name() : null);
         dto.setCreatedAt(order.getCreatedAt());
         dto.setUpdatedAt(order.getUpdatedAt());
@@ -576,6 +577,80 @@ public class OrderController {
         }
 
         return dto;
+    }
+
+    /**
+     * Track order by order number (public endpoint)
+     */
+    @GetMapping("/track/{orderNumber}")
+    @Operation(summary = "Track order by order number", description = "Public endpoint to track order status by order number", responses = {
+            @ApiResponse(responseCode = "200", description = "Order found", content = @Content(schema = @Schema(implementation = OrderResponseDTO.class))),
+            @ApiResponse(responseCode = "404", description = "Order not found"),
+            @ApiResponse(responseCode = "500", description = "Internal server error")
+    })
+    public ResponseEntity<?> trackOrderByNumber(@PathVariable String orderNumber) {
+        try {
+            Order order = orderService.getOrderByOrderCode(orderNumber);
+            if (order == null) {
+                Map<String, Object> response = new HashMap<>();
+                response.put("success", false);
+                response.put("message", "Order not found");
+                response.put("errorCode", "NOT_FOUND");
+                response.put("details", "No order found with order number: " + orderNumber);
+                return ResponseEntity.status(HttpStatus.NOT_FOUND).body(response);
+            }
+
+            OrderResponseDTO orderResponse = toDto(order);
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", true);
+            response.put("data", orderResponse);
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            log.error("Failed to track order by number: {}", orderNumber, e);
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", false);
+            response.put("message", "An unexpected error occurred while tracking order.");
+            response.put("errorCode", "INTERNAL_ERROR");
+            response.put("details", e.getMessage());
+            return ResponseEntity.internalServerError().body(response);
+        }
+    }
+
+    /**
+     * Track order by pickup token (public endpoint)
+     */
+    @GetMapping("/track/token/{pickupToken}")
+    @Operation(summary = "Track order by pickup token", description = "Public endpoint to track order status by pickup token", responses = {
+            @ApiResponse(responseCode = "200", description = "Order found", content = @Content(schema = @Schema(implementation = OrderResponseDTO.class))),
+            @ApiResponse(responseCode = "404", description = "Order not found"),
+            @ApiResponse(responseCode = "500", description = "Internal server error")
+    })
+    public ResponseEntity<?> trackOrderByToken(@PathVariable String pickupToken) {
+        try {
+            Order order = orderService.getOrderByPickupToken(pickupToken);
+            if (order == null) {
+                Map<String, Object> response = new HashMap<>();
+                response.put("success", false);
+                response.put("message", "Order not found");
+                response.put("errorCode", "NOT_FOUND");
+                response.put("details", "No order found with pickup token: " + pickupToken);
+                return ResponseEntity.status(HttpStatus.NOT_FOUND).body(response);
+            }
+
+            OrderResponseDTO orderResponse = toDto(order);
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", true);
+            response.put("data", orderResponse);
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            log.error("Failed to track order by token: {}", pickupToken, e);
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", false);
+            response.put("message", "An unexpected error occurred while tracking order.");
+            response.put("errorCode", "INTERNAL_ERROR");
+            response.put("details", e.getMessage());
+            return ResponseEntity.internalServerError().body(response);
+        }
     }
 
     private UUID getCurrentUserId() {

@@ -17,7 +17,6 @@ import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
 import com.ecommerce.Filters.JwtAuthFilter;
 
-
 import java.util.Arrays;
 
 @Configuration
@@ -59,6 +58,7 @@ public class SecurityConfig {
                                 "/api/v1/checkout/**",
                                 "/api/v1/cart/products",
                                 "/api/v1/checkout/guest/**",
+                                "/api/v1/orders/track/**",
                                 "/v3/api-docs/**",
                                 "/swagger-ui/**",
                                 "/swagger-ui.html")
@@ -73,7 +73,8 @@ public class SecurityConfig {
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration configuration = new CorsConfiguration();
         configuration.setAllowedOriginPatterns(
-                Arrays.asList("http://localhost:3000", "http://127.0.0.1:3000", "http://localhost:3001","https://ecom-olive-delta.vercel.app"));
+                Arrays.asList("http://localhost:3000", "http://127.0.0.1:3000", "http://localhost:3001",
+                        "https://ecom-olive-delta.vercel.app"));
         configuration.setAllowedMethods(Arrays.asList("GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"));
         configuration.setAllowedHeaders(Arrays.asList("*"));
         configuration.setAllowCredentials(true);
