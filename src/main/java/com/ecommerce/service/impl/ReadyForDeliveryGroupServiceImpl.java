@@ -554,21 +554,56 @@ public class ReadyForDeliveryGroupServiceImpl implements ReadyForDeliveryGroupSe
                 .collect(java.util.stream.Collectors.toList());
 
         AddressDto shippingAddress = new AddressDto();
-        shippingAddress.setStreetAddress(order.getOrderAddress().getStreet());
-        shippingAddress.setCity(order.getOrderAddress().getRegions());
-        shippingAddress.setState(order.getOrderAddress().getRegions());
-        shippingAddress.setPostalCode(order.getOrderAddress().getZipcode());
-        shippingAddress.setCountry(order.getOrderAddress().getCountry());
+        if (order.getOrderAddress() != null) {
+            shippingAddress.setStreetAddress(order.getOrderAddress().getStreet());
+            shippingAddress.setCity(order.getOrderAddress().getRegions());
+            shippingAddress.setState(order.getOrderAddress().getRegions());
+            shippingAddress.setPostalCode(order.getOrderAddress().getZipcode());
+            shippingAddress.setCountry(order.getOrderAddress().getCountry());
+        } else {
+            shippingAddress.setStreetAddress("N/A");
+            shippingAddress.setCity("N/A");
+            shippingAddress.setState("N/A");
+            shippingAddress.setPostalCode("N/A");
+            shippingAddress.setCountry("N/A");
+        }
+
+        String customerName = "N/A";
+        String customerEmail = "N/A";
+        String customerPhone = "N/A";
+
+        if (order.getOrderCustomerInfo() != null) {
+            String firstName = order.getOrderCustomerInfo().getFirstName() != null
+                    ? order.getOrderCustomerInfo().getFirstName()
+                    : "";
+            String lastName = order.getOrderCustomerInfo().getLastName() != null
+                    ? order.getOrderCustomerInfo().getLastName()
+                    : "";
+            customerName = (firstName + " " + lastName).trim();
+            if (customerName.isEmpty())
+                customerName = "N/A";
+
+            customerEmail = order.getOrderCustomerInfo().getEmail() != null ? order.getOrderCustomerInfo().getEmail()
+                    : "N/A";
+            customerPhone = order.getOrderCustomerInfo().getPhoneNumber() != null
+                    ? order.getOrderCustomerInfo().getPhoneNumber()
+                    : "N/A";
+        }
+
+        // Handle order info safely
+        java.math.BigDecimal totalAmount = java.math.BigDecimal.ZERO;
+        if (order.getOrderInfo() != null && order.getOrderInfo().getTotalAmount() != null) {
+            totalAmount = order.getOrderInfo().getTotalAmount();
+        }
 
         return OrderDTO.builder()
                 .id(order.getOrderId())
                 .orderNumber(order.getOrderCode())
-                .customerName(
-                        order.getOrderCustomerInfo().getFirstName() + " " + order.getOrderCustomerInfo().getLastName())
-                .customerEmail(order.getOrderCustomerInfo().getEmail())
-                .customerPhone(order.getOrderCustomerInfo().getPhoneNumber())
-                .status(order.getOrderStatus().toString())
-                .totalAmount(order.getOrderInfo().getTotalAmount())
+                .customerName(customerName)
+                .customerEmail(customerEmail)
+                .customerPhone(customerPhone)
+                .status(order.getOrderStatus() != null ? order.getOrderStatus().toString() : "UNKNOWN")
+                .totalAmount(totalAmount)
                 .createdAt(order.getCreatedAt())
                 .updatedAt(order.getUpdatedAt())
                 .items(orderItems)

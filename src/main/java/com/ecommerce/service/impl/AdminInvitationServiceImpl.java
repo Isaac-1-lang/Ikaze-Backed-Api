@@ -40,7 +40,6 @@ public class AdminInvitationServiceImpl implements AdminInvitationService {
     public AdminInvitationDTO createInvitation(UUID adminId, CreateAdminInvitationDTO createInvitationDTO) {
         log.info("Creating admin invitation for email: {}", createInvitationDTO.getEmail());
 
-        // Validate admin exists
         User admin = userRepository.findById(adminId)
                 .orElseThrow(() -> new EntityNotFoundException("Admin not found with ID: " + adminId));
 
