@@ -8,11 +8,6 @@ import lombok.NoArgsConstructor;
 import java.math.BigDecimal;
 import java.util.UUID;
 
-/**
- * DTO for displaying multiple products in cards
- * Contains only essential fields needed for product listing
- * Uses simplified nested DTOs to prevent infinite recursion
- */
 @Data
 @Builder
 @NoArgsConstructor

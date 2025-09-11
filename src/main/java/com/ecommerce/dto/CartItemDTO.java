@@ -23,6 +23,7 @@ public class CartItemDTO {
     private Integer quantity;
     private BigDecimal price;
     private BigDecimal totalPrice;
+    private BigDecimal weight;
     private LocalDateTime addedAt;
     private boolean inStock;
     private Integer availableStock;

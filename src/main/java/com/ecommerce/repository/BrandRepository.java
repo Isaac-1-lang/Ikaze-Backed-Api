@@ -19,4 +19,7 @@ public interface BrandRepository extends JpaRepository<Brand, UUID>, JpaSpecific
     List<Brand> findByIsActiveTrue();
 
     List<Brand> findByIsFeaturedTrue();
+
+    // Search suggestion method
+    List<Brand> findTop5ByBrandNameContainingIgnoreCase(String brandName);
 }

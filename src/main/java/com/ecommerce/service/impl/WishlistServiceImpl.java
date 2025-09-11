@@ -291,7 +291,7 @@ public class WishlistServiceImpl implements WishlistService {
                                 .priority(wishlistProduct.getPriority())
                                 .addedAt(wishlistProduct.getAddedAt())
                                 .inStock(product.isInStock())
-                                .availableStock(product.getStockQuantity())
+                                .availableStock(product.getTotalStockQuantity())
                                 .price(product.getPrice())
                                 .finalPrice(product.getDiscountedPrice())
                                 .build();

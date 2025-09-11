@@ -156,6 +156,28 @@ public class ProductController {
         }
     }
 
+    @GetMapping("/search/suggestions")
+    @Operation(summary = "Get search suggestions", description = "Get search suggestions based on query for autocomplete", responses = {
+            @ApiResponse(responseCode = "200", description = "Suggestions retrieved successfully"),
+            @ApiResponse(responseCode = "400", description = "Invalid query"),
+            @ApiResponse(responseCode = "500", description = "Internal server error")
+    })
+    public ResponseEntity<?> getSearchSuggestions(@RequestParam String q) {
+        try {
+            if (q == null || q.trim().length() < 2) {
+                return ResponseEntity.ok(Map.of("suggestions", List.of()));
+            }
+
+            List<Map<String, Object>> suggestions = productService.getSearchSuggestions(q.trim());
+            return ResponseEntity.ok(Map.of("suggestions", suggestions));
+
+        } catch (Exception e) {
+            log.error("Error getting search suggestions: {}", e.getMessage(), e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(createErrorResponse("INTERNAL_ERROR", "Failed to get search suggestions"));
+        }
+    }
+
     @PostMapping("/search")
     @Operation(summary = "Search products with comprehensive filtering", description = "Search products using various filter criteria and return paginated results", responses = {
             @ApiResponse(responseCode = "200", description = "Search results retrieved successfully", content = @Content(schema = @Schema(implementation = ManyProductsDto.class))),

@@ -18,6 +18,7 @@ public class AdminOrderDTO {
     private String userId;
     private String customerName;
     private String customerEmail;
+    private String customerPhone;
     private String orderNumber;
     private String status;
     private List<AdminOrderItemDTO> items;

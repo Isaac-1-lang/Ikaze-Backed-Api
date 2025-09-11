@@ -4,6 +4,8 @@ import com.ecommerce.dto.AddToCartDTO;
 import com.ecommerce.dto.CartDTO;
 import com.ecommerce.dto.CartItemDTO;
 import com.ecommerce.dto.UpdateCartItemDTO;
+import com.ecommerce.dto.CartProductsRequestDTO;
+import com.ecommerce.dto.CartProductsResponseDTO;
 import com.ecommerce.service.CartService;
 import com.ecommerce.repository.UserRepository;
 import io.swagger.v3.oas.annotations.Operation;
@@ -312,6 +314,39 @@ public class CartController {
             Map<String, Object> response = new HashMap<>();
             response.put("success", false);
             response.put("message", "Failed to retrieve cart item");
+            response.put("error", "INTERNAL_ERROR");
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(response);
+        }
+    }
+
+    @PostMapping("/products")
+    @Operation(summary = "Get cart products information", description = "Get product information for cart items by product/variant IDs")
+    public ResponseEntity<?> getCartProducts(@Valid @RequestBody CartProductsRequestDTO request) {
+        try {
+            log.info("Getting cart products information for {} items", request.getItems().size());
+
+            CartProductsResponseDTO cartProducts = cartService.getCartProductsInfo(request);
+
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", true);
+            response.put("message", "Cart products retrieved successfully");
+            response.put("data", cartProducts);
+
+            return ResponseEntity.ok(response);
+
+        } catch (IllegalArgumentException e) {
+            log.warn("Invalid request to get cart products: {}", e.getMessage());
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", false);
+            response.put("message", e.getMessage());
+            response.put("error", "VALIDATION_ERROR");
+            return ResponseEntity.badRequest().body(response);
+
+        } catch (Exception e) {
+            log.error("Error getting cart products: {}", e.getMessage(), e);
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", false);
+            response.put("message", "Failed to retrieve cart products");
             response.put("error", "INTERNAL_ERROR");
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(response);
         }

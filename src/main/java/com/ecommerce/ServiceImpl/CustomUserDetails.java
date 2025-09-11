@@ -1,6 +1,7 @@
 package com.ecommerce.ServiceImpl;
 
 import java.util.Collection;
+import java.util.UUID;
 
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
@@ -14,11 +15,17 @@ public class CustomUserDetails implements UserDetails {
     private String name;
     private String password;
     private UserRole role;
+    private UUID userId;
 
     public CustomUserDetails(User user) {
         this.name = user.getUserEmail();
         this.password = user.getPassword();
         this.role = user.getRole();
+        this.userId = user.getId();
+    }
+
+    public UUID getUserId() {
+        return userId;
     }
 
     @Override

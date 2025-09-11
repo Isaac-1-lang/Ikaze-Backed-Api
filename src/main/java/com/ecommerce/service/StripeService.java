@@ -3,6 +3,7 @@ package com.ecommerce.service;
 import com.ecommerce.entity.Order;
 import com.ecommerce.entity.OrderItem;
 import com.ecommerce.entity.OrderTransaction;
+import com.ecommerce.entity.Product;
 import com.ecommerce.repository.OrderRepository;
 import com.ecommerce.repository.OrderTransactionRepository;
 import com.fasterxml.jackson.core.JsonProcessingException;
@@ -47,9 +48,10 @@ public class StripeService {
                 List<SessionCreateParams.LineItem> lineItems = new ArrayList<>();
                 for (OrderItem item : order.getOrderItems()) {
                         long unitAmount = item.getPrice().multiply(BigDecimal.valueOf(100)).longValue();
+                        Product product = item.getEffectiveProduct();
                         SessionCreateParams.LineItem.PriceData.ProductData productData = SessionCreateParams.LineItem.PriceData.ProductData
                                         .builder()
-                                        .setName(item.getProductVariant().getProduct().getProductName())
+                                        .setName(product.getProductName())
                                         .build();
 
                         SessionCreateParams.LineItem.PriceData priceData = SessionCreateParams.LineItem.PriceData
@@ -66,13 +68,41 @@ public class StripeService {
                         lineItems.add(li);
                 }
 
+                // Add shipping cost as a separate line item if it exists
+                if (order.getOrderInfo() != null && order.getOrderInfo().getShippingCost() != null
+                                && order.getOrderInfo().getShippingCost().compareTo(BigDecimal.ZERO) > 0) {
+
+                        long shippingAmount = order.getOrderInfo().getShippingCost().multiply(BigDecimal.valueOf(100))
+                                        .longValue();
+
+                        SessionCreateParams.LineItem.PriceData.ProductData shippingProductData = SessionCreateParams.LineItem.PriceData.ProductData
+                                        .builder()
+                                        .setName("Shipping Cost")
+                                        .build();
+
+                        SessionCreateParams.LineItem.PriceData shippingPriceData = SessionCreateParams.LineItem.PriceData
+                                        .builder()
+                                        .setCurrency(currency)
+                                        .setUnitAmount(shippingAmount)
+                                        .setProductData(shippingProductData)
+                                        .build();
+
+                        SessionCreateParams.LineItem shippingItem = SessionCreateParams.LineItem.builder()
+                                        .setPriceData(shippingPriceData)
+                                        .setQuantity(1L)
+                                        .build();
+                        lineItems.add(shippingItem);
+
+                        log.info("Added shipping cost to Stripe session: {}", order.getOrderInfo().getShippingCost());
+                }
+
                 // pass orderId in metadata for later lookup
                 Map<String, String> metadata = Map.of(
                                 "orderId", order.getOrderId().toString(),
                                 "orderCode", order.getOrderCode());
 
-                String webSuccess = "http://127.0.0.1:5500/src/stripeCheckoutPayment/payment-success.html";
-                String webCancel = "http://127.0.0.1:5500/src/stripeCheckoutPayment/payment-cancel.html";
+                String webSuccess = "http://localhost:3000/payment-success";
+                String webCancel = "http://localhost:3000/payment-cancel";
                 String mobSuccess = "snapshop://checkout-redirect";
                 String mobCancel = "snapshop://checkout-redirect";
                 String successUrl;
