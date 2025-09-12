@@ -3,6 +3,7 @@ package com.ecommerce.service.impl;
 import com.ecommerce.Enum.UserRole;
 import com.ecommerce.dto.*;
 import com.ecommerce.entity.Order;
+import com.ecommerce.entity.OrderItem;
 import com.ecommerce.entity.ReadyForDeliveryGroup;
 import com.ecommerce.entity.User;
 import com.ecommerce.repository.OrderRepository;
@@ -20,9 +21,12 @@ import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
 import java.util.stream.Collectors;
 
 @Service
@@ -609,5 +613,181 @@ public class ReadyForDeliveryGroupServiceImpl implements ReadyForDeliveryGroupSe
                 .items(orderItems)
                 .shippingAddress(shippingAddress)
                 .build();
+    }
+
+    @Override
+    public Map<String, Object> startDelivery(Long groupId) {
+        log.info("Starting delivery for group: {}", groupId);
+
+        ReadyForDeliveryGroup group = groupRepository.findById(groupId)
+                .orElseThrow(() -> new EntityNotFoundException("Delivery group not found with id: " + groupId));
+
+        // Check if delivery has already started
+        if (Boolean.TRUE.equals(group.getHasDeliveryStarted())) {
+            throw new IllegalStateException("Delivery has already been started for this group");
+        }
+
+        // Check if all orders are not delivered
+        List<Order> orders = group.getOrders();
+        long deliveredOrders = orders.stream()
+                .filter(order -> order.getOrderStatus() == Order.OrderStatus.DELIVERED)
+                .count();
+
+        if (deliveredOrders > 0) {
+            throw new IllegalStateException(
+                    "Cannot start delivery: " + deliveredOrders + " orders are already delivered");
+        }
+
+        // Start delivery
+        group.setHasDeliveryStarted(true);
+        group.setDeliveryStartedAt(java.time.LocalDateTime.now());
+        groupRepository.save(group);
+
+        // Send email notifications to customers (async)
+        sendDeliveryStartNotifications(group);
+
+        Map<String, Object> result = new HashMap<>();
+        result.put("groupId", groupId);
+        result.put("groupName", group.getDeliveryGroupName());
+        result.put("deliveryStartedAt", group.getDeliveryStartedAt());
+        result.put("totalOrders", orders.size());
+        result.put("notificationsSent", orders.size());
+
+        log.info("Delivery started successfully for group: {} with {} orders", groupId, orders.size());
+        return result;
+    }
+
+    @Override
+    public Map<String, Object> finishDelivery(Long groupId) {
+        log.info("Finishing delivery for group: {}", groupId);
+
+        ReadyForDeliveryGroup group = groupRepository.findById(groupId)
+                .orElseThrow(() -> new EntityNotFoundException("Delivery group not found with id: " + groupId));
+
+        // Check if delivery has been started
+        if (!Boolean.TRUE.equals(group.getHasDeliveryStarted())) {
+            throw new IllegalStateException("Delivery has not been started for this group");
+        }
+
+        // Check if delivery has already finished
+        if (Boolean.TRUE.equals(group.getHasDeliveryFinished())) {
+            throw new IllegalStateException("Delivery has already been finished for this group");
+        }
+
+        // Check if all orders are delivered and pickup tokens are used
+        List<Order> orders = group.getOrders();
+        long undeliveredOrders = orders.stream()
+                .filter(order -> order.getOrderStatus() != Order.OrderStatus.DELIVERED)
+                .count();
+
+        long unusedTokens = orders.stream()
+                .filter(order -> !Boolean.TRUE.equals(order.getPickupTokenUsed()))
+                .count();
+
+        if (undeliveredOrders > 0) {
+            throw new IllegalStateException(
+                    "Cannot finish delivery: " + undeliveredOrders + " orders are not yet delivered");
+        }
+
+        if (unusedTokens > 0) {
+            throw new IllegalStateException(
+                    "Cannot finish delivery: " + unusedTokens + " pickup tokens are not yet used");
+        }
+
+        // Finish delivery
+        group.setHasDeliveryFinished(true);
+        group.setDeliveryFinishedAt(java.time.LocalDateTime.now());
+        groupRepository.save(group);
+
+        Map<String, Object> result = new HashMap<>();
+        result.put("groupId", groupId);
+        result.put("groupName", group.getDeliveryGroupName());
+        result.put("deliveryFinishedAt", group.getDeliveryFinishedAt());
+        result.put("totalOrders", orders.size());
+        result.put("deliveredOrders", orders.size());
+
+        log.info("Delivery finished successfully for group: {} with {} orders", groupId, orders.size());
+        return result;
+    }
+
+    private void sendDeliveryStartNotifications(ReadyForDeliveryGroup group) {
+        // Use async processing to send emails quickly
+        CompletableFuture.runAsync(() -> {
+            try {
+                List<Order> orders = group.getOrders();
+                log.info("Sending delivery start notifications for {} orders", orders.size());
+
+                for (Order order : orders) {
+                    try {
+                        if (order.getOrderStatus() != Order.OrderStatus.DELIVERED && order.getUser() != null) {
+                            sendDeliveryStartEmail(order);
+                        }
+                    } catch (Exception e) {
+                        log.error("Failed to send notification for order {}: {}", order.getOrderId(), e.getMessage());
+                    }
+                }
+
+                log.info("Completed sending delivery start notifications for group: {}", group.getDeliveryGroupId());
+            } catch (Exception e) {
+                log.error("Error sending delivery start notifications: {}", e.getMessage(), e);
+            }
+        });
+    }
+
+    private void sendDeliveryStartEmail(Order order) {
+        try {
+            // Create email content
+            String subject = "Your Order Delivery Has Started - " + order.getOrderCode();
+            String content = createDeliveryStartEmailContent(order);
+
+            // Send email (you can integrate with your email service here)
+            log.info("Sending delivery start email to: {} for order: {}",
+                    order.getUser().getUserEmail(), order.getOrderCode());
+
+            // TODO: Integrate with actual email service (e.g., SendGrid, AWS SES, etc.)
+            // emailService.sendEmail(order.getUser().getUserEmail(), subject, content);
+
+        } catch (Exception e) {
+            log.error("Failed to send delivery start email for order {}: {}", order.getOrderId(), e.getMessage());
+        }
+    }
+
+    private String createDeliveryStartEmailContent(Order order) {
+        StringBuilder content = new StringBuilder();
+        content.append("<html><body>");
+        content.append("<h2>Your Order Delivery Has Started!</h2>");
+        content.append("<p>Dear ").append(order.getUser().getFirstName()).append(",</p>");
+        content.append("<p>Great news! Your order <strong>").append(order.getOrderCode())
+                .append("</strong> is now out for delivery.</p>");
+
+        content.append("<h3>Order Summary:</h3>");
+        content.append("<ul>");
+        for (OrderItem item : order.getOrderItems()) {
+            content.append("<li>").append(item.getQuantity()).append("x ");
+            if (item.getProductVariant() != null) {
+                content.append(item.getProductVariant().getProduct().getProductName());
+            } else {
+                content.append("Product");
+            }
+            content.append("</li>");
+        }
+        content.append("</ul>");
+
+        content.append("<p><strong>Total Amount:</strong> $").append(order.getTotalAmount()).append("</p>");
+
+        content.append("<h3>Delivery Information:</h3>");
+        if (order.getOrderAddress() != null) {
+            content.append("<p><strong>Delivery Address:</strong><br>");
+            content.append(order.getOrderAddress().getStreet()).append("<br>");
+            content.append(order.getOrderAddress().getRegions()).append(" ");
+            content.append(order.getOrderAddress().getZipcode()).append("<br>");
+            content.append(order.getOrderAddress().getCountry()).append("</p>");
+        }
+
+        content.append("<p>Please have your pickup QR code ready when the delivery agent arrives.</p>");
+        content.append("<p>Thank you for choosing our service!</p>");
+        content.append("</body></html>");
+
+        return content.toString();
     }
 }

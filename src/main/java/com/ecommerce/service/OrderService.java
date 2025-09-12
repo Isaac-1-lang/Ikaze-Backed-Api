@@ -57,4 +57,7 @@ public interface OrderService {
     Order getOrderByOrderCode(String orderCode);
 
     Order getOrderByPickupToken(String pickupToken);
+
+    // Save order method
+    Order saveOrder(Order order);
 }

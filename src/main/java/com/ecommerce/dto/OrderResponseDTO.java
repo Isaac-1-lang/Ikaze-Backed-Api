@@ -16,6 +16,7 @@ public class OrderResponseDTO {
     private String userId;
     private String orderNumber;
     private String pickupToken;
+    private Boolean pickupTokenUsed;
     private String status;
     private List<OrderItemDTO> items;
     private BigDecimal subtotal;

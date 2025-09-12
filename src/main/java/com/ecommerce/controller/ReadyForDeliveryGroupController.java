@@ -283,56 +283,6 @@ public class ReadyForDeliveryGroupController {
         }
     }
 
-    @PutMapping("/{groupId}/start-delivery")
-    @PreAuthorize("hasAnyRole('ADMIN', 'EMPLOYEE')")
-    @Operation(summary = "Start delivery", description = "Mark a ready for delivery group as delivery started", responses = {
-            @ApiResponse(responseCode = "200", description = "Delivery started successfully", content = @Content(schema = @Schema(implementation = ReadyForDeliveryGroupDTO.class))),
-            @ApiResponse(responseCode = "400", description = "Invalid state"),
-            @ApiResponse(responseCode = "404", description = "Group not found"),
-            @ApiResponse(responseCode = "500", description = "Internal server error")
-    })
-    public ResponseEntity<?> startDelivery(@PathVariable Long groupId) {
-        try {
-            log.info("Starting delivery for group: {}", groupId);
-            ReadyForDeliveryGroupDTO group = deliveryGroupService.markDeliveryStarted(groupId);
-
-            Map<String, Object> response = new HashMap<>();
-            response.put("success", true);
-            response.put("message", "Delivery started successfully");
-            response.put("data", group);
-
-            log.info("Delivery started successfully for group: {}", groupId);
-            return ResponseEntity.ok(response);
-
-        } catch (EntityNotFoundException e) {
-            log.warn("Entity not found: {}", e.getMessage());
-            Map<String, Object> response = new HashMap<>();
-            response.put("success", false);
-            response.put("message", "Resource not found: " + e.getMessage());
-            response.put("errorCode", "NOT_FOUND");
-            response.put("details", e.getMessage());
-            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(response);
-
-        } catch (IllegalStateException e) {
-            log.warn("Invalid state: {}", e.getMessage());
-            Map<String, Object> response = new HashMap<>();
-            response.put("success", false);
-            response.put("message", "Invalid state: " + e.getMessage());
-            response.put("errorCode", "INVALID_STATE");
-            response.put("details", e.getMessage());
-            return ResponseEntity.badRequest().body(response);
-
-        } catch (Exception e) {
-            log.error("Error starting delivery: {}", e.getMessage(), e);
-            Map<String, Object> response = new HashMap<>();
-            response.put("success", false);
-            response.put("message", "An unexpected error occurred while starting delivery.");
-            response.put("errorCode", "INTERNAL_ERROR");
-            response.put("details", e.getMessage());
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(response);
-        }
-    }
-
     @GetMapping("/{groupId}")
     @PreAuthorize("hasAnyRole('ADMIN', 'EMPLOYEE')")
     @Operation(summary = "Get group by ID", description = "Get a ready for delivery group by ID", responses = {
@@ -656,6 +606,102 @@ public class ReadyForDeliveryGroupController {
             Map<String, Object> response = new HashMap<>();
             response.put("success", false);
             response.put("message", "An unexpected error occurred while finding group for order.");
+            response.put("errorCode", "INTERNAL_ERROR");
+            response.put("details", e.getMessage());
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(response);
+        }
+    }
+
+    @PostMapping("/{groupId}/start-delivery")
+    @PreAuthorize("hasRole('DELIVERY_AGENT')")
+    @Operation(summary = "Start delivery group", description = "Start delivery for a group and notify customers", responses = {
+            @ApiResponse(responseCode = "200", description = "Delivery started successfully"),
+            @ApiResponse(responseCode = "400", description = "Invalid request or group already started"),
+            @ApiResponse(responseCode = "404", description = "Group not found"),
+            @ApiResponse(responseCode = "500", description = "Internal server error")
+    })
+    public ResponseEntity<?> startDelivery(@PathVariable Long groupId) {
+        try {
+            log.info("Starting delivery for group: {}", groupId);
+            Map<String, Object> result = deliveryGroupService.startDelivery(groupId);
+
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", true);
+            response.put("message", "Delivery started successfully");
+            response.put("data", result);
+
+            log.info("Delivery started successfully for group: {}", groupId);
+            return ResponseEntity.ok(response);
+
+        } catch (EntityNotFoundException e) {
+            log.warn("Group not found: {}", e.getMessage());
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", false);
+            response.put("message", "Group not found: " + e.getMessage());
+            response.put("errorCode", "NOT_FOUND");
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(response);
+
+        } catch (IllegalStateException e) {
+            log.warn("Cannot start delivery: {}", e.getMessage());
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", false);
+            response.put("message", e.getMessage());
+            response.put("errorCode", "INVALID_STATE");
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(response);
+
+        } catch (Exception e) {
+            log.error("Error starting delivery for group {}: {}", groupId, e.getMessage(), e);
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", false);
+            response.put("message", "An unexpected error occurred while starting delivery.");
+            response.put("errorCode", "INTERNAL_ERROR");
+            response.put("details", e.getMessage());
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(response);
+        }
+    }
+
+    @PostMapping("/{groupId}/finish-delivery")
+    @PreAuthorize("hasRole('DELIVERY_AGENT')")
+    @Operation(summary = "Finish delivery group", description = "Finish delivery for a group after all orders are delivered", responses = {
+            @ApiResponse(responseCode = "200", description = "Delivery finished successfully"),
+            @ApiResponse(responseCode = "400", description = "Invalid request or not all orders delivered"),
+            @ApiResponse(responseCode = "404", description = "Group not found"),
+            @ApiResponse(responseCode = "500", description = "Internal server error")
+    })
+    public ResponseEntity<?> finishDelivery(@PathVariable Long groupId) {
+        try {
+            log.info("Finishing delivery for group: {}", groupId);
+            Map<String, Object> result = deliveryGroupService.finishDelivery(groupId);
+
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", true);
+            response.put("message", "Delivery finished successfully");
+            response.put("data", result);
+
+            log.info("Delivery finished successfully for group: {}", groupId);
+            return ResponseEntity.ok(response);
+
+        } catch (EntityNotFoundException e) {
+            log.warn("Group not found: {}", e.getMessage());
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", false);
+            response.put("message", "Group not found: " + e.getMessage());
+            response.put("errorCode", "NOT_FOUND");
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(response);
+
+        } catch (IllegalStateException e) {
+            log.warn("Cannot finish delivery: {}", e.getMessage());
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", false);
+            response.put("message", e.getMessage());
+            response.put("errorCode", "INVALID_STATE");
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(response);
+
+        } catch (Exception e) {
+            log.error("Error finishing delivery for group {}: {}", groupId, e.getMessage(), e);
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", false);
+            response.put("message", "An unexpected error occurred while finishing delivery.");
             response.put("errorCode", "INTERNAL_ERROR");
             response.put("details", e.getMessage());
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(response);
