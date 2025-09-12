@@ -34,6 +34,9 @@ public class Order {
     @Column(name = "pickup_token", unique = true, nullable = false)
     private String pickupToken;
 
+    @Column(name = "pickup_token_used", nullable = false)
+    private Boolean pickupTokenUsed = false;
+
     @Enumerated(EnumType.STRING)
     @Column(name = "order_status", nullable = false)
     private OrderStatus orderStatus = OrderStatus.PENDING;

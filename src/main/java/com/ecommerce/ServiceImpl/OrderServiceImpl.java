@@ -830,4 +830,9 @@ public class OrderServiceImpl implements OrderService {
     public Order getOrderByPickupToken(String pickupToken) {
         return orderRepository.findByPickupToken(pickupToken).orElse(null);
     }
+
+    @Override
+    public Order saveOrder(Order order) {
+        return orderRepository.save(order);
+    }
 }

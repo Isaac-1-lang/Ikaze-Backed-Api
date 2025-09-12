@@ -6,6 +6,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -50,4 +51,9 @@ public interface ReadyForDeliveryGroupService {
     DeliveryGroupDto finishDelivery(Long groupId, UUID agentId);
 
     OrderDTO getOrderDetailsForAgent(Long orderId, UUID agentId);
+
+    // New delivery start/finish methods
+    Map<String, Object> startDelivery(Long groupId);
+
+    Map<String, Object> finishDelivery(Long groupId);
 }

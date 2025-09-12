@@ -7,6 +7,7 @@ import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 import com.fasterxml.jackson.annotation.JsonManagedReference;
+import com.fasterxml.jackson.annotation.JsonBackReference;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -64,6 +65,11 @@ public class ProductVariant {
     @OneToMany(mappedBy = "productVariant", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
     @JsonManagedReference
     private java.util.List<Stock> stocks;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "discount_id")
+    @JsonBackReference
+    private Discount discount;
 
     @Column(name = "created_at")
     private LocalDateTime createdAt;
@@ -132,6 +138,59 @@ public class ProductVariant {
         return name.toString();
     }
 
+    /**
+     * Gets the discounted price for this variant
+     * Priority: Variant discount > Product discount > Sale percentage
+     * 
+     * @return The discounted price
+     */
+    public BigDecimal getDiscountedPrice() {
+        // First check if variant has its own discount
+        if (discount != null && discount.isValid()) {
+            BigDecimal discountMultiplier = BigDecimal.ONE.subtract(
+                    discount.getPercentage().divide(BigDecimal.valueOf(100.0)));
+            return price.multiply(discountMultiplier);
+        }
+
+        // Then check if parent product has discount
+        if (product != null && product.getDiscount() != null && product.getDiscount().isValid()) {
+            BigDecimal discountMultiplier = BigDecimal.ONE.subtract(
+                    product.getDiscount().getPercentage().divide(BigDecimal.valueOf(100.0)));
+            return price.multiply(discountMultiplier);
+        }
+
+        // Finally check if product is on sale
+        if (product != null && product.isOnSale() && product.getSalePercentage() != null
+                && product.getSalePercentage() > 0) {
+            BigDecimal discountMultiplier = BigDecimal.ONE.subtract(
+                    BigDecimal.valueOf(product.getSalePercentage()).divide(BigDecimal.valueOf(100.0)));
+            return price.multiply(discountMultiplier);
+        }
+
+        return price;
+    }
+
+    /**
+     * Gets the discount amount for this variant
+     * 
+     * @return The discount amount
+     */
+    public BigDecimal getDiscountAmount() {
+        return price.subtract(getDiscountedPrice());
+    }
+
+    /**
+     * Checks if this variant has any active discount
+     * 
+     * @return true if variant has active discount
+     */
+    public boolean hasActiveDiscount() {
+        return (discount != null && discount.isValid()) ||
+                (product != null && product.getDiscount() != null && product.getDiscount().isValid()) ||
+                (product != null && product.isOnSale() && product.getSalePercentage() != null
+                        && product.getSalePercentage() > 0);
+    }
+
     public Product getProduct() {
         return product;
     }
@@ -195,5 +254,23 @@ public class ProductVariant {
      */
     public void setId(Long id) {
         this.id = id;
+    }
+
+    /**
+     * Gets the discount
+     * 
+     * @return The discount
+     */
+    public Discount getDiscount() {
+        return discount;
+    }
+
+    /**
+     * Sets the discount
+     * 
+     * @param discount The discount to set
+     */
+    public void setDiscount(Discount discount) {
+        this.discount = discount;
     }
 }

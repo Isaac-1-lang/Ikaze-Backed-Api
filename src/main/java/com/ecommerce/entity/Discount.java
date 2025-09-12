@@ -58,7 +58,6 @@ public class Discount {
 
     @Column(name = "used_count")
     private Integer usedCount = 0;
-
     @Column(name = "minimum_amount", precision = 10, scale = 2)
     private BigDecimal minimumAmount;
 
@@ -81,8 +80,6 @@ public class Discount {
 
     public enum DiscountType {
         PERCENTAGE,
-        FIXED_AMOUNT,
-        BUY_ONE_GET_ONE,
         FREE_SHIPPING
     }
 

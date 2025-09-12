@@ -171,14 +171,18 @@ public class Product {
     }
 
     public BigDecimal getDiscountedPrice() {
-        // First check if there's a valid discount entity associated
+        // If product has variants, return the base price (variants handle their own
+        // discounts)
+        if (variants != null && !variants.isEmpty()) {
+            return price; // Variants will handle their own discount logic
+        }
+
+        // For products without variants, apply discount logic
         if (discount != null && discount.isValid()) {
             BigDecimal discountMultiplier = BigDecimal.ONE.subtract(
                     discount.getPercentage().divide(BigDecimal.valueOf(100.0)));
             return price.multiply(discountMultiplier);
-        }
-        // Fall back to the legacy discount method
-        else if (isOnSale && salePercentage != null && salePercentage > 0) {
+        } else if (isOnSale && salePercentage != null && salePercentage > 0) {
             BigDecimal discountMultiplier = BigDecimal.ONE.subtract(
                     BigDecimal.valueOf(salePercentage).divide(BigDecimal.valueOf(100.0)));
             return price.multiply(discountMultiplier);
@@ -188,6 +192,26 @@ public class Product {
 
     public BigDecimal getDiscountAmount() {
         return price.subtract(getDiscountedPrice());
+    }
+
+    /**
+     * Checks if this product has variants
+     * 
+     * @return true if product has variants
+     */
+    public boolean hasVariants() {
+        return variants != null && !variants.isEmpty();
+    }
+
+    /**
+     * Checks if this product has any active discount (either direct discount or
+     * sale)
+     * 
+     * @return true if product has active discount
+     */
+    public boolean hasActiveDiscount() {
+        return (discount != null && discount.isValid()) ||
+                (isOnSale && salePercentage != null && salePercentage > 0);
     }
 
     public String getDescription() {

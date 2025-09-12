@@ -3,6 +3,9 @@ package com.ecommerce.repository;
 import com.ecommerce.entity.Product;
 import com.ecommerce.entity.Category;
 import com.ecommerce.entity.Brand;
+import com.ecommerce.entity.Discount;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import org.springframework.data.jpa.repository.Query;
@@ -45,4 +48,9 @@ public interface ProductRepository extends JpaRepository<Product, UUID>, JpaSpec
                         "WHERE pd.metaKeywords IS NOT NULL " +
                         "AND LOWER(pd.metaKeywords) LIKE LOWER(CONCAT('%', :query, '%'))")
         List<String> findDistinctMetaKeywordsByQuery(@Param("query") String query);
+
+        @Query("SELECT p FROM Product p WHERE CAST(p.productId AS string) = :productId")
+        Optional<Product> findByProductId(@Param("productId") String productId);
+
+        Page<Product> findByDiscount(Discount discount, Pageable pageable);
 }

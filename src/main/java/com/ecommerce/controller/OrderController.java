@@ -484,6 +484,7 @@ public class OrderController {
                 order.getUser() != null && order.getUser().getId() != null ? order.getUser().getId().toString() : null);
         dto.setOrderNumber(order.getOrderCode());
         dto.setPickupToken(order.getPickupToken());
+        dto.setPickupTokenUsed(order.getPickupTokenUsed());
         dto.setStatus(order.getOrderStatus() != null ? order.getOrderStatus().name() : null);
         dto.setCreatedAt(order.getCreatedAt());
         dto.setUpdatedAt(order.getUpdatedAt());
@@ -647,6 +648,74 @@ public class OrderController {
             Map<String, Object> response = new HashMap<>();
             response.put("success", false);
             response.put("message", "An unexpected error occurred while tracking order.");
+            response.put("errorCode", "INTERNAL_ERROR");
+            response.put("details", e.getMessage());
+            return ResponseEntity.internalServerError().body(response);
+        }
+    }
+
+    /**
+     * Verify delivery by pickup token (delivery agent only)
+     */
+    @PostMapping("/delivery/verify/{pickupToken}")
+    @PreAuthorize("hasRole('DELIVERY_AGENT')")
+    @Operation(summary = "Verify delivery by pickup token", description = "Delivery agent endpoint to verify and mark order as delivered", responses = {
+            @ApiResponse(responseCode = "200", description = "Delivery verified successfully"),
+            @ApiResponse(responseCode = "400", description = "Invalid pickup token or order already delivered"),
+            @ApiResponse(responseCode = "404", description = "Order not found"),
+            @ApiResponse(responseCode = "500", description = "Internal server error")
+    })
+    public ResponseEntity<?> verifyDelivery(@PathVariable String pickupToken) {
+        try {
+            Order order = orderService.getOrderByPickupToken(pickupToken);
+            if (order == null) {
+                Map<String, Object> response = new HashMap<>();
+                response.put("success", false);
+                response.put("message", "Order not found");
+                response.put("errorCode", "NOT_FOUND");
+                response.put("details", "No order found with pickup token: " + pickupToken);
+                return ResponseEntity.status(HttpStatus.NOT_FOUND).body(response);
+            }
+
+            // Check if order is already delivered
+            if (order.getOrderStatus() == Order.OrderStatus.DELIVERED) {
+                Map<String, Object> response = new HashMap<>();
+                response.put("success", false);
+                response.put("message", "Order already delivered");
+                response.put("errorCode", "ALREADY_DELIVERED");
+                response.put("details", "This order has already been marked as delivered");
+                return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(response);
+            }
+
+            // Check if pickup token is already used
+            if (Boolean.TRUE.equals(order.getPickupTokenUsed())) {
+                Map<String, Object> response = new HashMap<>();
+                response.put("success", false);
+                response.put("message", "Pickup token already used");
+                response.put("errorCode", "TOKEN_USED");
+                response.put("details", "This pickup token has already been used for delivery verification");
+                return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(response);
+            }
+
+            // Mark order as delivered and token as used
+            order.setOrderStatus(Order.OrderStatus.DELIVERED);
+            order.setPickupTokenUsed(true);
+            orderService.saveOrder(order);
+
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", true);
+            response.put("message", "Delivery verified successfully");
+            response.put("data", Map.of(
+                    "orderId", order.getOrderId(),
+                    "orderCode", order.getOrderCode(),
+                    "status", order.getOrderStatus().name(),
+                    "pickupTokenUsed", order.getPickupTokenUsed()));
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            log.error("Failed to verify delivery for token: {}", pickupToken, e);
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", false);
+            response.put("message", "An unexpected error occurred while verifying delivery.");
             response.put("errorCode", "INTERNAL_ERROR");
             response.put("details", e.getMessage());
             return ResponseEntity.internalServerError().body(response);
