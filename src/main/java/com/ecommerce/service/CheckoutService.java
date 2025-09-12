@@ -21,16 +21,13 @@ import com.ecommerce.entity.OrderTransaction;
 import com.ecommerce.entity.Product;
 import com.ecommerce.entity.ProductVariant;
 import com.ecommerce.entity.User;
-import com.ecommerce.entity.Discount;
 import com.ecommerce.repository.OrderRepository;
 import com.ecommerce.repository.OrderTransactionRepository;
 import com.ecommerce.repository.ProductRepository;
 import com.ecommerce.repository.ProductVariantRepository;
 import com.ecommerce.repository.UserRepository;
-import com.ecommerce.repository.DiscountRepository;
 import com.stripe.model.PaymentIntent;
 import com.stripe.model.checkout.Session;
-import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.core.userdetails.UserDetails;
@@ -104,7 +101,7 @@ public class CheckoutService {
                                 () -> new EntityNotFoundException("Variant not found with ID: " + ci.getVariantId()));
 
                 oi.setProductVariant(variant);
-                itemPrice = variant.getPrice();
+                itemPrice = variant.getDiscountedPrice(); // Use variant's discounted price
             } else if (ci.getProductId() != null) {
                 Product product = productRepository.findById(ci.getProductId())
                         .orElseThrow(
@@ -190,7 +187,7 @@ public class CheckoutService {
                                 () -> new EntityNotFoundException("Variant not found with ID: " + ci.getVariantId()));
 
                 oi.setProductVariant(variant);
-                itemPrice = variant.getPrice();
+                itemPrice = variant.getDiscountedPrice(); // Use variant's discounted price
                 log.info("Set productVariant for guest OrderItem: {}", oi.getDebugInfo());
             } else if (ci.getProductId() != null) {
                 Product product = productRepository.findById(ci.getProductId())
@@ -409,8 +406,9 @@ public class CheckoutService {
                                     () -> new EntityNotFoundException(
                                             "Variant not found with ID: " + item.getVariantId()));
                     originalPrice = variant.getPrice();
-                    itemPrice = originalPrice;
-                    log.info("Found variant: {}, price: {}", variant.getId(), originalPrice);
+                    itemPrice = variant.getDiscountedPrice(); // Use variant's discounted price
+                    log.info("Found variant: {}, originalPrice: {}, discountedPrice: {}",
+                            variant.getId(), originalPrice, itemPrice);
                 } catch (Exception e) {
                     log.error("Error finding variant {}: {}", item.getVariantId(), e.getMessage());
                     throw new EntityNotFoundException("Variant not found with ID: " + item.getVariantId());

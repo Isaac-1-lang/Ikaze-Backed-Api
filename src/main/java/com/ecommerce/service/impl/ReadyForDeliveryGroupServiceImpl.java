@@ -540,19 +540,33 @@ public class ReadyForDeliveryGroupServiceImpl implements ReadyForDeliveryGroupSe
                 .map(item -> {
                     OrderItemDTO dto = new OrderItemDTO();
                     dto.setId(item.getOrderItemId().toString());
-                    dto.setProductId(item.getProduct().getProductId().toString());
                     dto.setQuantity(item.getQuantity());
                     dto.setPrice(item.getPrice());
                     dto.setTotalPrice(item.getPrice().multiply(java.math.BigDecimal.valueOf(item.getQuantity())));
 
                     SimpleProductDTO productDto = new SimpleProductDTO();
-                    productDto.setProductId(item.getProduct().getProductId().toString());
-                    productDto.setName(item.getProduct().getProductName());
-                    productDto.setImages(item.getProduct().getImages().stream()
-                            .map(img -> img.getImageUrl())
-                            .toArray(String[]::new));
-                    dto.setProduct(productDto);
 
+                    // Handle variant-based items
+                    if (item.getProductVariant() != null) {
+                        dto.setVariantId(item.getProductVariant().getId().toString());
+                        dto.setProductId(item.getProductVariant().getProduct().getProductId().toString());
+                        productDto.setProductId(item.getProductVariant().getProduct().getProductId().toString());
+                        productDto.setName(item.getProductVariant().getProduct().getProductName() +
+                                " - " + item.getProductVariant().getVariantName());
+                        productDto.setImages(item.getProductVariant().getProduct().getImages().stream()
+                                .map(img -> img.getImageUrl())
+                                .toArray(String[]::new));
+                    } else if (item.getProduct() != null) {
+                        // Handle regular product items
+                        dto.setProductId(item.getProduct().getProductId().toString());
+                        productDto.setProductId(item.getProduct().getProductId().toString());
+                        productDto.setName(item.getProduct().getProductName());
+                        productDto.setImages(item.getProduct().getImages().stream()
+                                .map(img -> img.getImageUrl())
+                                .toArray(String[]::new));
+                    }
+
+                    dto.setProduct(productDto);
                     return dto;
                 })
                 .collect(java.util.stream.Collectors.toList());
