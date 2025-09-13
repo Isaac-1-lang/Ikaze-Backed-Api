@@ -230,6 +230,52 @@ public class DiscountController {
         }
     }
 
+    @GetMapping("/active")
+    public ResponseEntity<Map<String, Object>> getActiveDiscounts() {
+        try {
+            log.info("Fetching active discounts");
+
+            List<Discount> activeDiscounts = discountRepository.findActiveAndValidDiscounts(LocalDateTime.now());
+
+            List<Map<String, Object>> discountData = activeDiscounts.stream()
+                    .map(discount -> {
+                        Map<String, Object> discountInfo = new HashMap<>();
+                        discountInfo.put("discountId", discount.getDiscountId().toString());
+                        discountInfo.put("name", discount.getName());
+                        discountInfo.put("description", discount.getDescription());
+                        discountInfo.put("percentage", discount.getPercentage());
+                        discountInfo.put("discountCode", discount.getDiscountCode());
+                        discountInfo.put("startDate", discount.getStartDate());
+                        discountInfo.put("endDate", discount.getEndDate());
+                        discountInfo.put("usageLimit", discount.getUsageLimit());
+                        discountInfo.put("usedCount", discount.getUsedCount());
+                        discountInfo.put("isActive", discount.isActive());
+                        discountInfo.put("isValid", discount.isValid());
+
+                        // Count products with this discount
+                        long productCount = productRepository.countByDiscount(discount) +
+                                productVariantRepository.countByDiscount(discount);
+                        discountInfo.put("productCount", productCount);
+
+                        return discountInfo;
+                    })
+                    .collect(Collectors.toList());
+
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", true);
+            response.put("data", discountData);
+            response.put("total", discountData.size());
+
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            log.error("Error fetching active discounts: {}", e.getMessage());
+            Map<String, Object> errorResponse = new HashMap<>();
+            errorResponse.put("success", false);
+            errorResponse.put("message", "Failed to fetch active discounts");
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(errorResponse);
+        }
+    }
+
     @GetMapping("/{discountId}/products")
     @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<Map<String, Object>> getProductsByDiscount(@PathVariable String discountId) {

@@ -72,13 +72,13 @@ public class CategoryController {
             @RequestParam(defaultValue = "10") int size,
             @RequestParam(defaultValue = "name") String sortBy,
             @RequestParam(defaultValue = "asc") String sortDir) {
-        
-        Sort sort = sortDir.equalsIgnoreCase(Sort.Direction.ASC.name()) ?
-                Sort.by(sortBy).ascending() : Sort.by(sortBy).descending();
-        
+
+        Sort sort = sortDir.equalsIgnoreCase(Sort.Direction.ASC.name()) ? Sort.by(sortBy).ascending()
+                : Sort.by(sortBy).descending();
+
         Pageable pageable = PageRequest.of(page, size, sort);
         Page<CategoryDTO> categories = categoryService.getAllCategories(pageable);
-        
+
         return ResponseEntity.ok(categories);
     }
 
@@ -87,6 +87,18 @@ public class CategoryController {
     public ResponseEntity<List<CategoryDTO>> getTopLevelCategories() {
         List<CategoryDTO> topLevelCategories = categoryService.getTopLevelCategories();
         return ResponseEntity.ok(topLevelCategories);
+    }
+
+    @GetMapping("/navigation")
+    @Operation(summary = "Get categories for navigation", description = "Retrieve categories for header navigation with pagination")
+    public ResponseEntity<Page<CategoryDTO>> getCategoriesForNavigation(
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "10") int size) {
+
+        Pageable pageable = PageRequest.of(page, size, Sort.by("name").ascending());
+        Page<CategoryDTO> categories = categoryService.getAllCategories(pageable);
+
+        return ResponseEntity.ok(categories);
     }
 
     @GetMapping("/sub-categories/{parentId}")
@@ -98,11 +110,12 @@ public class CategoryController {
 
     @PostMapping("/search")
     @Operation(summary = "Search categories", description = "Search for categories with multiple criteria and pagination")
-    public ResponseEntity<Page<CategoryDTO>> searchCategories(@RequestBody(required = false) CategorySearchDTO searchDTO) {
+    public ResponseEntity<Page<CategoryDTO>> searchCategories(
+            @RequestBody(required = false) CategorySearchDTO searchDTO) {
         if (searchDTO == null) {
             searchDTO = new CategorySearchDTO();
         }
-        
+
         Page<CategoryDTO> categories = categoryService.searchCategories(searchDTO);
         return ResponseEntity.ok(categories);
     }

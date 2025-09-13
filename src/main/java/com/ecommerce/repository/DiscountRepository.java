@@ -34,4 +34,7 @@ public interface DiscountRepository extends JpaRepository<Discount, UUID> {
 
         @Query("SELECT d FROM Discount d WHERE CAST(d.discountId AS string) = :discountId")
         Optional<Discount> findByDiscountId(@Param("discountId") String discountId);
+
+        @Query("SELECT d FROM Discount d WHERE d.isActive = true AND d.startDate <= :now AND (d.endDate IS NULL OR d.endDate >= :now)")
+        List<Discount> findActiveAndValidDiscounts(@Param("now") LocalDateTime now);
 }

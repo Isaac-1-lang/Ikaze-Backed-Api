@@ -53,4 +53,6 @@ public interface ProductRepository extends JpaRepository<Product, UUID>, JpaSpec
         Optional<Product> findByProductId(@Param("productId") String productId);
 
         Page<Product> findByDiscount(Discount discount, Pageable pageable);
+
+        long countByDiscount(Discount discount);
 }
