@@ -363,4 +363,21 @@ public class ProductController {
         errorResponse.put("timestamp", System.currentTimeMillis());
         return errorResponse;
     }
+
+    @GetMapping("/test-elasticsearch")
+    @Operation(summary = "Test Elasticsearch connection", description = "Test endpoint to verify Elasticsearch integration")
+    public ResponseEntity<?> testElasticsearch() {
+        try {
+            List<Map<String, Object>> suggestions = productService.getSearchSuggestions("test");
+            return ResponseEntity.ok(Map.of(
+                    "status", "success",
+                    "message", "Elasticsearch integration working",
+                    "suggestions_count", suggestions.size()));
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(Map.of(
+                            "status", "error",
+                            "message", "Elasticsearch integration failed: " + e.getMessage()));
+        }
+    }
 }

@@ -55,4 +55,34 @@ public interface ProductRepository extends JpaRepository<Product, UUID>, JpaSpec
         Page<Product> findByDiscount(Discount discount, Pageable pageable);
 
         long countByDiscount(Discount discount);
+
+        List<Product> findByProductIdInOrderByCreatedAtDesc(List<UUID> productIds);
+
+        Page<Product> findByProductNameContainingIgnoreCaseOrShortDescriptionContainingIgnoreCase(
+                        String productName, String shortDescription, Pageable pageable);
+
+        @Query("SELECT p FROM Product p LEFT JOIN p.productDetail pd " +
+                        "WHERE (LOWER(p.productName) LIKE LOWER(CONCAT('%', :searchTerm, '%')) " +
+                        "OR LOWER(p.shortDescription) LIKE LOWER(CONCAT('%', :searchTerm, '%')) " +
+                        "OR LOWER(p.sku) LIKE LOWER(CONCAT('%', :searchTerm, '%')) " +
+                        "OR LOWER(p.barcode) LIKE LOWER(CONCAT('%', :searchTerm, '%')) " +
+                        "OR LOWER(p.slug) LIKE LOWER(CONCAT('%', :searchTerm, '%')) " +
+                        "OR LOWER(pd.description) LIKE LOWER(CONCAT('%', :searchTerm, '%')) " +
+                        "OR LOWER(pd.metaDescription) LIKE LOWER(CONCAT('%', :searchTerm, '%')) " +
+                        "OR LOWER(pd.metaKeywords) LIKE LOWER(CONCAT('%', :searchTerm, '%')) " +
+                        "OR LOWER(pd.searchKeywords) LIKE LOWER(CONCAT('%', :searchTerm, '%'))) " +
+                        "AND p.isActive = true")
+        Page<Product> findProductsByComprehensiveSearch(@Param("searchTerm") String searchTerm, Pageable pageable);
+
+        // Method to find products with comma-separated keyword matching
+        @Query("SELECT DISTINCT p FROM Product p LEFT JOIN p.productDetail pd " +
+                        "WHERE p.isActive = true " +
+                        "AND (LOWER(p.productName) LIKE LOWER(CONCAT('%', :searchTerm, '%')) " +
+                        "OR LOWER(p.shortDescription) LIKE LOWER(CONCAT('%', :searchTerm, '%')) " +
+                        "OR LOWER(p.sku) LIKE LOWER(CONCAT('%', :searchTerm, '%')) " +
+                        "OR LOWER(p.barcode) LIKE LOWER(CONCAT('%', :searchTerm, '%')) " +
+                        "OR LOWER(p.slug) LIKE LOWER(CONCAT('%', :searchTerm, '%')) " +
+                        "OR LOWER(pd.description) LIKE LOWER(CONCAT('%', :searchTerm, '%')) " +
+                        "OR LOWER(pd.metaDescription) LIKE LOWER(CONCAT('%', :searchTerm, '%')))")
+        List<Product> findProductsForKeywordSearch(@Param("searchTerm") String searchTerm);
 }
