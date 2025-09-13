@@ -25,22 +25,15 @@ public class UpdateDiscountDTO {
     @Size(max = 50, message = "Discount code cannot exceed 50 characters")
     private String discountCode;
 
-    @Future(message = "Start date must be in the future")
     private LocalDateTime startDate;
 
-    @Future(message = "End date must be in the future")
+    @Future(message = "End date must be today or in the future")
     private LocalDateTime endDate;
 
     private Boolean isActive;
 
     @Min(value = 1, message = "Usage limit must be at least 1")
     private Integer usageLimit;
-
-    @DecimalMin(value = "0.0", message = "Minimum amount must be at least 0")
-    private BigDecimal minimumAmount;
-
-    @DecimalMin(value = "0.0", message = "Maximum amount must be at least 0")
-    private BigDecimal maximumAmount;
 
     private String discountType;
 }

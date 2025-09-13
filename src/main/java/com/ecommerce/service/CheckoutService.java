@@ -13,6 +13,7 @@ import com.ecommerce.dto.CartItemDTO;
 import com.ecommerce.dto.CheckoutRequest;
 import com.ecommerce.dto.CheckoutVerificationResult;
 import com.ecommerce.dto.GuestCheckoutRequest;
+import com.ecommerce.entity.Discount;
 import com.ecommerce.entity.Order;
 import com.ecommerce.entity.OrderCustomerInfo;
 import com.ecommerce.entity.OrderInfo;
@@ -26,6 +27,7 @@ import com.ecommerce.repository.OrderTransactionRepository;
 import com.ecommerce.repository.ProductRepository;
 import com.ecommerce.repository.ProductVariantRepository;
 import com.ecommerce.repository.UserRepository;
+import com.ecommerce.repository.DiscountRepository;
 import com.stripe.model.PaymentIntent;
 import com.stripe.model.checkout.Session;
 import org.springframework.security.core.Authentication;
@@ -47,6 +49,7 @@ public class CheckoutService {
     private final ProductVariantRepository variantRepository;
     private final OrderTransactionRepository transactionRepository;
     private final UserRepository userRepository;
+    private final DiscountRepository discountRepository;
     private final StripeService stripeService;
     private final StockLockService stockLockService;
     private final MultiWarehouseStockAllocator multiWarehouseStockAllocator;
@@ -101,14 +104,14 @@ public class CheckoutService {
                                 () -> new EntityNotFoundException("Variant not found with ID: " + ci.getVariantId()));
 
                 oi.setProductVariant(variant);
-                itemPrice = variant.getDiscountedPrice(); // Use variant's discounted price
+                itemPrice = calculateDiscountedPrice(variant);
             } else if (ci.getProductId() != null) {
                 Product product = productRepository.findById(ci.getProductId())
                         .orElseThrow(
                                 () -> new EntityNotFoundException("Product not found with ID: " + ci.getProductId()));
 
                 oi.setProduct(product);
-                itemPrice = product.getDiscountedPrice();
+                itemPrice = calculateDiscountedPrice(product);
             } else {
                 throw new IllegalArgumentException("Cart item must have either productId or variantId");
             }
@@ -187,7 +190,7 @@ public class CheckoutService {
                                 () -> new EntityNotFoundException("Variant not found with ID: " + ci.getVariantId()));
 
                 oi.setProductVariant(variant);
-                itemPrice = variant.getDiscountedPrice(); // Use variant's discounted price
+                itemPrice = calculateDiscountedPrice(variant);
                 log.info("Set productVariant for guest OrderItem: {}", oi.getDebugInfo());
             } else if (ci.getProductId() != null) {
                 Product product = productRepository.findById(ci.getProductId())
@@ -195,7 +198,7 @@ public class CheckoutService {
                                 () -> new EntityNotFoundException("Product not found with ID: " + ci.getProductId()));
 
                 oi.setProduct(product);
-                itemPrice = product.getDiscountedPrice();
+                itemPrice = calculateDiscountedPrice(product);
                 log.info("Set product for guest OrderItem: {}", oi.getDebugInfo());
             } else {
                 throw new IllegalArgumentException("Cart item must have either productId or variantId");
@@ -294,6 +297,8 @@ public class CheckoutService {
         }
         orderRepository.save(order);
         stockLockService.confirmStock(sessionId);
+
+        updateDiscountUsage(order);
 
         if (order.getUser() != null) {
             int totalProductCount = order.getOrderItems().stream()
@@ -406,7 +411,12 @@ public class CheckoutService {
                                     () -> new EntityNotFoundException(
                                             "Variant not found with ID: " + item.getVariantId()));
                     originalPrice = variant.getPrice();
-                    itemPrice = variant.getDiscountedPrice(); // Use variant's discounted price
+
+                    if (variant.getDiscount() != null) {
+                        validateDiscountValidity(variant.getDiscount());
+                    }
+
+                    itemPrice = calculateDiscountedPrice(variant);
                     log.info("Found variant: {}, originalPrice: {}, discountedPrice: {}",
                             variant.getId(), originalPrice, itemPrice);
                 } catch (Exception e) {
@@ -420,7 +430,12 @@ public class CheckoutService {
                                     () -> new EntityNotFoundException(
                                             "Product not found with ID: " + item.getProductId()));
                     originalPrice = product.getPrice();
-                    itemPrice = product.getDiscountedPrice();
+
+                    if (product.getDiscount() != null) {
+                        validateDiscountValidity(product.getDiscount());
+                    }
+
+                    itemPrice = calculateDiscountedPrice(product);
                     log.info("Found product: {}, originalPrice: {}, discountedPrice: {}",
                             product.getProductId(), originalPrice, itemPrice);
                 } catch (Exception e) {
@@ -512,5 +527,109 @@ public class CheckoutService {
             log.error("Error getting current user ID: {}", e.getMessage(), e);
         }
         return null;
+    }
+
+    private void updateDiscountUsage(Order order) {
+        log.info("Updating discount usage for order: {}", order.getOrderId());
+
+        for (OrderItem item : order.getOrderItems()) {
+            if (item.isVariantBased() && item.getProductVariant() != null) {
+                ProductVariant variant = item.getProductVariant();
+                if (variant.getDiscount() != null) {
+                    Discount discount = variant.getDiscount();
+                    discount.incrementUsage();
+
+                    if (discount.getUsageLimit() != null && discount.getUsedCount() >= discount.getUsageLimit()) {
+                        discount.setActive(false);
+                        log.info("Discount {} reached usage limit and has been disabled", discount.getDiscountId());
+                    }
+
+                    discountRepository.save(discount);
+                    log.info("Incremented usage for variant discount: {} (used: {}/{})",
+                            discount.getDiscountId(), discount.getUsedCount(), discount.getUsageLimit());
+                }
+            } else if (item.getProduct() != null) {
+                Product product = item.getProduct();
+                if (product.getDiscount() != null) {
+                    Discount discount = product.getDiscount();
+                    discount.incrementUsage();
+
+                    if (discount.getUsageLimit() != null && discount.getUsedCount() >= discount.getUsageLimit()) {
+                        discount.setActive(false);
+                        log.info("Discount {} reached usage limit and has been disabled", discount.getDiscountId());
+                    }
+
+                    discountRepository.save(discount);
+                    log.info("Incremented usage for product discount: {} (used: {}/{})",
+                            discount.getDiscountId(), discount.getUsedCount(), discount.getUsageLimit());
+                }
+            }
+        }
+    }
+
+    private BigDecimal calculateDiscountedPrice(ProductVariant variant) {
+        if (variant.getDiscount() != null && variant.getDiscount().isValid() && variant.getDiscount().isActive()) {
+            validateDiscountValidity(variant.getDiscount());
+            BigDecimal discountMultiplier = BigDecimal.ONE.subtract(
+                    variant.getDiscount().getPercentage().divide(BigDecimal.valueOf(100.0)));
+            return variant.getPrice().multiply(discountMultiplier);
+        }
+
+        if (variant.getProduct() != null && variant.getProduct().getDiscount() != null
+                && variant.getProduct().getDiscount().isValid() && variant.getProduct().getDiscount().isActive()) {
+            validateDiscountValidity(variant.getProduct().getDiscount());
+            BigDecimal discountMultiplier = BigDecimal.ONE.subtract(
+                    variant.getProduct().getDiscount().getPercentage().divide(BigDecimal.valueOf(100.0)));
+            return variant.getPrice().multiply(discountMultiplier);
+        }
+
+        if (variant.getProduct() != null && variant.getProduct().isOnSale()
+                && variant.getProduct().getSalePercentage() != null
+                && variant.getProduct().getSalePercentage() > 0) {
+            BigDecimal discountMultiplier = BigDecimal.ONE.subtract(
+                    BigDecimal.valueOf(variant.getProduct().getSalePercentage()).divide(BigDecimal.valueOf(100.0)));
+            return variant.getPrice().multiply(discountMultiplier);
+        }
+
+        return variant.getPrice();
+    }
+
+    private BigDecimal calculateDiscountedPrice(Product product) {
+        if (product.getDiscount() != null && product.getDiscount().isValid() && product.getDiscount().isActive()) {
+            validateDiscountValidity(product.getDiscount());
+            BigDecimal discountMultiplier = BigDecimal.ONE.subtract(
+                    product.getDiscount().getPercentage().divide(BigDecimal.valueOf(100.0)));
+            return product.getPrice().multiply(discountMultiplier);
+        }
+
+        if (product.isOnSale() && product.getSalePercentage() != null && product.getSalePercentage() > 0) {
+            BigDecimal discountMultiplier = BigDecimal.ONE.subtract(
+                    BigDecimal.valueOf(product.getSalePercentage()).divide(BigDecimal.valueOf(100.0)));
+            return product.getPrice().multiply(discountMultiplier);
+        }
+
+        return product.getPrice();
+    }
+
+    private void validateDiscountValidity(com.ecommerce.entity.Discount discount) {
+        LocalDateTime now = LocalDateTime.now();
+
+        if (!discount.isActive()) {
+            throw new IllegalStateException("Discount is not active: " + discount.getDiscountId());
+        }
+
+        if (now.isBefore(discount.getStartDate())) {
+            throw new IllegalStateException("Discount has not started yet: " + discount.getDiscountId());
+        }
+
+        if (discount.getEndDate() != null && now.isAfter(discount.getEndDate())) {
+            throw new IllegalStateException("Discount has expired: " + discount.getDiscountId());
+        }
+
+        if (discount.getUsageLimit() != null && discount.getUsedCount() >= discount.getUsageLimit()) {
+            throw new IllegalStateException("Discount usage limit exceeded: " + discount.getDiscountId());
+        }
+
+        log.info("Discount validation passed for: {}", discount.getDiscountId());
     }
 }

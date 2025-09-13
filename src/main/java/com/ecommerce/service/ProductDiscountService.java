@@ -1,5 +1,7 @@
 package com.ecommerce.service;
 
+import com.ecommerce.dto.AssignDiscountRequest;
+import com.ecommerce.dto.RemoveDiscountRequest;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 
@@ -8,13 +10,9 @@ import java.util.Map;
 
 public interface ProductDiscountService {
 
-    void assignDiscountToProduct(String productId, String discountId);
+    void assignDiscount(AssignDiscountRequest request);
 
-    void assignDiscountToVariants(List<String> variantIds, String discountId);
-
-    void removeDiscountFromProduct(String productId);
-
-    void removeDiscountFromVariants(List<String> variantIds);
+    void removeDiscount(RemoveDiscountRequest request);
 
     Page<Map<String, Object>> getProductsByDiscount(String discountId, Pageable pageable);
 

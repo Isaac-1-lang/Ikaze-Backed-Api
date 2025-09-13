@@ -171,13 +171,6 @@ public class Product {
     }
 
     public BigDecimal getDiscountedPrice() {
-        // If product has variants, return the base price (variants handle their own
-        // discounts)
-        if (variants != null && !variants.isEmpty()) {
-            return price; // Variants will handle their own discount logic
-        }
-
-        // For products without variants, apply discount logic
         if (discount != null && discount.isValid()) {
             BigDecimal discountMultiplier = BigDecimal.ONE.subtract(
                     discount.getPercentage().divide(BigDecimal.valueOf(100.0)));

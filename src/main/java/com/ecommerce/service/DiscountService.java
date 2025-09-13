@@ -3,8 +3,10 @@ package com.ecommerce.service;
 import com.ecommerce.dto.CreateDiscountDTO;
 import com.ecommerce.dto.DiscountDTO;
 import com.ecommerce.dto.UpdateDiscountDTO;
+import com.ecommerce.entity.Discount;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import java.util.List;
 import java.util.UUID;
 
 public interface DiscountService {
@@ -26,4 +28,8 @@ public interface DiscountService {
     boolean isDiscountValid(UUID discountId);
 
     boolean isDiscountCodeValid(String discountCode);
+
+    List<Discount> getAllDiscountEntities();
+
+    void saveAllDiscounts(List<Discount> discounts);
 }
