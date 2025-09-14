@@ -1022,7 +1022,6 @@ public class ProductServiceImpl implements ProductService {
         try {
             log.info("Searching products with criteria: {}", searchDTO);
 
-            // Create a Pageable object from the search DTO
             int page = searchDTO.getPage() != null ? searchDTO.getPage() : 0;
             int size = searchDTO.getSize() != null ? searchDTO.getSize() : 10;
             String sortBy = searchDTO.getSortBy() != null ? searchDTO.getSortBy() : "createdAt";
@@ -1032,15 +1031,21 @@ public class ProductServiceImpl implements ProductService {
                     (searchDTO.getSearchKeyword() != null && !searchDTO.getSearchKeyword().trim().isEmpty());
 
             if (isTextSearch) {
-                // Use Elasticsearch for text search
                 return searchProductsWithElasticsearch(searchDTO, page, size, sortBy, sortDirection);
             } else {
-                // Use JPA Specification for other filters
                 Sort.Direction direction = sortDirection.equalsIgnoreCase("asc") ? Sort.Direction.ASC
                         : Sort.Direction.DESC;
                 Pageable pageable = PageRequest.of(page, size, Sort.by(direction, sortBy));
                 Specification<Product> spec = buildProductSearchSpecification(searchDTO);
                 Page<Product> productPage = productRepository.findAll(spec, pageable);
+
+                // Apply rating filter if specified
+                List<Product> filteredProducts = productPage.getContent();
+                if (searchDTO.getAverageRatingMin() != null || searchDTO.getAverageRatingMax() != null) {
+                    filteredProducts = applyRatingFilter(filteredProducts, searchDTO.getAverageRatingMin(),
+                            searchDTO.getAverageRatingMax());
+                }
+
                 Page<ManyProductsDto> result = productPage.map(this::mapProductToManyProductsDto);
                 log.info("Search completed. Found {} products matching criteria", result.getTotalElements());
                 return result;
@@ -1589,13 +1594,13 @@ public class ProductServiceImpl implements ProductService {
 
             if (searchDTO.getIsFeatured() != null) {
 
-                predicates.add(criteriaBuilder.equal(root.get("featured"), searchDTO.getIsFeatured()));
+                predicates.add(criteriaBuilder.equal(root.get("isFeatured"), searchDTO.getIsFeatured()));
 
             }
 
             if (searchDTO.getIsBestseller() != null) {
 
-                predicates.add(criteriaBuilder.equal(root.get("bestseller"), searchDTO.getIsBestseller()));
+                predicates.add(criteriaBuilder.equal(root.get("isBestseller"), searchDTO.getIsBestseller()));
 
             }
 
@@ -1613,7 +1618,31 @@ public class ProductServiceImpl implements ProductService {
 
             }
 
-            // Date filters
+            // Rating filters - temporarily disabled due to complexity with JPA Criteria API
+            // TODO: Implement rating filter using custom query or add computed column to
+            // database
+            /*
+             * if (searchDTO.getAverageRatingMin() != null ||
+             * searchDTO.getAverageRatingMax() != null) {
+             * Subquery<Double> avgRatingSubquery = criteriaQuery.subquery(Double.class);
+             * Root<Review> reviewRoot = avgRatingSubquery.from(Review.class);
+             * 
+             * avgRatingSubquery.select(criteriaBuilder.avg(reviewRoot.get("rating")))
+             * .where(criteriaBuilder.equal(reviewRoot.get("product"), root));
+             * 
+             * if (searchDTO.getAverageRatingMin() != null) {
+             * predicates.add(
+             * criteriaBuilder.greaterThanOrEqualTo(avgRatingSubquery,
+             * searchDTO.getAverageRatingMin()));
+             * }
+             * 
+             * if (searchDTO.getAverageRatingMax() != null) {
+             * predicates
+             * .add(criteriaBuilder.lessThanOrEqualTo(avgRatingSubquery,
+             * searchDTO.getAverageRatingMax()));
+             * }
+             * }
+             */
 
             if (searchDTO.getCreatedAtMin() != null) {
 
@@ -1649,6 +1678,39 @@ public class ProductServiceImpl implements ProductService {
 
                 predicates.add(criteriaBuilder.equal(root.get("createdBy"), searchDTO.getCreatedBy()));
 
+            }
+
+            // Variant attributes filter
+            if (searchDTO.getVariantAttributes() != null && !searchDTO.getVariantAttributes().isEmpty()) {
+                Join<Product, ProductVariant> variantJoin = root.join("variants", JoinType.LEFT);
+                Join<ProductVariant, VariantAttributeValue> attributeJoin = variantJoin.join("attributeValues",
+                        JoinType.LEFT);
+                Join<VariantAttributeValue, ProductAttributeValue> valueJoin = attributeJoin.join("attributeValue",
+                        JoinType.LEFT);
+                Join<ProductAttributeValue, ProductAttributeType> typeJoin = valueJoin.join("attributeType",
+                        JoinType.LEFT);
+
+                List<Predicate> variantPredicates = new ArrayList<>();
+                for (String variantAttr : searchDTO.getVariantAttributes()) {
+                    String[] parts = variantAttr.split(":");
+                    if (parts.length == 2) {
+                        String typeName = parts[0];
+                        String valueName = parts[1];
+
+                        Predicate typePredicate = criteriaBuilder.equal(
+                                criteriaBuilder.lower(typeJoin.get("name")),
+                                typeName.toLowerCase());
+                        Predicate valuePredicate = criteriaBuilder.equal(
+                                criteriaBuilder.lower(valueJoin.get("value")),
+                                valueName.toLowerCase());
+
+                        variantPredicates.add(criteriaBuilder.and(typePredicate, valuePredicate));
+                    }
+                }
+
+                if (!variantPredicates.isEmpty()) {
+                    predicates.add(criteriaBuilder.or(variantPredicates.toArray(new Predicate[0])));
+                }
             }
 
             // Text search across multiple fields
@@ -3757,5 +3819,16 @@ public class ProductServiceImpl implements ProductService {
             log.error("Error indexing product {} in Elasticsearch: {}", product.getProductId(), e.getMessage(), e);
             // Don't throw exception to avoid breaking the main flow
         }
+    }
+
+    private List<Product> applyRatingFilter(List<Product> products, Double minRating, Double maxRating) {
+        return products.stream()
+                .filter(product -> {
+                    double averageRating = product.getAverageRating();
+                    boolean matchesMin = minRating == null || averageRating >= minRating;
+                    boolean matchesMax = maxRating == null || averageRating <= maxRating;
+                    return matchesMin && matchesMax;
+                })
+                .collect(Collectors.toList());
     }
 }

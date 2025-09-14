@@ -559,11 +559,11 @@ public class ReadyForDeliveryGroupServiceImpl implements ReadyForDeliveryGroupSe
                     } else if (item.getProduct() != null) {
                         // Handle regular product items
                         dto.setProductId(item.getProduct().getProductId().toString());
-                        productDto.setProductId(item.getProduct().getProductId().toString());
-                        productDto.setName(item.getProduct().getProductName());
-                        productDto.setImages(item.getProduct().getImages().stream()
-                                .map(img -> img.getImageUrl())
-                                .toArray(String[]::new));
+                    productDto.setProductId(item.getProduct().getProductId().toString());
+                    productDto.setName(item.getProduct().getProductName());
+                    productDto.setImages(item.getProduct().getImages().stream()
+                            .map(img -> img.getImageUrl())
+                            .toArray(String[]::new));
                     }
 
                     dto.setProduct(productDto);

@@ -85,4 +85,20 @@ public interface ProductRepository extends JpaRepository<Product, UUID>, JpaSpec
                         "OR LOWER(pd.description) LIKE LOWER(CONCAT('%', :searchTerm, '%')) " +
                         "OR LOWER(pd.metaDescription) LIKE LOWER(CONCAT('%', :searchTerm, '%')))")
         List<Product> findProductsForKeywordSearch(@Param("searchTerm") String searchTerm);
+
+        @Query("SELECT p FROM Product p WHERE p.productId IN " +
+                        "(SELECT r.product.productId FROM Review r GROUP BY r.product.productId " +
+                        "HAVING AVG(r.rating) >= :minRating AND AVG(r.rating) <= :maxRating)")
+        List<Product> findProductsByRatingRange(@Param("minRating") Double minRating,
+                        @Param("maxRating") Double maxRating);
+
+        @Query("SELECT p FROM Product p WHERE p.productId IN " +
+                        "(SELECT r.product.productId FROM Review r GROUP BY r.product.productId " +
+                        "HAVING AVG(r.rating) >= :minRating)")
+        List<Product> findProductsByMinRating(@Param("minRating") Double minRating);
+
+        @Query("SELECT p FROM Product p WHERE p.productId IN " +
+                        "(SELECT r.product.productId FROM Review r GROUP BY r.product.productId " +
+                        "HAVING AVG(r.rating) <= :maxRating)")
+        List<Product> findProductsByMaxRating(@Param("maxRating") Double maxRating);
 }
