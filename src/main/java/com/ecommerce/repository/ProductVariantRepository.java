@@ -30,4 +30,6 @@ public interface ProductVariantRepository extends JpaRepository<ProductVariant, 
     Optional<ProductVariant> findByIdForUpdate(@Param("id") Long id);
 
     Page<ProductVariant> findByDiscount(Discount discount, Pageable pageable);
+
+    long countByDiscount(Discount discount);
 }

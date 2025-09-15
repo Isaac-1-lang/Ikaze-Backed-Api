@@ -28,6 +28,11 @@ public class ProductVariantDTO {
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 
+    // Discount information
+    private DiscountDTO discount;
+    private BigDecimal discountedPrice;
+    private Boolean hasActiveDiscount;
+
     // Variant images
     private List<VariantImageDTO> images;
 

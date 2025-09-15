@@ -45,6 +45,7 @@ public class SecurityConfig {
                                 "/api/v1/products/**",
                                 "/api/v1/categories/**",
                                 "/api/v1/rewards/**",
+                                "/api/v1/discounts/active",
                                 "/api/v1/warehouses/countries/**",
                                 "/api/v1/brands/**",
                                 "/api/v1/landing/**",
@@ -59,6 +60,8 @@ public class SecurityConfig {
                                 "/api/v1/cart/products",
                                 "/api/v1/checkout/guest/**",
                                 "/api/v1/orders/track/**",
+                                "/api/v1/reviews/product/**",
+                                "/api/v1/reviews/*/stats",
                                 "/v3/api-docs/**",
                                 "/swagger-ui/**",
                                 "/swagger-ui.html")

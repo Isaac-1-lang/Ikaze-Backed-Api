@@ -23,86 +23,45 @@ public class ProductDiscountController {
 
     private final ProductDiscountService productDiscountService;
 
-    @PostMapping("/{productId}/discount")
+    @PostMapping("/discount/assign")
     @PreAuthorize("hasRole('ADMIN')")
-    public ResponseEntity<Map<String, Object>> assignDiscountToProduct(
-            @PathVariable String productId,
+    public ResponseEntity<Map<String, Object>> assignDiscount(
             @Valid @RequestBody AssignDiscountRequest request) {
         try {
-            log.info("Assigning discount {} to product {}", request.getDiscountId(), productId);
+            log.info("Assigning discount {} to products/variants", request.getDiscountId());
 
-            productDiscountService.assignDiscountToProduct(productId, request.getDiscountId());
-
-            return ResponseEntity.ok(Map.of(
-                    "message", "Discount assigned to product successfully",
-                    "productId", productId,
-                    "discountId", request.getDiscountId()));
-        } catch (Exception e) {
-            log.error("Error assigning discount to product: {}", e.getMessage());
-            return ResponseEntity.badRequest().body(Map.of(
-                    "error", "Failed to assign discount to product",
-                    "message", e.getMessage()));
-        }
-    }
-
-    @PostMapping("/variants/discount")
-    @PreAuthorize("hasRole('ADMIN')")
-    public ResponseEntity<Map<String, Object>> assignDiscountToVariants(
-            @Valid @RequestBody AssignDiscountRequest request) {
-        try {
-            log.info("Assigning discount {} to {} variants",
-                    request.getDiscountId(), request.getVariantIds().size());
-
-            productDiscountService.assignDiscountToVariants(request.getVariantIds(), request.getDiscountId());
+            productDiscountService.assignDiscount(request);
 
             return ResponseEntity.ok(Map.of(
-                    "message", "Discount assigned to variants successfully",
+                    "message", "Discount assigned successfully",
                     "discountId", request.getDiscountId(),
-                    "variantCount", request.getVariantIds().size()));
+                    "productCount", request.getProductIds() != null ? request.getProductIds().size() : 0,
+                    "variantCount", request.getVariantIds() != null ? request.getVariantIds().size() : 0));
         } catch (Exception e) {
-            log.error("Error assigning discount to variants: {}", e.getMessage());
+            log.error("Error assigning discount: {}", e.getMessage());
             return ResponseEntity.badRequest().body(Map.of(
-                    "error", "Failed to assign discount to variants",
+                    "error", "Failed to assign discount",
                     "message", e.getMessage()));
         }
     }
 
-    @DeleteMapping("/{productId}/discount")
+    @DeleteMapping("/discount/remove")
     @PreAuthorize("hasRole('ADMIN')")
-    public ResponseEntity<Map<String, Object>> removeDiscountFromProduct(
-            @PathVariable String productId) {
-        try {
-            log.info("Removing discount from product {}", productId);
-
-            productDiscountService.removeDiscountFromProduct(productId);
-
-            return ResponseEntity.ok(Map.of(
-                    "message", "Discount removed from product successfully",
-                    "productId", productId));
-        } catch (Exception e) {
-            log.error("Error removing discount from product: {}", e.getMessage());
-            return ResponseEntity.badRequest().body(Map.of(
-                    "error", "Failed to remove discount from product",
-                    "message", e.getMessage()));
-        }
-    }
-
-    @DeleteMapping("/variants/discount")
-    @PreAuthorize("hasRole('ADMIN')")
-    public ResponseEntity<Map<String, Object>> removeDiscountFromVariants(
+    public ResponseEntity<Map<String, Object>> removeDiscount(
             @Valid @RequestBody RemoveDiscountRequest request) {
         try {
-            log.info("Removing discount from {} variants", request.getVariantIds().size());
+            log.info("Removing discount from products/variants");
 
-            productDiscountService.removeDiscountFromVariants(request.getVariantIds());
+            productDiscountService.removeDiscount(request);
 
             return ResponseEntity.ok(Map.of(
-                    "message", "Discount removed from variants successfully",
-                    "variantCount", request.getVariantIds().size()));
+                    "message", "Discount removed successfully",
+                    "productCount", request.getProductIds() != null ? request.getProductIds().size() : 0,
+                    "variantCount", request.getVariantIds() != null ? request.getVariantIds().size() : 0));
         } catch (Exception e) {
-            log.error("Error removing discount from variants: {}", e.getMessage());
+            log.error("Error removing discount: {}", e.getMessage());
             return ResponseEntity.badRequest().body(Map.of(
-                    "error", "Failed to remove discount from variants",
+                    "error", "Failed to remove discount",
                     "message", e.getMessage()));
         }
     }

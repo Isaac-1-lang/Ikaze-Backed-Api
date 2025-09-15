@@ -15,6 +15,7 @@ import com.ecommerce.repository.OrderRepository;
 import com.ecommerce.repository.ProductRepository;
 import com.ecommerce.repository.ProductVariantRepository;
 import com.ecommerce.repository.UserRepository;
+import com.ecommerce.repository.ReadyForDeliveryGroupRepository;
 import com.ecommerce.service.OrderService;
 import com.ecommerce.service.RewardService;
 import com.ecommerce.dto.CreateOrderDTO;
@@ -55,17 +56,20 @@ public class OrderServiceImpl implements OrderService {
     private final ProductRepository productRepository;
     private final ProductVariantRepository productVariantRepository;
     private final UserRepository userRepository;
+    private final ReadyForDeliveryGroupRepository readyForDeliveryGroupRepository;
     private final RewardService rewardService;
 
     public OrderServiceImpl(OrderRepository orderRepository,
             ProductRepository productRepository,
             ProductVariantRepository productVariantRepository,
             UserRepository userRepository,
+            ReadyForDeliveryGroupRepository readyForDeliveryGroupRepository,
             @Autowired(required = false) RewardService rewardService) {
         this.orderRepository = orderRepository;
         this.productRepository = productRepository;
         this.productVariantRepository = productVariantRepository;
         this.userRepository = userRepository;
+        this.readyForDeliveryGroupRepository = readyForDeliveryGroupRepository;
         this.rewardService = rewardService;
     }
 
@@ -833,6 +837,51 @@ public class OrderServiceImpl implements OrderService {
 
     @Override
     public Order saveOrder(Order order) {
-        return orderRepository.save(order);
+        log.info("Saving order with ID: {}, Status: {}, PickupTokenUsed: {}",
+                order.getOrderId(), order.getOrderStatus(), order.getPickupTokenUsed());
+
+        Order savedOrder = orderRepository.save(order);
+        orderRepository.flush();
+
+        log.info("Order saved successfully with ID: {}, Status: {}, PickupTokenUsed: {}",
+                savedOrder.getOrderId(), savedOrder.getOrderStatus(), savedOrder.getPickupTokenUsed());
+
+        return savedOrder;
+    }
+
+    @Override
+    public boolean checkAllOrdersDeliveredInGroup(Long groupId) {
+        log.info("Checking if all orders in group {} are delivered", groupId);
+
+        return readyForDeliveryGroupRepository.findByIdWithOrders(groupId)
+                .map(group -> {
+                    List<Order> orders = group.getOrders();
+                    boolean allDelivered = orders.stream()
+                            .allMatch(order -> order.getOrderStatus() == Order.OrderStatus.DELIVERED
+                                    && Boolean.TRUE.equals(order.getPickupTokenUsed()));
+
+                    log.info("Group {} has {} orders, all delivered: {}",
+                            groupId, orders.size(), allDelivered);
+
+                    return allDelivered;
+                })
+                .orElse(false);
+    }
+
+    @Override
+    public void autoFinishDeliveryGroup(Long groupId) {
+        log.info("Auto-finishing delivery group {}", groupId);
+
+        readyForDeliveryGroupRepository.findByIdWithDeliverer(groupId)
+                .ifPresent(group -> {
+                    if (!group.getHasDeliveryFinished()) {
+                        group.setHasDeliveryFinished(true);
+                        group.setDeliveryFinishedAt(LocalDateTime.now());
+                        readyForDeliveryGroupRepository.save(group);
+                        log.info("Auto-finished delivery group {}", groupId);
+                    } else {
+                        log.info("Delivery group {} is already finished", groupId);
+                    }
+                });
     }
 }

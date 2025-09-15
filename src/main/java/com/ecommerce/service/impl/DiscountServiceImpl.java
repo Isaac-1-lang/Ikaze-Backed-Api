@@ -15,6 +15,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.UUID;
 
 @Service
@@ -43,13 +44,6 @@ public class DiscountServiceImpl implements DiscountService {
             throw new IllegalArgumentException("Start date cannot be after end date");
         }
 
-        // Validate amount range
-        if (createDiscountDTO.getMinimumAmount() != null && createDiscountDTO.getMaximumAmount() != null) {
-            if (createDiscountDTO.getMinimumAmount().compareTo(createDiscountDTO.getMaximumAmount()) > 0) {
-                throw new IllegalArgumentException("Minimum amount cannot be greater than maximum amount");
-            }
-        }
-
         Discount discount = new Discount();
         discount.setName(createDiscountDTO.getName());
         discount.setDescription(createDiscountDTO.getDescription());
@@ -59,8 +53,6 @@ public class DiscountServiceImpl implements DiscountService {
         discount.setEndDate(createDiscountDTO.getEndDate());
         discount.setActive(createDiscountDTO.isActive());
         discount.setUsageLimit(createDiscountDTO.getUsageLimit());
-        discount.setMinimumAmount(createDiscountDTO.getMinimumAmount());
-        discount.setMaximumAmount(createDiscountDTO.getMaximumAmount());
 
         // Set discount type
         if (createDiscountDTO.getDiscountType() != null) {
@@ -119,12 +111,6 @@ public class DiscountServiceImpl implements DiscountService {
         if (updateDiscountDTO.getUsageLimit() != null) {
             discount.setUsageLimit(updateDiscountDTO.getUsageLimit());
         }
-        if (updateDiscountDTO.getMinimumAmount() != null) {
-            discount.setMinimumAmount(updateDiscountDTO.getMinimumAmount());
-        }
-        if (updateDiscountDTO.getMaximumAmount() != null) {
-            discount.setMaximumAmount(updateDiscountDTO.getMaximumAmount());
-        }
         if (updateDiscountDTO.getDiscountType() != null) {
             try {
                 discount.setDiscountType(Discount.DiscountType.valueOf(updateDiscountDTO.getDiscountType()));
@@ -136,13 +122,6 @@ public class DiscountServiceImpl implements DiscountService {
         // Validate date range
         if (discount.getEndDate() != null && discount.getStartDate().isAfter(discount.getEndDate())) {
             throw new IllegalArgumentException("Start date cannot be after end date");
-        }
-
-        // Validate amount range
-        if (discount.getMinimumAmount() != null && discount.getMaximumAmount() != null) {
-            if (discount.getMinimumAmount().compareTo(discount.getMaximumAmount()) > 0) {
-                throw new IllegalArgumentException("Minimum amount cannot be greater than maximum amount");
-            }
         }
 
         Discount updatedDiscount = discountRepository.save(discount);
@@ -233,16 +212,28 @@ public class DiscountServiceImpl implements DiscountService {
                 .discountCode(discount.getDiscountCode())
                 .startDate(discount.getStartDate())
                 .endDate(discount.getEndDate())
-                .isActive(discount.isActive())
+                .active(discount.isActive())
                 .usageLimit(discount.getUsageLimit())
                 .usedCount(discount.getUsedCount())
-                .minimumAmount(discount.getMinimumAmount())
-                .maximumAmount(discount.getMaximumAmount())
                 .discountType(discount.getDiscountType().name())
                 .createdAt(discount.getCreatedAt())
                 .updatedAt(discount.getUpdatedAt())
-                .isValid(discount.isValid())
+                .valid(discount.isValid())
                 .canBeUsed(discount.canBeUsed())
                 .build();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<Discount> getAllDiscountEntities() {
+        log.info("Fetching all discount entities");
+        return discountRepository.findAll();
+    }
+
+    @Override
+    @Transactional
+    public void saveAllDiscounts(List<Discount> discounts) {
+        log.info("Saving {} discount entities", discounts.size());
+        discountRepository.saveAll(discounts);
     }
 }

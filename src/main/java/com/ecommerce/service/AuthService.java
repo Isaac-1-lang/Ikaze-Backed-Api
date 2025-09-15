@@ -3,9 +3,10 @@ package com.ecommerce.service;
 import com.ecommerce.dto.UserRegistrationDTO;
 import com.ecommerce.dto.LoginResponseDto;
 import com.ecommerce.dto.UserDTO;
+import com.ecommerce.dto.SignupResponseDTO;
 
 public interface AuthService {
-    String registerUser(UserRegistrationDTO registrationDTO);
+    SignupResponseDTO registerUser(UserRegistrationDTO registrationDTO);
 
     LoginResponseDto loginUser(String email, String password);
 

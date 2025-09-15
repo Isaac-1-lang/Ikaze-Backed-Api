@@ -21,13 +21,20 @@ public class CartItemDTO {
     private String productName;
     private String productImage;
     private Integer quantity;
-    private BigDecimal price;
+    private BigDecimal price; // Current price (with discount applied)
+    private BigDecimal originalPrice; // Original price before discount
     private BigDecimal totalPrice;
     private BigDecimal weight;
     private LocalDateTime addedAt;
     private boolean inStock;
     private Integer availableStock;
     private boolean isVariantBased; // Flag to indicate if this is a variant-based item
+
+    // Discount information
+    private BigDecimal discountPercentage;
+    private String discountName;
+    private BigDecimal discountAmount; // Amount saved due to discount
+    private boolean hasDiscount;
 
     /**
      * Determines if this cart item is variant-based

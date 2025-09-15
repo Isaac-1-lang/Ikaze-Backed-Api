@@ -42,17 +42,14 @@ public class ReviewServiceImpl implements ReviewService {
     @Override
     @Transactional
     public ReviewDTO createReview(String jwtToken, CreateReviewDTO createReviewDTO) {
-        // Extract user info from JWT token
         String username = jwtService.extractUsername(jwtToken);
         User user = userRepository.findByUserEmail(username)
                 .orElseThrow(() -> new EntityNotFoundException("User not found"));
 
-        // Check if user has already reviewed this product
         if (reviewRepository.existsByUserIdAndProduct_ProductId(user.getId(), createReviewDTO.getProductId())) {
             throw new IllegalArgumentException("You have already reviewed this product");
         }
 
-        // Find the product
         Product product = productRepository.findById(createReviewDTO.getProductId())
                 .orElseThrow(() -> new EntityNotFoundException("Product not found"));
 
@@ -63,7 +60,7 @@ public class ReviewServiceImpl implements ReviewService {
         review.setRating(createReviewDTO.getRating());
         review.setTitle(createReviewDTO.getTitle());
         review.setContent(createReviewDTO.getContent());
-        review.setStatus(Review.ReviewStatus.PENDING); // Default to pending for moderation
+        review.setStatus(Review.ReviewStatus.APPROVED); // Auto-approve reviews for now
         review.setVerifiedPurchase(checkIfVerifiedPurchase(user.getId(), product.getProductId()));
 
         Review savedReview = reviewRepository.save(review);

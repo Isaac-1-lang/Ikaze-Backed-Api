@@ -58,11 +58,6 @@ public class Discount {
 
     @Column(name = "used_count")
     private Integer usedCount = 0;
-    @Column(name = "minimum_amount", precision = 10, scale = 2)
-    private BigDecimal minimumAmount;
-
-    @Column(name = "maximum_amount", precision = 10, scale = 2)
-    private BigDecimal maximumAmount;
 
     @Enumerated(EnumType.STRING)
     @Column(name = "discount_type")
@@ -71,6 +66,10 @@ public class Discount {
     @OneToMany(mappedBy = "discount", fetch = FetchType.LAZY)
     @JsonManagedReference
     private List<Product> products = new ArrayList<>();
+
+    @OneToMany(mappedBy = "discount", fetch = FetchType.LAZY)
+    @JsonManagedReference
+    private List<ProductVariant> productVariants = new ArrayList<>();
 
     @Column(name = "created_at")
     private LocalDateTime createdAt;
@@ -97,8 +96,8 @@ public class Discount {
     public boolean isValid() {
         LocalDateTime now = LocalDateTime.now();
         return isActive &&
-                now.isAfter(startDate) &&
-                (endDate == null || now.isBefore(endDate)) &&
+                (now.isEqual(startDate) || now.isAfter(startDate)) &&
+                (endDate == null || now.isEqual(endDate) || now.isBefore(endDate)) &&
                 (usageLimit == null || usedCount < usageLimit);
     }
 

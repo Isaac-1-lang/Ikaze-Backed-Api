@@ -1,30 +1,42 @@
 package com.ecommerce.dto;
 
-import jakarta.validation.constraints.NotNull;
-import jakarta.validation.constraints.Positive;
+import lombok.AllArgsConstructor;
+import lombok.Builder;
 import lombok.Data;
-import java.math.BigDecimal;
+import lombok.NoArgsConstructor;
+
+import java.time.LocalDateTime;
 
 @Data
+@Builder
+@NoArgsConstructor
+@AllArgsConstructor
 public class WarehouseStockDTO {
-    
-    @NotNull(message = "Warehouse ID is required")
+    private Long stockId;
     private Long warehouseId;
-    
-    @Positive(message = "Stock quantity must be positive")
-    private Integer stockQuantity;
-    
-    @Positive(message = "Low stock threshold must be positive")
+    private String warehouseName;
+    private String warehouseAddress;
+    private String warehouseCity;
+    private String warehouseState;
+    private String warehouseCountry;
+    private String warehouseContactNumber;
+    private String warehouseEmail;
+    private Integer quantity;
     private Integer lowStockThreshold;
-    
-    @Positive(message = "Reorder point must be positive")
-    private Integer reorderPoint;
-    
-    // Optional fields for warehouse-specific pricing
-    private BigDecimal warehousePrice;
-    private BigDecimal warehouseCostPrice;
-    
-    // Optional fields for warehouse-specific availability
-    private Boolean isAvailable;
-    private String notes;
+    private Boolean isInStock;
+    private Boolean isLowStock;
+    private Boolean isOutOfStock;
+    private LocalDateTime createdAt;
+    private LocalDateTime updatedAt;
+
+    // For variant-based stock
+    private Long variantId;
+    private String variantSku;
+    private String variantName;
+    private Boolean isVariantBased;
+
+    // Convenience method for backward compatibility
+    public Integer getStockQuantity() {
+        return quantity;
+    }
 }

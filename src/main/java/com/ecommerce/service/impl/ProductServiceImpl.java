@@ -13,7 +13,7 @@ import com.ecommerce.dto.ProductDTO;
 import com.ecommerce.dto.ProductSearchDTO;
 
 import com.ecommerce.dto.ProductUpdateDTO;
-
+import com.ecommerce.dto.SimilarProductsRequestDTO;
 import com.ecommerce.dto.ProductVariantDTO;
 
 import com.ecommerce.dto.VariantAttributeDTO;
@@ -22,11 +22,24 @@ import com.ecommerce.dto.VariantImageMetadata;
 
 import com.ecommerce.dto.VideoMetadata;
 import com.ecommerce.dto.ReviewDTO;
+import com.ecommerce.dto.DiscountDTO;
 import com.ecommerce.dto.WarehouseStockDTO;
+import com.ecommerce.dto.WarehouseStockPageResponse;
 
 import com.ecommerce.entity.*;
 
 import com.ecommerce.repository.*;
+
+import co.elastic.clients.elasticsearch.ElasticsearchClient;
+import co.elastic.clients.elasticsearch._types.query_dsl.MultiMatchQuery;
+import co.elastic.clients.elasticsearch._types.query_dsl.Query;
+import co.elastic.clients.elasticsearch.core.SearchRequest;
+import co.elastic.clients.elasticsearch.core.SearchResponse;
+import co.elastic.clients.elasticsearch.core.search.Hit;
+import co.elastic.clients.elasticsearch.indices.CreateIndexRequest;
+import co.elastic.clients.elasticsearch.indices.ExistsRequest;
+
+import jakarta.annotation.PostConstruct;
 
 import com.ecommerce.Exception.ProductDeletionException;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -46,6 +59,8 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
 import org.springframework.data.domain.Page;
+
+import org.springframework.data.domain.PageImpl;
 
 import org.springframework.data.domain.PageRequest;
 
@@ -119,7 +134,7 @@ public class ProductServiceImpl implements ProductService {
 
     private final CloudinaryService cloudinaryService;
 
-    // Using thread pool for concurrent image/video uploads
+    private final ElasticsearchClient elasticsearchClient;
 
     private final ExecutorService executorService = Executors.newFixedThreadPool(10);
 
@@ -135,10 +150,6 @@ public class ProductServiceImpl implements ProductService {
             log.info("Starting product creation for: {}", createProductDTO.getName());
 
             Category category = validateAndGetCategory(createProductDTO.getCategoryId());
-
-            // SKU resolution will happen after brand/discount validation
-
-            // Validate brand if provided
 
             Brand brand = null;
 
@@ -245,6 +256,9 @@ public class ProductServiceImpl implements ProductService {
                     .orElseThrow(() -> new EntityNotFoundException("Product not found after saving"));
 
             log.info("Product creation completed successfully for: {}", createProductDTO.getName());
+
+            // Index product in Elasticsearch
+            indexProductInElasticsearch(refreshedProduct);
 
             return mapProductToDTO(refreshedProduct);
 
@@ -665,6 +679,9 @@ public class ProductServiceImpl implements ProductService {
 
             log.info("Product update completed successfully for ID: {}", productId);
 
+            // Index product in Elasticsearch
+            indexProductInElasticsearch(refreshedProduct);
+
             return mapProductToDTO(refreshedProduct);
 
         } catch (Exception e) {
@@ -999,51 +1016,368 @@ public class ProductServiceImpl implements ProductService {
     }
 
     @Override
-
     public Page<ManyProductsDto> searchProducts(ProductSearchDTO searchDTO) {
-
         try {
-
             log.info("Searching products with criteria: {}", searchDTO);
 
-            // Create a Pageable object from the search DTO
-
             int page = searchDTO.getPage() != null ? searchDTO.getPage() : 0;
-
             int size = searchDTO.getSize() != null ? searchDTO.getSize() : 10;
-
             String sortBy = searchDTO.getSortBy() != null ? searchDTO.getSortBy() : "createdAt";
-
             String sortDirection = searchDTO.getSortDirection() != null ? searchDTO.getSortDirection() : "desc";
 
-            Sort.Direction direction = sortDirection.equalsIgnoreCase("asc") ? Sort.Direction.ASC : Sort.Direction.DESC;
+            boolean isTextSearch = (searchDTO.getName() != null && !searchDTO.getName().trim().isEmpty()) ||
+                    (searchDTO.getSearchKeyword() != null && !searchDTO.getSearchKeyword().trim().isEmpty());
 
+            if (isTextSearch) {
+                return searchProductsWithElasticsearch(searchDTO, page, size, sortBy, sortDirection);
+            } else {
+                Sort.Direction direction = sortDirection.equalsIgnoreCase("asc") ? Sort.Direction.ASC
+                        : Sort.Direction.DESC;
+                Pageable pageable = PageRequest.of(page, size, Sort.by(direction, sortBy));
+                Specification<Product> spec = buildProductSearchSpecification(searchDTO);
+                Page<Product> productPage = productRepository.findAll(spec, pageable);
+
+                // Apply rating filter if specified
+                List<Product> filteredProducts = productPage.getContent();
+                if (searchDTO.getAverageRatingMin() != null || searchDTO.getAverageRatingMax() != null) {
+                    filteredProducts = applyRatingFilter(filteredProducts, searchDTO.getAverageRatingMin(),
+                            searchDTO.getAverageRatingMax());
+                }
+
+                Page<ManyProductsDto> result = productPage.map(this::mapProductToManyProductsDto);
+                log.info("Search completed. Found {} products matching criteria", result.getTotalElements());
+                return result;
+            }
+
+        } catch (Exception e) {
+            log.error("Error searching products: {}", e.getMessage(), e);
+            throw new RuntimeException("Failed to search products: " + e.getMessage(), e);
+        }
+    }
+
+    private Page<ManyProductsDto> searchProductsWithElasticsearch(ProductSearchDTO searchDTO, int page, int size,
+            String sortBy, String sortDirection) {
+        try {
+            ensureProductsIndexExists();
+
+            String searchTerm = searchDTO.getName() != null ? searchDTO.getName() : searchDTO.getSearchKeyword();
+
+            // Create multi-match query with typo tolerance
+            Query multiMatchQuery = MultiMatchQuery.of(m -> m
+                    .query(searchTerm)
+                    .fields("productName^3", "shortDescription^2", "metaKeywords^2", "searchKeywords^2",
+                            "metaKeywordsArray^3", "searchKeywordsArray^3", "metaDescription", "description", "sku^2",
+                            "slug", "barcode")
+                    .fuzziness("AUTO")
+                    .type(co.elastic.clients.elasticsearch._types.query_dsl.TextQueryType.BestFields))._toQuery();
+
+            // Create search request with pagination
+            SearchRequest searchRequest = SearchRequest.of(s -> s
+                    .index("products")
+                    .query(multiMatchQuery)
+                    .from(page * size)
+                    .size(size));
+            SearchResponse<Map> searchResponse = elasticsearchClient.search(searchRequest, Map.class);
+
+            // Get product IDs from Elasticsearch results
+            List<String> productIds = searchResponse.hits().hits().stream()
+                    .map(hit -> (String) hit.source().get("productId"))
+                    .collect(Collectors.toList());
+
+            if (productIds.isEmpty()) {
+                // Return empty page
+                return new org.springframework.data.domain.PageImpl<>(
+                        Collections.emptyList(),
+                        PageRequest.of(page, size),
+                        0);
+            }
+
+            // Fetch products from database using the IDs
+            List<Product> products = productRepository.findByProductIdInOrderByCreatedAtDesc(
+                    productIds.stream().map(UUID::fromString).collect(Collectors.toList()));
+
+            // Apply additional filters if any
+            List<Product> filteredProducts = applyAdditionalFilters(products, searchDTO);
+
+            // Calculate pagination
+            int totalElements = filteredProducts.size();
+            int startIndex = page * size;
+            int endIndex = Math.min(startIndex + size, totalElements);
+
+            List<Product> pageProducts = startIndex < totalElements ? filteredProducts.subList(startIndex, endIndex)
+                    : Collections.emptyList();
+
+            // Map to DTOs
+            List<ManyProductsDto> dtoList = pageProducts.stream()
+                    .map(this::mapProductToManyProductsDto)
+                    .collect(Collectors.toList());
+
+            log.info("Elasticsearch search completed. Found {} products matching criteria", totalElements);
+
+            return new org.springframework.data.domain.PageImpl<>(
+                    dtoList,
+                    PageRequest.of(page, size),
+                    totalElements);
+
+        } catch (Exception e) {
+            log.warn("Elasticsearch search failed, falling back to JPA search: {}", e.getMessage());
+            // Fallback to JPA search with improved text search
+            return searchProductsWithJPA(searchDTO, page, size, sortBy, sortDirection);
+        }
+    }
+
+    private Page<ManyProductsDto> searchProductsWithJPA(ProductSearchDTO searchDTO, int page, int size, String sortBy,
+            String sortDirection) {
+        try {
+            Sort.Direction direction = sortDirection.equalsIgnoreCase("asc") ? Sort.Direction.ASC : Sort.Direction.DESC;
             Pageable pageable = PageRequest.of(page, size, Sort.by(direction, sortBy));
 
-            // Build the search criteria
+            String searchTerm = searchDTO.getName() != null ? searchDTO.getName() : searchDTO.getSearchKeyword();
 
-            Specification<Product> spec = buildProductSearchSpecification(searchDTO);
+            // Use enhanced search with comma-separated keyword handling
+            List<Product> allMatchingProducts = findProductsWithCommaSeparatedKeywords(searchTerm);
 
-            // Execute the search
+            // Apply additional filters
+            List<Product> filteredProducts = applyAdditionalFilters(allMatchingProducts, searchDTO);
 
-            Page<Product> productPage = productRepository.findAll(spec, pageable);
+            // Apply sorting
+            filteredProducts = applySorting(filteredProducts, sortBy, sortDirection);
 
-            // Map to ManyProductsDto
+            // Apply pagination
+            int totalElements = filteredProducts.size();
+            int startIndex = page * size;
+            int endIndex = Math.min(startIndex + size, totalElements);
 
-            Page<ManyProductsDto> result = productPage.map(this::mapProductToManyProductsDto);
+            List<Product> pageProducts = startIndex < totalElements ? filteredProducts.subList(startIndex, endIndex)
+                    : Collections.emptyList();
 
-            log.info("Search completed. Found {} products matching criteria", result.getTotalElements());
+            // Map to DTOs
+            List<ManyProductsDto> dtoList = pageProducts.stream()
+                    .map(this::mapProductToManyProductsDto)
+                    .collect(Collectors.toList());
+
+            Page<ManyProductsDto> result = new org.springframework.data.domain.PageImpl<>(
+                    dtoList, pageable, totalElements);
+
+            log.info("JPA enhanced search with comma-separated keywords completed. Found {} products matching criteria",
+                    result.getTotalElements());
+            return result;
+
+        } catch (Exception e) {
+            log.error("JPA enhanced search failed, trying basic search: {}", e.getMessage());
+            // Fallback to basic search
+            try {
+                String searchTerm = searchDTO.getName() != null ? searchDTO.getName() : searchDTO.getSearchKeyword();
+                Sort.Direction direction = sortDirection.equalsIgnoreCase("asc") ? Sort.Direction.ASC
+                        : Sort.Direction.DESC;
+                Pageable pageable = PageRequest.of(page, size, Sort.by(direction, sortBy));
+
+                Page<Product> productPage = productRepository
+                        .findByProductNameContainingIgnoreCaseOrShortDescriptionContainingIgnoreCase(
+                                searchTerm, searchTerm, pageable);
+
+                Page<ManyProductsDto> result = productPage.map(this::mapProductToManyProductsDto);
+                log.info("JPA basic search completed. Found {} products matching criteria", result.getTotalElements());
+                return result;
+
+            } catch (Exception e2) {
+                log.error("JPA basic search also failed: {}", e2.getMessage(), e2);
+                // Return empty page as last resort
+                return new org.springframework.data.domain.PageImpl<>(
+                        Collections.emptyList(),
+                        PageRequest.of(page, size),
+                        0);
+            }
+        }
+    }
+
+    private List<Product> applyAdditionalFilters(List<Product> products, ProductSearchDTO searchDTO) {
+        return products.stream()
+                .filter(product -> {
+                    // Apply category filter
+                    if (searchDTO.getCategoryId() != null) {
+                        return product.getCategory() != null &&
+                                product.getCategory().getId().equals(searchDTO.getCategoryId());
+                    }
+
+                    // Apply brand filter
+                    if (searchDTO.getBrandId() != null) {
+                        return product.getBrand() != null &&
+                                product.getBrand().getBrandId().equals(searchDTO.getBrandId());
+                    }
+
+                    // Apply price filters
+                    if (searchDTO.getBasePriceMin() != null) {
+                        if (product.getPrice().compareTo(searchDTO.getBasePriceMin()) < 0) {
+                            return false;
+                        }
+                    }
+                    if (searchDTO.getBasePriceMax() != null) {
+                        if (product.getPrice().compareTo(searchDTO.getBasePriceMax()) > 0) {
+                            return false;
+                        }
+                    }
+
+                    // Apply stock filter
+                    if (searchDTO.getInStock() != null && searchDTO.getInStock()) {
+                        return product.getTotalStockQuantity() > 0;
+                    }
+
+                    return true;
+                })
+                .collect(Collectors.toList());
+    }
+
+    /**
+     * Enhanced search method that properly handles comma-separated keywords
+     * in metaKeywords and searchKeywords fields
+     */
+    private List<Product> findProductsWithCommaSeparatedKeywords(String searchTerm) {
+        try {
+            log.debug("Searching products with comma-separated keyword handling for term: {}", searchTerm);
+
+            // First, get products that match basic fields (name, description, etc.)
+            List<Product> basicMatches = productRepository.findProductsForKeywordSearch(searchTerm);
+
+            // Then, find products that match comma-separated keywords
+            List<Product> keywordMatches = findProductsMatchingCommaSeparatedKeywords(searchTerm);
+
+            // Combine and deduplicate results
+            Set<Product> allMatches = new HashSet<>();
+            allMatches.addAll(basicMatches);
+            allMatches.addAll(keywordMatches);
+
+            List<Product> result = new ArrayList<>(allMatches);
+            log.debug("Found {} products matching search term '{}'", result.size(), searchTerm);
 
             return result;
 
         } catch (Exception e) {
+            log.error("Error in comma-separated keyword search: {}", e.getMessage(), e);
+            // Fallback to basic search
+            return productRepository.findProductsForKeywordSearch(searchTerm);
+        }
+    }
 
-            log.error("Error searching products: {}", e.getMessage(), e);
+    /**
+     * Find products that match comma-separated keywords in metaKeywords and
+     * searchKeywords
+     */
+    private List<Product> findProductsMatchingCommaSeparatedKeywords(String searchTerm) {
+        List<Product> matchingProducts = new ArrayList<>();
+        String lowerSearchTerm = searchTerm.toLowerCase().trim();
 
-            throw new RuntimeException("Failed to search products: " + e.getMessage(), e);
+        try {
+            // Get all active products with their details
+            List<Product> allProducts = productRepository.findAll().stream()
+                    .filter(Product::isActive)
+                    .collect(Collectors.toList());
 
+            for (Product product : allProducts) {
+                if (product.getProductDetail() != null) {
+                    ProductDetail detail = product.getProductDetail();
+
+                    // Check metaKeywords
+                    if (detail.getMetaKeywords() != null && !detail.getMetaKeywords().trim().isEmpty()) {
+                        if (matchesCommaSeparatedKeywords(detail.getMetaKeywords(), lowerSearchTerm)) {
+                            matchingProducts.add(product);
+                            continue; // Avoid adding the same product twice
+                        }
+                    }
+
+                    // Check searchKeywords
+                    if (detail.getSearchKeywords() != null && !detail.getSearchKeywords().trim().isEmpty()) {
+                        if (matchesCommaSeparatedKeywords(detail.getSearchKeywords(), lowerSearchTerm)) {
+                            matchingProducts.add(product);
+                        }
+                    }
+                }
+            }
+
+            log.debug("Found {} products matching comma-separated keywords for term '{}'",
+                    matchingProducts.size(), searchTerm);
+
+        } catch (Exception e) {
+            log.error("Error finding products with comma-separated keywords: {}", e.getMessage(), e);
         }
 
+        return matchingProducts;
+    }
+
+    /**
+     * Check if any keyword in a comma-separated string matches the search term
+     */
+    private boolean matchesCommaSeparatedKeywords(String keywordsString, String searchTerm) {
+        if (keywordsString == null || keywordsString.trim().isEmpty()) {
+            return false;
+        }
+
+        try {
+            // Split by comma and check each keyword
+            String[] keywords = keywordsString.split(",");
+            for (String keyword : keywords) {
+                String trimmedKeyword = keyword.trim().toLowerCase();
+                if (!trimmedKeyword.isEmpty() && trimmedKeyword.contains(searchTerm)) {
+                    return true;
+                }
+            }
+        } catch (Exception e) {
+            log.warn("Error processing comma-separated keywords '{}': {}", keywordsString, e.getMessage());
+        }
+
+        return false;
+    }
+
+    /**
+     * Apply sorting to a list of products
+     */
+    private List<Product> applySorting(List<Product> products, String sortBy, String sortDirection) {
+        try {
+            Comparator<Product> comparator = getProductComparator(sortBy, sortDirection);
+            return products.stream()
+                    .sorted(comparator)
+                    .collect(Collectors.toList());
+        } catch (Exception e) {
+            log.warn("Error applying sorting, using default sort: {}", e.getMessage());
+            return products.stream()
+                    .sorted(Comparator.comparing(Product::getCreatedAt).reversed())
+                    .collect(Collectors.toList());
+        }
+    }
+
+    /**
+     * Get comparator for product sorting
+     */
+    private Comparator<Product> getProductComparator(String sortBy, String sortDirection) {
+        boolean ascending = "asc".equalsIgnoreCase(sortDirection);
+
+        Comparator<Product> comparator;
+        switch (sortBy.toLowerCase()) {
+            case "name":
+            case "productname":
+                comparator = Comparator.comparing(Product::getProductName);
+                break;
+            case "price":
+                comparator = Comparator.comparing(Product::getPrice);
+                break;
+            case "createdat":
+            case "created_at":
+                comparator = Comparator.comparing(Product::getCreatedAt);
+                break;
+            case "updatedat":
+            case "updated_at":
+                comparator = Comparator.comparing(Product::getUpdatedAt);
+                break;
+            case "averagerating":
+            case "average_rating":
+                comparator = Comparator.comparing(Product::getAverageRating);
+                break;
+            default:
+                comparator = Comparator.comparing(Product::getCreatedAt);
+                break;
+        }
+
+        return ascending ? comparator : comparator.reversed();
     }
 
     /**
@@ -1217,9 +1551,23 @@ public class ProductServiceImpl implements ProductService {
             }
 
             if (searchDTO.getDiscountIds() != null && !searchDTO.getDiscountIds().isEmpty()) {
+                // Filter products that have the discount directly OR have variants with the
+                // discount
+                Predicate productDiscountPredicate = root.get("discount").get("discountId")
+                        .in(searchDTO.getDiscountIds());
 
-                predicates.add(root.get("discount").get("discountId").in(searchDTO.getDiscountIds()));
+                // Create subquery for variants with the discount
+                Subquery<ProductVariant> variantSubquery = query.subquery(ProductVariant.class);
+                Root<ProductVariant> variantRoot = variantSubquery.from(ProductVariant.class);
+                variantSubquery.select(variantRoot)
+                        .where(criteriaBuilder.and(
+                                criteriaBuilder.equal(variantRoot.get("product"), root),
+                                variantRoot.get("discount").get("discountId").in(searchDTO.getDiscountIds())));
 
+                Predicate variantDiscountPredicate = criteriaBuilder.exists(variantSubquery);
+
+                // Combine both conditions with OR
+                predicates.add(criteriaBuilder.or(productDiscountPredicate, variantDiscountPredicate));
             }
 
             if (searchDTO.getHasDiscount() != null) {
@@ -1258,13 +1606,13 @@ public class ProductServiceImpl implements ProductService {
 
             if (searchDTO.getIsFeatured() != null) {
 
-                predicates.add(criteriaBuilder.equal(root.get("featured"), searchDTO.getIsFeatured()));
+                predicates.add(criteriaBuilder.equal(root.get("isFeatured"), searchDTO.getIsFeatured()));
 
             }
 
             if (searchDTO.getIsBestseller() != null) {
 
-                predicates.add(criteriaBuilder.equal(root.get("bestseller"), searchDTO.getIsBestseller()));
+                predicates.add(criteriaBuilder.equal(root.get("isBestseller"), searchDTO.getIsBestseller()));
 
             }
 
@@ -1282,7 +1630,31 @@ public class ProductServiceImpl implements ProductService {
 
             }
 
-            // Date filters
+            // Rating filters - temporarily disabled due to complexity with JPA Criteria API
+            // TODO: Implement rating filter using custom query or add computed column to
+            // database
+            /*
+             * if (searchDTO.getAverageRatingMin() != null ||
+             * searchDTO.getAverageRatingMax() != null) {
+             * Subquery<Double> avgRatingSubquery = criteriaQuery.subquery(Double.class);
+             * Root<Review> reviewRoot = avgRatingSubquery.from(Review.class);
+             * 
+             * avgRatingSubquery.select(criteriaBuilder.avg(reviewRoot.get("rating")))
+             * .where(criteriaBuilder.equal(reviewRoot.get("product"), root));
+             * 
+             * if (searchDTO.getAverageRatingMin() != null) {
+             * predicates.add(
+             * criteriaBuilder.greaterThanOrEqualTo(avgRatingSubquery,
+             * searchDTO.getAverageRatingMin()));
+             * }
+             * 
+             * if (searchDTO.getAverageRatingMax() != null) {
+             * predicates
+             * .add(criteriaBuilder.lessThanOrEqualTo(avgRatingSubquery,
+             * searchDTO.getAverageRatingMax()));
+             * }
+             * }
+             */
 
             if (searchDTO.getCreatedAtMin() != null) {
 
@@ -1318,6 +1690,39 @@ public class ProductServiceImpl implements ProductService {
 
                 predicates.add(criteriaBuilder.equal(root.get("createdBy"), searchDTO.getCreatedBy()));
 
+            }
+
+            // Variant attributes filter
+            if (searchDTO.getVariantAttributes() != null && !searchDTO.getVariantAttributes().isEmpty()) {
+                Join<Product, ProductVariant> variantJoin = root.join("variants", JoinType.LEFT);
+                Join<ProductVariant, VariantAttributeValue> attributeJoin = variantJoin.join("attributeValues",
+                        JoinType.LEFT);
+                Join<VariantAttributeValue, ProductAttributeValue> valueJoin = attributeJoin.join("attributeValue",
+                        JoinType.LEFT);
+                Join<ProductAttributeValue, ProductAttributeType> typeJoin = valueJoin.join("attributeType",
+                        JoinType.LEFT);
+
+                List<Predicate> variantPredicates = new ArrayList<>();
+                for (String variantAttr : searchDTO.getVariantAttributes()) {
+                    String[] parts = variantAttr.split(":");
+                    if (parts.length == 2) {
+                        String typeName = parts[0];
+                        String valueName = parts[1];
+
+                        Predicate typePredicate = criteriaBuilder.equal(
+                                criteriaBuilder.lower(typeJoin.get("name")),
+                                typeName.toLowerCase());
+                        Predicate valuePredicate = criteriaBuilder.equal(
+                                criteriaBuilder.lower(valueJoin.get("value")),
+                                valueName.toLowerCase());
+
+                        variantPredicates.add(criteriaBuilder.and(typePredicate, valuePredicate));
+                    }
+                }
+
+                if (!variantPredicates.isEmpty()) {
+                    predicates.add(criteriaBuilder.or(variantPredicates.toArray(new Predicate[0])));
+                }
             }
 
             // Text search across multiple fields
@@ -1751,8 +2156,6 @@ public class ProductServiceImpl implements ProductService {
                     log.debug("No attributes to process for variant {}", savedVariant.getId());
                 }
 
-                // Process variant images from the main variant images list if available
-                // (primary method)
                 if (variantImages != null && !variantImages.isEmpty() && variantImageMapping != null) {
                     try {
                         List<MultipartFile> variantSpecificImages = getVariantImagesForIndex(variantImages,
@@ -1774,8 +2177,6 @@ public class ProductServiceImpl implements ProductService {
                             savedVariant.getId(), savedVariant.getVariantSku());
                 }
 
-                // Also check if variant has its own embedded images (for backward
-                // compatibility)
                 if (variantDTO.getVariantImages() != null && !variantDTO.getVariantImages().isEmpty()) {
                     log.info("Processing {} embedded images for variant {} (SKU: {})",
                             variantDTO.getVariantImages().size(), savedVariant.getId(),
@@ -2561,6 +2962,9 @@ public class ProductServiceImpl implements ProductService {
                     .collect(Collectors.toList()));
         }
 
+        // Map warehouse stock information
+        mapWarehouseStockToDTO(product, dto);
+
         return dto;
 
     }
@@ -2656,6 +3060,27 @@ public class ProductServiceImpl implements ProductService {
 
         dto.setUpdatedAt(variant.getUpdatedAt());
 
+        // Map discount information
+        if (variant.getDiscount() != null) {
+            DiscountDTO discountDTO = mapDiscountToDTO(variant.getDiscount());
+            dto.setDiscount(discountDTO);
+
+            // Check if discount is currently active
+            boolean isActive = isDiscountCurrentlyActive(variant.getDiscount());
+            dto.setHasActiveDiscount(isActive);
+
+            // Calculate discounted price if discount is active
+            if (isActive && variant.getDiscount().getPercentage() != null) {
+                BigDecimal discountPercentage = variant.getDiscount().getPercentage();
+                BigDecimal originalPrice = variant.getPrice();
+                BigDecimal discountedPrice = originalPrice.multiply(
+                        BigDecimal.ONE.subtract(discountPercentage.divide(BigDecimal.valueOf(100))));
+                dto.setDiscountedPrice(discountedPrice);
+            }
+        } else {
+            dto.setHasActiveDiscount(false);
+        }
+
         // Map variant images
 
         if (variant.getImages() != null) {
@@ -2720,6 +3145,37 @@ public class ProductServiceImpl implements ProductService {
 
                 .build();
 
+    }
+
+    private DiscountDTO mapDiscountToDTO(Discount discount) {
+        return DiscountDTO.builder()
+                .discountId(discount.getDiscountId())
+                .name(discount.getName())
+                .description(discount.getDescription())
+                .percentage(discount.getPercentage())
+                .discountCode(discount.getDiscountCode())
+                .startDate(discount.getStartDate())
+                .endDate(discount.getEndDate())
+                .active(discount.isActive())
+                .usageLimit(discount.getUsageLimit())
+                .usedCount(discount.getUsedCount())
+                .discountType(discount.getDiscountType() != null ? discount.getDiscountType().toString() : null)
+                .createdAt(discount.getCreatedAt())
+                .updatedAt(discount.getUpdatedAt())
+                .valid(discount.isValid())
+                .build();
+    }
+
+    private boolean isDiscountCurrentlyActive(Discount discount) {
+        if (discount == null || !discount.isActive()) {
+            return false;
+        }
+
+        LocalDateTime now = LocalDateTime.now();
+        return (discount.getStartDate() == null || now.isAfter(discount.getStartDate())
+                || now.isEqual(discount.getStartDate())) &&
+                (discount.getEndDate() == null || now.isBefore(discount.getEndDate())
+                        || now.isEqual(discount.getEndDate()));
     }
 
     @Override
@@ -3029,7 +3485,214 @@ public class ProductServiceImpl implements ProductService {
     @Override
     public List<Map<String, Object>> getSearchSuggestions(String query) {
         try {
+            List<Map<String, Object>> suggestions = new ArrayList<>();
 
+            // Ensure products index exists
+            ensureProductsIndexExists();
+
+            // Get search term suggestions with typo tolerance
+            suggestions.addAll(getSearchTermSuggestions(query));
+
+            // Get category suggestions
+            suggestions.addAll(getCategorySuggestions(query));
+
+            // Get brand suggestions
+            suggestions.addAll(getBrandSuggestions(query));
+
+            // Get keyword suggestions from meta keywords
+            suggestions.addAll(getKeywordSuggestions(query));
+
+            // Limit total suggestions to 10
+            return suggestions.stream().limit(10).collect(Collectors.toList());
+
+        } catch (Exception e) {
+            log.error("Error getting Elasticsearch search suggestions for query: {}", query, e);
+            return getFallbackSearchSuggestions(query);
+        }
+    }
+
+    private List<Map<String, Object>> getSearchTermSuggestions(String query) {
+        List<Map<String, Object>> suggestions = new ArrayList<>();
+
+        try {
+            // Create multi-match query with typo tolerance for search terms
+            Query multiMatchQuery = MultiMatchQuery.of(m -> m
+                    .query(query)
+                    .fields("productName^3", "shortDescription^2", "metaKeywords", "searchKeywords",
+                            "metaKeywordsArray^2", "searchKeywordsArray^2")
+                    .fuzziness("AUTO")
+                    .type(co.elastic.clients.elasticsearch._types.query_dsl.TextQueryType.BestFields))._toQuery();
+
+            SearchRequest searchRequest = SearchRequest.of(s -> s
+                    .index("products")
+                    .query(multiMatchQuery)
+                    .size(5));
+
+            SearchResponse<Map> searchResponse = elasticsearchClient.search(searchRequest, Map.class);
+
+            Set<String> uniqueTerms = new HashSet<>();
+            for (Hit<Map> hit : searchResponse.hits().hits()) {
+                Map<String, Object> source = hit.source();
+                if (source != null) {
+                    String productName = (String) source.get("productName");
+                    if (productName != null && !uniqueTerms.contains(productName.toLowerCase())) {
+                        uniqueTerms.add(productName.toLowerCase());
+
+                        Map<String, Object> suggestion = new HashMap<>();
+                        suggestion.put("id", "suggestion-" + productName.hashCode());
+                        suggestion.put("text", productName);
+                        suggestion.put("type", "suggestion");
+                        suggestion.put("searchTerm", productName);
+                        suggestions.add(suggestion);
+                    }
+                }
+            }
+
+        } catch (Exception e) {
+            log.error("Error getting search term suggestions: {}", e.getMessage());
+        }
+
+        return suggestions;
+    }
+
+    private List<Map<String, Object>> getCategorySuggestions(String query) {
+        List<Map<String, Object>> suggestions = new ArrayList<>();
+
+        try {
+            List<Category> categories = categoryRepository.findTop5ByNameContainingIgnoreCase(query.toLowerCase());
+            for (Category category : categories) {
+                Map<String, Object> suggestion = new HashMap<>();
+                suggestion.put("id", "category-" + category.getId());
+                suggestion.put("text", category.getName());
+                suggestion.put("type", "category");
+                suggestion.put("categoryId", category.getId().toString());
+                suggestions.add(suggestion);
+            }
+        } catch (Exception e) {
+            log.error("Error getting category suggestions: {}", e.getMessage());
+        }
+
+        return suggestions;
+    }
+
+    private List<Map<String, Object>> getBrandSuggestions(String query) {
+        List<Map<String, Object>> suggestions = new ArrayList<>();
+
+        try {
+            List<Brand> brands = brandRepository.findTop5ByBrandNameContainingIgnoreCase(query.toLowerCase());
+            for (Brand brand : brands) {
+                Map<String, Object> suggestion = new HashMap<>();
+                suggestion.put("id", "brand-" + brand.getBrandId());
+                suggestion.put("text", brand.getBrandName());
+                suggestion.put("type", "brand");
+                suggestion.put("brandId", brand.getBrandId().toString());
+                suggestions.add(suggestion);
+            }
+        } catch (Exception e) {
+            log.error("Error getting brand suggestions: {}", e.getMessage());
+        }
+
+        return suggestions;
+    }
+
+    private List<Map<String, Object>> getKeywordSuggestions(String query) {
+        List<Map<String, Object>> suggestions = new ArrayList<>();
+
+        try {
+            // Get both metaKeywords and searchKeywords
+            List<String> metaKeywordsStrings = productRepository.findDistinctMetaKeywordsByQuery(query.toLowerCase());
+            Set<String> uniqueKeywords = new HashSet<>();
+
+            // Process metaKeywords
+            for (String metaKeywordsString : metaKeywordsStrings) {
+                if (metaKeywordsString != null && !metaKeywordsString.trim().isEmpty()) {
+                    String[] keywords = metaKeywordsString.split(",");
+                    for (String keyword : keywords) {
+                        String trimmedKeyword = keyword.trim();
+                        if (!trimmedKeyword.isEmpty() &&
+                                trimmedKeyword.toLowerCase().contains(query.toLowerCase()) &&
+                                !uniqueKeywords.contains(trimmedKeyword.toLowerCase()) &&
+                                uniqueKeywords.size() < 5) {
+                            uniqueKeywords.add(trimmedKeyword.toLowerCase());
+
+                            Map<String, Object> suggestion = new HashMap<>();
+                            suggestion.put("id", "meta-keyword-" + trimmedKeyword.hashCode());
+                            suggestion.put("text", trimmedKeyword);
+                            suggestion.put("type", "keyword");
+                            suggestion.put("searchTerm", trimmedKeyword);
+                            suggestion.put("source", "metaKeywords");
+                            suggestions.add(suggestion);
+                        }
+                    }
+                }
+            }
+
+            // Also get searchKeywords suggestions
+            List<Product> productsWithSearchKeywords = productRepository.findAll().stream()
+                    .filter(Product::isActive)
+                    .filter(p -> p.getProductDetail() != null &&
+                            p.getProductDetail().getSearchKeywords() != null &&
+                            !p.getProductDetail().getSearchKeywords().trim().isEmpty())
+                    .collect(Collectors.toList());
+
+            for (Product product : productsWithSearchKeywords) {
+                String searchKeywordsString = product.getProductDetail().getSearchKeywords();
+                if (searchKeywordsString != null && !searchKeywordsString.trim().isEmpty()) {
+                    String[] keywords = searchKeywordsString.split(",");
+                    for (String keyword : keywords) {
+                        String trimmedKeyword = keyword.trim();
+                        if (!trimmedKeyword.isEmpty() &&
+                                trimmedKeyword.toLowerCase().contains(query.toLowerCase()) &&
+                                !uniqueKeywords.contains(trimmedKeyword.toLowerCase()) &&
+                                uniqueKeywords.size() < 5) {
+                            uniqueKeywords.add(trimmedKeyword.toLowerCase());
+
+                            Map<String, Object> suggestion = new HashMap<>();
+                            suggestion.put("id", "search-keyword-" + trimmedKeyword.hashCode());
+                            suggestion.put("text", trimmedKeyword);
+                            suggestion.put("type", "keyword");
+                            suggestion.put("searchTerm", trimmedKeyword);
+                            suggestion.put("source", "searchKeywords");
+                            suggestions.add(suggestion);
+                        }
+                    }
+                }
+            }
+
+        } catch (Exception e) {
+            log.error("Error getting keyword suggestions: {}", e.getMessage());
+        }
+
+        return suggestions;
+    }
+
+    private void ensureProductsIndexExists() {
+        try {
+            ExistsRequest existsRequest = ExistsRequest.of(e -> e.index("products"));
+            boolean exists = elasticsearchClient.indices().exists(existsRequest).value();
+
+            if (!exists) {
+                CreateIndexRequest createRequest = CreateIndexRequest.of(c -> c
+                        .index("products")
+                        .mappings(m -> m
+                                .properties("productId", p -> p.keyword(k -> k))
+                                .properties("productName", p -> p.text(t -> t.analyzer("standard")))
+                                .properties("shortDescription", p -> p.text(t -> t.analyzer("standard")))
+                                .properties("slug", p -> p.keyword(k -> k))
+                                .properties("sku", p -> p.keyword(k -> k))
+                                .properties("metaDescription", p -> p.text(t -> t.analyzer("standard")))
+                                .properties("metaKeywords", p -> p.text(t -> t.analyzer("standard")))
+                                .properties("searchKeywords", p -> p.text(t -> t.analyzer("standard")))));
+                elasticsearchClient.indices().create(createRequest);
+                log.info("Created Elasticsearch products index");
+            }
+        } catch (Exception e) {
+            log.error("Error ensuring products index exists", e);
+        }
+    }
+
+    private List<Map<String, Object>> getFallbackSearchSuggestions(String query) {
+        try {
             List<Map<String, Object>> suggestions = new ArrayList<>();
             String lowerQuery = query.toLowerCase().trim();
 
@@ -3047,57 +3710,9 @@ public class ProductServiceImpl implements ProductService {
                 suggestions.add(suggestion);
             }
 
-            // Get category suggestions
-            List<Category> categories = categoryRepository.findTop5ByNameContainingIgnoreCase(lowerQuery);
-            for (Category category : categories) {
-                Map<String, Object> suggestion = new HashMap<>();
-                suggestion.put("id", "category-" + category.getId());
-                suggestion.put("text", category.getName());
-                suggestion.put("type", "category");
-                suggestion.put("categoryId", category.getId().toString());
-                suggestions.add(suggestion);
-            }
-
-            // Get brand suggestions
-            List<Brand> brands = brandRepository.findTop5ByBrandNameContainingIgnoreCase(lowerQuery);
-            for (Brand brand : brands) {
-                Map<String, Object> suggestion = new HashMap<>();
-                suggestion.put("id", "brand-" + brand.getBrandId());
-                suggestion.put("text", brand.getBrandName());
-                suggestion.put("type", "brand");
-                suggestion.put("brandId", brand.getBrandId().toString());
-                suggestions.add(suggestion);
-            }
-
-            List<String> metaKeywordsStrings = productRepository.findDistinctMetaKeywordsByQuery(lowerQuery);
-            Set<String> uniqueKeywords = new HashSet<>();
-            for (String metaKeywordsString : metaKeywordsStrings) {
-                if (metaKeywordsString != null && !metaKeywordsString.trim().isEmpty()) {
-                    String[] keywords = metaKeywordsString.split(",");
-                    for (String keyword : keywords) {
-                        String trimmedKeyword = keyword.trim();
-                        if (!trimmedKeyword.isEmpty() &&
-                                trimmedKeyword.toLowerCase().contains(lowerQuery) &&
-                                uniqueKeywords.size() < 3) {
-                            uniqueKeywords.add(trimmedKeyword);
-                        }
-                    }
-                }
-            }
-
-            for (String keyword : uniqueKeywords) {
-                Map<String, Object> suggestion = new HashMap<>();
-                suggestion.put("id", "keyword-" + keyword.hashCode());
-                suggestion.put("text", keyword);
-                suggestion.put("type", "keyword");
-                suggestions.add(suggestion);
-            }
-
-            // Limit total suggestions to 10
-            return suggestions.stream().limit(10).collect(Collectors.toList());
-
+            return suggestions;
         } catch (Exception e) {
-            log.error("Error getting search suggestions: {}", e.getMessage(), e);
+            log.error("Error in fallback search suggestions", e);
             return new ArrayList<>();
         }
     }
@@ -3185,6 +3800,427 @@ public class ProductServiceImpl implements ProductService {
                         variant.getId(), warehouseStock.getWarehouseId(), e.getMessage(), e);
                 throw new RuntimeException("Failed to create variant stock assignment: " + e.getMessage(), e);
             }
+        }
+    }
+
+    @PostConstruct
+    public void indexExistingProducts() {
+        try {
+            log.info("Starting to index existing products in Elasticsearch...");
+            List<Product> products = productRepository.findAll();
+            int indexedCount = 0;
+
+            for (Product product : products) {
+                try {
+                    indexProductInElasticsearch(product);
+                    indexedCount++;
+                } catch (Exception e) {
+                    log.warn("Failed to index product {}: {}", product.getProductId(), e.getMessage());
+                }
+            }
+
+            log.info("Successfully indexed {} products in Elasticsearch", indexedCount);
+        } catch (Exception e) {
+            log.error("Error indexing existing products: {}", e.getMessage(), e);
+        }
+    }
+
+    private void indexProductInElasticsearch(Product product) {
+        try {
+            // Ensure products index exists
+            ensureProductsIndexExists();
+
+            // Create product document for Elasticsearch
+            Map<String, Object> productDoc = new HashMap<>();
+            productDoc.put("productId", product.getProductId().toString());
+            productDoc.put("productName", product.getProductName());
+            productDoc.put("shortDescription", product.getShortDescription());
+            productDoc.put("slug", product.getSlug());
+            productDoc.put("sku", product.getSku());
+            productDoc.put("barcode", product.getBarcode());
+
+            // Add ProductDetails fields if available
+            if (product.getProductDetail() != null) {
+                productDoc.put("metaDescription", product.getProductDetail().getMetaDescription());
+                productDoc.put("metaKeywords", product.getProductDetail().getMetaKeywords());
+                productDoc.put("searchKeywords", product.getProductDetail().getSearchKeywords());
+                productDoc.put("description", product.getProductDetail().getDescription());
+
+                // Add comma-separated keywords as arrays for better search
+                if (product.getProductDetail().getMetaKeywords() != null &&
+                        !product.getProductDetail().getMetaKeywords().trim().isEmpty()) {
+                    String[] metaKeywordsArray = product.getProductDetail().getMetaKeywords()
+                            .split(",");
+                    List<String> trimmedMetaKeywords = Arrays.stream(metaKeywordsArray)
+                            .map(String::trim)
+                            .filter(s -> !s.isEmpty())
+                            .collect(Collectors.toList());
+                    productDoc.put("metaKeywordsArray", trimmedMetaKeywords);
+                }
+
+                if (product.getProductDetail().getSearchKeywords() != null &&
+                        !product.getProductDetail().getSearchKeywords().trim().isEmpty()) {
+                    String[] searchKeywordsArray = product.getProductDetail().getSearchKeywords()
+                            .split(",");
+                    List<String> trimmedSearchKeywords = Arrays.stream(searchKeywordsArray)
+                            .map(String::trim)
+                            .filter(s -> !s.isEmpty())
+                            .collect(Collectors.toList());
+                    productDoc.put("searchKeywordsArray", trimmedSearchKeywords);
+                }
+            }
+
+            // Index the document
+            elasticsearchClient.index(i -> i
+                    .index("products")
+                    .id(product.getProductId().toString())
+                    .document(productDoc));
+
+            log.debug("Successfully indexed product {} in Elasticsearch", product.getProductId());
+
+        } catch (Exception e) {
+            log.error("Error indexing product {} in Elasticsearch: {}", product.getProductId(), e.getMessage(), e);
+            // Don't throw exception to avoid breaking the main flow
+        }
+    }
+
+    private List<Product> applyRatingFilter(List<Product> products, Double minRating, Double maxRating) {
+        return products.stream()
+                .filter(product -> {
+                    double averageRating = product.getAverageRating();
+                    boolean matchesMin = minRating == null || averageRating >= minRating;
+                    boolean matchesMax = maxRating == null || averageRating <= maxRating;
+                    return matchesMin && matchesMax;
+                })
+                .collect(Collectors.toList());
+    }
+
+    @Override
+    public WarehouseStockPageResponse getProductWarehouseStock(UUID productId, Pageable pageable) {
+        try {
+            log.info("Getting warehouse stock for product ID: {}", productId);
+
+            // Verify product exists
+            Product product = productRepository.findById(productId)
+                    .orElseThrow(() -> new EntityNotFoundException("Product not found with ID: " + productId));
+
+            // Get stock entries for the product (both product-level and variant-level)
+            Page<Stock> stockPage = stockRepository.findByProductOrProductVariantProduct(product, pageable);
+
+            // Map to DTOs
+            List<WarehouseStockDTO> warehouseStockDTOs = stockPage.getContent().stream()
+                    .map(this::mapStockToWarehouseStockDTO)
+                    .collect(Collectors.toList());
+
+            // Build response
+            return WarehouseStockPageResponse.builder()
+                    .content(warehouseStockDTOs)
+                    .page(stockPage.getNumber())
+                    .size(stockPage.getSize())
+                    .totalElements(stockPage.getTotalElements())
+                    .totalPages(stockPage.getTotalPages())
+                    .first(stockPage.isFirst())
+                    .last(stockPage.isLast())
+                    .hasNext(stockPage.hasNext())
+                    .hasPrevious(stockPage.hasPrevious())
+                    .build();
+
+        } catch (Exception e) {
+            log.error("Error getting warehouse stock for product ID {}: {}", productId, e.getMessage(), e);
+            throw new RuntimeException("Failed to get warehouse stock: " + e.getMessage(), e);
+        }
+    }
+
+    @Override
+    public WarehouseStockPageResponse getVariantWarehouseStock(UUID productId, Long variantId, Pageable pageable) {
+        try {
+            log.info("Getting warehouse stock for product ID: {} and variant ID: {}", productId, variantId);
+
+            // Verify product exists
+            Product product = productRepository.findById(productId)
+                    .orElseThrow(() -> new EntityNotFoundException("Product not found with ID: " + productId));
+
+            // Verify variant exists and belongs to the product
+            ProductVariant variant = productVariantRepository.findById(variantId)
+                    .orElseThrow(() -> new EntityNotFoundException("Product variant not found with ID: " + variantId));
+
+            if (!variant.getProduct().getProductId().equals(productId)) {
+                throw new IllegalArgumentException("Variant does not belong to the specified product");
+            }
+
+            // Get stock entries for the variant
+            Page<Stock> stockPage = stockRepository.findByProductVariant(variant, pageable);
+
+            // Map to DTOs
+            List<WarehouseStockDTO> warehouseStockDTOs = stockPage.getContent().stream()
+                    .map(this::mapStockToWarehouseStockDTO)
+                    .collect(Collectors.toList());
+
+            // Build response
+            return WarehouseStockPageResponse.builder()
+                    .content(warehouseStockDTOs)
+                    .page(stockPage.getNumber())
+                    .size(stockPage.getSize())
+                    .totalElements(stockPage.getTotalElements())
+                    .totalPages(stockPage.getTotalPages())
+                    .first(stockPage.isFirst())
+                    .last(stockPage.isLast())
+                    .hasNext(stockPage.hasNext())
+                    .hasPrevious(stockPage.hasPrevious())
+                    .build();
+
+        } catch (Exception e) {
+            log.error("Error getting warehouse stock for product ID {} and variant ID {}: {}",
+                    productId, variantId, e.getMessage(), e);
+            throw new RuntimeException("Failed to get variant warehouse stock: " + e.getMessage(), e);
+        }
+    }
+
+    /**
+     * Map warehouse stock information to ProductDTO
+     */
+    private void mapWarehouseStockToDTO(Product product, ProductDTO dto) {
+        try {
+            // Get all stock entries for the product (both product-level and variant-level)
+            List<Stock> allStock = stockRepository.findByProductOrProductVariantProduct(product,
+                    org.springframework.data.domain.PageRequest.of(0, Integer.MAX_VALUE)).getContent();
+
+            if (!allStock.isEmpty()) {
+                // Map stock entries to DTOs
+                List<WarehouseStockDTO> warehouseStockDTOs = allStock.stream()
+                        .map(this::mapStockToWarehouseStockDTO)
+                        .collect(Collectors.toList());
+
+                dto.setWarehouseStock(warehouseStockDTOs);
+                dto.setTotalWarehouses((int) warehouseStockDTOs.stream()
+                        .mapToLong(WarehouseStockDTO::getWarehouseId)
+                        .distinct()
+                        .count());
+                dto.setTotalWarehouseStock(warehouseStockDTOs.stream()
+                        .mapToInt(WarehouseStockDTO::getQuantity)
+                        .sum());
+            } else {
+                dto.setWarehouseStock(new ArrayList<>());
+                dto.setTotalWarehouses(0);
+                dto.setTotalWarehouseStock(0);
+            }
+        } catch (Exception e) {
+            log.warn("Error mapping warehouse stock for product {}: {}", product.getProductId(), e.getMessage());
+            dto.setWarehouseStock(new ArrayList<>());
+            dto.setTotalWarehouses(0);
+            dto.setTotalWarehouseStock(0);
+        }
+    }
+
+    /**
+     * Map Stock entity to WarehouseStockDTO
+     */
+    private WarehouseStockDTO mapStockToWarehouseStockDTO(Stock stock) {
+        Warehouse warehouse = stock.getWarehouse();
+
+        return WarehouseStockDTO.builder()
+                .stockId(stock.getId())
+                .warehouseId(warehouse.getId())
+                .warehouseName(warehouse.getName())
+                .warehouseAddress(warehouse.getAddress())
+                .warehouseCity(warehouse.getCity())
+                .warehouseState(warehouse.getState())
+                .warehouseCountry(warehouse.getCountry())
+                .warehouseContactNumber(warehouse.getContactNumber())
+                .warehouseEmail(warehouse.getEmail())
+                .quantity(stock.getQuantity())
+                .lowStockThreshold(stock.getLowStockThreshold())
+                .isInStock(stock.isInStock())
+                .isLowStock(stock.isLowStock())
+                .isOutOfStock(stock.isOutOfStock())
+                .createdAt(stock.getCreatedAt())
+                .updatedAt(stock.getUpdatedAt())
+                .variantId(stock.getProductVariant() != null ? stock.getProductVariant().getId() : null)
+                .variantSku(stock.getProductVariant() != null ? stock.getProductVariant().getVariantSku() : null)
+                .variantName(stock.getProductVariant() != null ? stock.getProductVariant().getVariantName() : null)
+                .isVariantBased(stock.isVariantBased())
+                .build();
+    }
+
+    @Override
+    public Page<ManyProductsDto> getSimilarProducts(SimilarProductsRequestDTO request) {
+        try {
+            log.info("Getting similar products for product ID: {}", request.getProductId());
+
+            Product currentProduct = productRepository.findById(request.getProductId())
+                    .orElseThrow(
+                            () -> new EntityNotFoundException("Product not found with ID: " + request.getProductId()));
+
+            Pageable pageable = PageRequest.of(request.getPage(), request.getSize());
+            Page<Product> similarProducts;
+
+            switch (request.getAlgorithm().toLowerCase()) {
+                case "brand":
+                    similarProducts = getSimilarProductsByBrand(currentProduct, pageable,
+                            request.isIncludeOutOfStock());
+                    break;
+                case "category":
+                    similarProducts = getSimilarProductsByCategory(currentProduct, pageable,
+                            request.isIncludeOutOfStock());
+                    break;
+                case "keywords":
+                    similarProducts = getSimilarProductsByKeywords(currentProduct, pageable,
+                            request.isIncludeOutOfStock());
+                    break;
+                case "popular":
+                    similarProducts = getSimilarProductsByPopularity(currentProduct, pageable,
+                            request.isIncludeOutOfStock());
+                    break;
+                case "mixed":
+                default:
+                    similarProducts = getSimilarProductsMixed(currentProduct, pageable, request.isIncludeOutOfStock());
+                    break;
+            }
+
+            return similarProducts.map(this::mapProductToManyProductsDto);
+
+        } catch (Exception e) {
+            log.error("Error getting similar products for product ID: {}", request.getProductId(), e);
+            throw new RuntimeException("Failed to get similar products", e);
+        }
+    }
+
+    private Page<Product> getSimilarProductsByBrand(Product currentProduct, Pageable pageable,
+            boolean includeOutOfStock) {
+        if (currentProduct.getBrand() == null) {
+            return Page.empty(pageable);
+        }
+
+        if (includeOutOfStock) {
+            return productRepository.findByBrandAndProductIdNot(currentProduct.getBrand(),
+                    currentProduct.getProductId(), pageable);
+        } else {
+            return productRepository.findByBrandAndProductIdNotAndInStock(currentProduct.getBrand(),
+                    currentProduct.getProductId(), pageable);
+        }
+    }
+
+    private Page<Product> getSimilarProductsByCategory(Product currentProduct, Pageable pageable,
+            boolean includeOutOfStock) {
+        if (currentProduct.getCategory() == null) {
+            return Page.empty(pageable);
+        }
+
+        if (includeOutOfStock) {
+            return productRepository.findByCategoryAndProductIdNot(currentProduct.getCategory(),
+                    currentProduct.getProductId(), pageable);
+        } else {
+            return productRepository.findByCategoryAndProductIdNotAndInStock(currentProduct.getCategory(),
+                    currentProduct.getProductId(), pageable);
+
+        }
+    }
+
+    private Page<Product> getSimilarProductsByKeywords(Product currentProduct, Pageable pageable,
+            boolean includeOutOfStock) {
+        String searchKeywords = extractKeywords(currentProduct);
+        if (searchKeywords.isEmpty()) {
+            return Page.empty(pageable);
+        }
+
+        if (includeOutOfStock) {
+            return productRepository.findByKeywordsAndProductIdNot(searchKeywords, currentProduct.getProductId(),
+                    pageable);
+        } else {
+            return productRepository.findByKeywordsAndProductIdNotAndInStock(searchKeywords,
+                    currentProduct.getProductId(), pageable);
+        }
+    }
+
+    private Page<Product> getSimilarProductsByPopularity(Product currentProduct, Pageable pageable,
+            boolean includeOutOfStock) {
+        if (includeOutOfStock) {
+            return productRepository.findByPopularityAndProductIdNot(currentProduct.getProductId(), pageable);
+        } else {
+            return productRepository.findByPopularityAndProductIdNotAndInStock(currentProduct.getProductId(), pageable);
+        }
+    }
+
+    private Page<Product> getSimilarProductsMixed(Product currentProduct, Pageable pageable,
+            boolean includeOutOfStock) {
+        List<Product> similarProducts = new ArrayList<>();
+
+        if (currentProduct.getBrand() != null) {
+            Page<Product> brandProducts = getSimilarProductsByBrand(currentProduct, PageRequest.of(0, 4),
+                    includeOutOfStock);
+            similarProducts.addAll(brandProducts.getContent());
+        }
+
+        if (currentProduct.getCategory() != null) {
+            Page<Product> categoryProducts = getSimilarProductsByCategory(currentProduct, PageRequest.of(0, 4),
+                    includeOutOfStock);
+            similarProducts.addAll(categoryProducts.getContent());
+        }
+
+        String keywords = extractKeywords(currentProduct);
+        if (!keywords.isEmpty()) {
+            Page<Product> keywordProducts = getSimilarProductsByKeywords(currentProduct, PageRequest.of(0, 4),
+                    includeOutOfStock);
+            similarProducts.addAll(keywordProducts.getContent());
+        }
+
+        Page<Product> popularProducts = getSimilarProductsByPopularity(currentProduct, PageRequest.of(0, 4),
+                includeOutOfStock);
+        similarProducts.addAll(popularProducts.getContent());
+
+        Set<Product> uniqueProducts = new LinkedHashSet<>(similarProducts);
+        List<Product> finalList = new ArrayList<>(uniqueProducts);
+
+        int start = (int) pageable.getOffset();
+        int end = Math.min(start + pageable.getPageSize(), finalList.size());
+
+        if (start >= finalList.size()) {
+            return Page.empty(pageable);
+        }
+
+        List<Product> pageContent = finalList.subList(start, end);
+        return new PageImpl<>(pageContent, pageable, finalList.size());
+    }
+
+    private String extractKeywords(Product product) {
+        StringBuilder keywords = new StringBuilder();
+
+        if (product.getProductName() != null) {
+            keywords.append(product.getProductName()).append(" ");
+        }
+
+        if (product.getDescription() != null) {
+            keywords.append(product.getDescription()).append(" ");
+        }
+
+        if (product.getMetaKeywords() != null) {
+            keywords.append(product.getMetaKeywords()).append(" ");
+        }
+
+        return keywords.toString().trim();
+    }
+
+    @Override
+    public List<ManyProductsDto> getProductsByIds(List<String> productIds) {
+        try {
+            log.info("Fetching products by IDs: {}", productIds);
+
+            // Convert string IDs to UUIDs
+            List<UUID> uuids = productIds.stream()
+                    .map(UUID::fromString)
+                    .collect(Collectors.toList());
+
+            // Fetch products from database
+            List<Product> products = productRepository.findAllById(uuids);
+
+            // Convert to DTOs
+            return products.stream()
+                    .map(this::mapProductToManyProductsDto)
+                    .collect(Collectors.toList());
+
+        } catch (Exception e) {
+            log.error("Error fetching products by IDs: {}", productIds, e);
+            throw new RuntimeException("Failed to fetch products by IDs", e);
         }
     }
 }

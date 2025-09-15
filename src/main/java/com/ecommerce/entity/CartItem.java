@@ -174,18 +174,123 @@ public class CartItem {
     }
 
     /**
-     * Gets the effective price (either from product or variant)
+     * Gets the effective price (either from product or variant) with discount applied
      * 
      * @return The price
      */
     public BigDecimal getEffectivePrice() {
         if (productVariant != null) {
+            // Check if variant has its own discount
+            if (productVariant.getDiscount() != null && isDiscountActive(productVariant.getDiscount())) {
+                return calculateDiscountedPrice(productVariant.getPrice(), productVariant.getDiscount().getPercentage());
+            }
+            // If product has discount, apply it to variant
+            if (productVariant.getProduct().getDiscount() != null && isDiscountActive(productVariant.getProduct().getDiscount())) {
+                return calculateDiscountedPrice(productVariant.getPrice(), productVariant.getProduct().getDiscount().getPercentage());
+            }
             return productVariant.getPrice();
         }
         if (product != null) {
-            return product.getDiscountedPrice();
+            // Check if product has discount
+            if (product.getDiscount() != null && isDiscountActive(product.getDiscount())) {
+                return calculateDiscountedPrice(product.getPrice(), product.getDiscount().getPercentage());
+            }
+            return product.getPrice();
         }
         return BigDecimal.ZERO;
+    }
+
+    /**
+     * Gets the original price before any discounts
+     * 
+     * @return The original price
+     */
+    public BigDecimal getOriginalPrice() {
+        if (productVariant != null) {
+            return productVariant.getPrice();
+        }
+        if (product != null) {
+            return product.getPrice();
+        }
+        return BigDecimal.ZERO;
+    }
+
+    /**
+     * Gets the discount percentage applied to this cart item
+     * 
+     * @return The discount percentage, or 0 if no discount
+     */
+    public BigDecimal getDiscountPercentage() {
+        if (productVariant != null) {
+            // Check if variant has its own discount
+            if (productVariant.getDiscount() != null && isDiscountActive(productVariant.getDiscount())) {
+                return productVariant.getDiscount().getPercentage();
+            }
+            // If product has discount, return product discount percentage
+            if (productVariant.getProduct().getDiscount() != null && isDiscountActive(productVariant.getProduct().getDiscount())) {
+                return productVariant.getProduct().getDiscount().getPercentage();
+            }
+        }
+        if (product != null) {
+            if (product.getDiscount() != null && isDiscountActive(product.getDiscount())) {
+                return product.getDiscount().getPercentage();
+            }
+        }
+        return BigDecimal.ZERO;
+    }
+
+    /**
+     * Gets the discount name applied to this cart item
+     * 
+     * @return The discount name, or null if no discount
+     */
+    public String getDiscountName() {
+        if (productVariant != null) {
+            // Check if variant has its own discount
+            if (productVariant.getDiscount() != null && isDiscountActive(productVariant.getDiscount())) {
+                return productVariant.getDiscount().getName();
+            }
+            // If product has discount, return product discount name
+            if (productVariant.getProduct().getDiscount() != null && isDiscountActive(productVariant.getProduct().getDiscount())) {
+                return productVariant.getProduct().getDiscount().getName();
+            }
+        }
+        if (product != null) {
+            if (product.getDiscount() != null && isDiscountActive(product.getDiscount())) {
+                return product.getDiscount().getName();
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Checks if a discount is currently active based on its date range
+     * 
+     * @param discount The discount to check
+     * @return true if the discount is active
+     */
+    private boolean isDiscountActive(com.ecommerce.entity.Discount discount) {
+        if (discount == null || !discount.isActive()) {
+            return false;
+        }
+        
+        java.time.LocalDateTime now = java.time.LocalDateTime.now();
+        return (discount.getStartDate() == null || now.isAfter(discount.getStartDate()) || now.isEqual(discount.getStartDate())) &&
+               (discount.getEndDate() == null || now.isBefore(discount.getEndDate()) || now.isEqual(discount.getEndDate()));
+    }
+
+    /**
+     * Calculates the discounted price based on original price and discount percentage
+     * 
+     * @param originalPrice The original price
+     * @param discountPercentage The discount percentage
+     * @return The discounted price
+     */
+    private BigDecimal calculateDiscountedPrice(BigDecimal originalPrice, BigDecimal discountPercentage) {
+        if (originalPrice == null || discountPercentage == null) {
+            return originalPrice;
+        }
+        return originalPrice.multiply(BigDecimal.ONE.subtract(discountPercentage.divide(BigDecimal.valueOf(100))));
     }
 
     /**

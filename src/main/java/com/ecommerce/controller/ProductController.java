@@ -363,4 +363,55 @@ public class ProductController {
         errorResponse.put("timestamp", System.currentTimeMillis());
         return errorResponse;
     }
+
+    @PostMapping("/by-ids")
+    @Operation(summary = "Get products by IDs", description = "Fetch multiple products by their IDs for local wishlist/cart management", responses = {
+            @ApiResponse(responseCode = "200", description = "Products retrieved successfully"),
+            @ApiResponse(responseCode = "400", description = "Invalid input data"),
+            @ApiResponse(responseCode = "500", description = "Internal server error")
+    })
+    public ResponseEntity<?> getProductsByIds(@RequestBody Map<String, List<String>> request) {
+        try {
+            List<String> productIds = request.get("productIds");
+
+            if (productIds == null || productIds.isEmpty()) {
+                return ResponseEntity.badRequest().body(Map.of(
+                        "success", false,
+                        "message", "Product IDs list cannot be empty"));
+            }
+
+            log.info("Fetching products by IDs: {}", productIds);
+
+            List<ManyProductsDto> products = productService.getProductsByIds(productIds);
+
+            return ResponseEntity.ok(Map.of(
+                    "success", true,
+                    "data", Map.of(
+                            "products", products,
+                            "totalProducts", products.size()),
+                    "message", "Products retrieved successfully"));
+        } catch (Exception e) {
+            log.error("Error fetching products by IDs: {}", e.getMessage(), e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(Map.of(
+                    "success", false,
+                    "message", "Failed to fetch products: " + e.getMessage()));
+        }
+    }
+
+    @GetMapping("/test-elasticsearch")
+    @Operation(summary = "Test Elasticsearch connection", description = "Test endpoint to verify Elasticsearch integration")
+    public ResponseEntity<?> testElasticsearch() {
+        try {
+            List<Map<String, Object>> suggestions = productService.getSearchSuggestions("test");
+            return ResponseEntity.ok(Map.of(
+                    "status", "success",
+                    "message", "Elasticsearch integration working",
+                    "suggestions_count", suggestions.size()));
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(Map.of(
+                            "status", "error",
+                            "message", "Elasticsearch integration failed: " + e.getMessage()));
+        }
+    }
 }

@@ -32,7 +32,7 @@ public class ReviewController {
     private final ReviewService reviewService;
 
     @PostMapping("/create")
-    @PreAuthorize("hasRole('USER') or hasRole('ADMIN') or hasRole('EMPLOYEE')")
+    @PreAuthorize("hasRole('CUSTOMER') or hasRole('ADMIN') or hasRole('EMPLOYEE')")
     @Operation(summary = "Create a review", description = "Create a new product review")
     public ResponseEntity<?> createReview(HttpServletRequest request,
             @Valid @RequestBody CreateReviewDTO createReviewDTO) {
@@ -76,7 +76,7 @@ public class ReviewController {
     }
 
     @PutMapping("/update")
-    @PreAuthorize("hasRole('USER') or hasRole('ADMIN') or hasRole('EMPLOYEE')")
+    @PreAuthorize("hasRole('CUSTOMER') or hasRole('ADMIN') or hasRole('EMPLOYEE')")
     @Operation(summary = "Update a review", description = "Update an existing review")
     public ResponseEntity<?> updateReview(HttpServletRequest request,
             @Valid @RequestBody UpdateReviewDTO updateReviewDTO) {
@@ -120,7 +120,7 @@ public class ReviewController {
     }
 
     @DeleteMapping("/{reviewId}")
-    @PreAuthorize("hasRole('USER') or hasRole('ADMIN') or hasRole('EMPLOYEE')")
+    @PreAuthorize("hasRole('CUSTOMER') or hasRole('ADMIN') or hasRole('EMPLOYEE')")
     @Operation(summary = "Delete a review", description = "Delete a review")
     public ResponseEntity<?> deleteReview(HttpServletRequest request, @PathVariable Long reviewId) {
         try {
@@ -236,7 +236,7 @@ public class ReviewController {
     }
 
     @GetMapping("/user")
-    @PreAuthorize("hasRole('USER') or hasRole('ADMIN') or hasRole('EMPLOYEE')")
+    @PreAuthorize("hasRole('CUSTOMER') or hasRole('ADMIN') or hasRole('EMPLOYEE')")
     @Operation(summary = "Get user reviews", description = "Get all reviews by the authenticated user")
     public ResponseEntity<?> getUserReviews(
             HttpServletRequest request,

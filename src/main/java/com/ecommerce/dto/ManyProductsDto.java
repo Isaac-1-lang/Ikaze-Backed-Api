@@ -19,15 +19,18 @@ public class ManyProductsDto {
     private String shortDescription;
     private BigDecimal price;
     private BigDecimal compareAtPrice;
+    private BigDecimal discountedPrice;
     private Integer stockQuantity;
     private SimpleCategoryDto category;
     private SimpleBrandDto brand;
     private Boolean isBestSeller;
+    private Boolean isNew;
     private Boolean isFeatured;
     private SimpleDiscountDto discountInfo;
     private SimpleProductImageDto primaryImage;
     private Double averageRating;
     private Integer reviewCount;
+    private Boolean hasActiveDiscount;
 
     /**
      * Simplified Category DTO to prevent infinite recursion
@@ -72,6 +75,8 @@ public class ManyProductsDto {
         private String startDate;
         private String endDate;
         private Boolean active;
+        private Boolean isValid;
+        private String discountCode;
     }
 
     /**

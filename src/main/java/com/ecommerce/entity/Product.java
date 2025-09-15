@@ -7,6 +7,7 @@ import jakarta.validation.constraints.Positive;
 import jakarta.validation.constraints.Size;
 import lombok.AllArgsConstructor;
 import lombok.Data;
+import lombok.EqualsAndHashCode;
 import lombok.NoArgsConstructor;
 import com.fasterxml.jackson.annotation.JsonManagedReference;
 import com.fasterxml.jackson.annotation.JsonBackReference;
@@ -22,6 +23,7 @@ import java.util.UUID;
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
+@EqualsAndHashCode(exclude = { "productDetail", "images", "videos", "variants", "reviews" })
 public class Product {
 
     @Id
@@ -171,13 +173,6 @@ public class Product {
     }
 
     public BigDecimal getDiscountedPrice() {
-        // If product has variants, return the base price (variants handle their own
-        // discounts)
-        if (variants != null && !variants.isEmpty()) {
-            return price; // Variants will handle their own discount logic
-        }
-
-        // For products without variants, apply discount logic
         if (discount != null && discount.isValid()) {
             BigDecimal discountMultiplier = BigDecimal.ONE.subtract(
                     discount.getPercentage().divide(BigDecimal.valueOf(100.0)));

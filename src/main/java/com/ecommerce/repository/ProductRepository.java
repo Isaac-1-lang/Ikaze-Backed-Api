@@ -53,4 +53,101 @@ public interface ProductRepository extends JpaRepository<Product, UUID>, JpaSpec
         Optional<Product> findByProductId(@Param("productId") String productId);
 
         Page<Product> findByDiscount(Discount discount, Pageable pageable);
+
+        long countByDiscount(Discount discount);
+
+        List<Product> findByProductIdInOrderByCreatedAtDesc(List<UUID> productIds);
+
+        Page<Product> findByProductNameContainingIgnoreCaseOrShortDescriptionContainingIgnoreCase(
+                        String productName, String shortDescription, Pageable pageable);
+
+        @Query("SELECT p FROM Product p LEFT JOIN p.productDetail pd " +
+                        "WHERE (LOWER(p.productName) LIKE LOWER(CONCAT('%', :searchTerm, '%')) " +
+                        "OR LOWER(p.shortDescription) LIKE LOWER(CONCAT('%', :searchTerm, '%')) " +
+                        "OR LOWER(p.sku) LIKE LOWER(CONCAT('%', :searchTerm, '%')) " +
+                        "OR LOWER(p.barcode) LIKE LOWER(CONCAT('%', :searchTerm, '%')) " +
+                        "OR LOWER(p.slug) LIKE LOWER(CONCAT('%', :searchTerm, '%')) " +
+                        "OR LOWER(pd.description) LIKE LOWER(CONCAT('%', :searchTerm, '%')) " +
+                        "OR LOWER(pd.metaDescription) LIKE LOWER(CONCAT('%', :searchTerm, '%')) " +
+                        "OR LOWER(pd.metaKeywords) LIKE LOWER(CONCAT('%', :searchTerm, '%')) " +
+                        "OR LOWER(pd.searchKeywords) LIKE LOWER(CONCAT('%', :searchTerm, '%'))) " +
+                        "AND p.isActive = true")
+        Page<Product> findProductsByComprehensiveSearch(@Param("searchTerm") String searchTerm, Pageable pageable);
+
+        // Method to find products with comma-separated keyword matching
+        @Query("SELECT DISTINCT p FROM Product p LEFT JOIN p.productDetail pd " +
+                        "WHERE p.isActive = true " +
+                        "AND (LOWER(p.productName) LIKE LOWER(CONCAT('%', :searchTerm, '%')) " +
+                        "OR LOWER(p.shortDescription) LIKE LOWER(CONCAT('%', :searchTerm, '%')) " +
+                        "OR LOWER(p.sku) LIKE LOWER(CONCAT('%', :searchTerm, '%')) " +
+                        "OR LOWER(p.barcode) LIKE LOWER(CONCAT('%', :searchTerm, '%')) " +
+                        "OR LOWER(p.slug) LIKE LOWER(CONCAT('%', :searchTerm, '%')) " +
+                        "OR LOWER(pd.description) LIKE LOWER(CONCAT('%', :searchTerm, '%')) " +
+                        "OR LOWER(pd.metaDescription) LIKE LOWER(CONCAT('%', :searchTerm, '%')))")
+        List<Product> findProductsForKeywordSearch(@Param("searchTerm") String searchTerm);
+
+        @Query("SELECT p FROM Product p WHERE p.productId IN " +
+                        "(SELECT r.product.productId FROM Review r GROUP BY r.product.productId " +
+                        "HAVING AVG(r.rating) >= :minRating AND AVG(r.rating) <= :maxRating)")
+        List<Product> findProductsByRatingRange(@Param("minRating") Double minRating,
+                        @Param("maxRating") Double maxRating);
+
+        @Query("SELECT p FROM Product p WHERE p.productId IN " +
+                        "(SELECT r.product.productId FROM Review r GROUP BY r.product.productId " +
+                        "HAVING AVG(r.rating) >= :minRating)")
+        List<Product> findProductsByMinRating(@Param("minRating") Double minRating);
+
+        @Query("SELECT p FROM Product p WHERE p.productId IN " +
+                        "(SELECT r.product.productId FROM Review r GROUP BY r.product.productId " +
+                        "HAVING AVG(r.rating) <= :maxRating)")
+        List<Product> findProductsByMaxRating(@Param("maxRating") Double maxRating);
+
+        @Query("SELECT p FROM Product p WHERE p.brand = :brand AND p.productId != :productId AND p.isActive = true")
+        Page<Product> findByBrandAndProductIdNot(@Param("brand") Brand brand, @Param("productId") UUID productId,
+                        Pageable pageable);
+
+        @Query("SELECT p FROM Product p WHERE p.brand = :brand AND p.productId != :productId AND p.isActive = true " +
+                        "AND p.productId IN (SELECT s.product.productId FROM Stock s WHERE s.product IS NOT NULL AND s.quantity > 0)")
+        Page<Product> findByBrandAndProductIdNotAndInStock(@Param("brand") Brand brand,
+                        @Param("productId") UUID productId, Pageable pageable);
+
+        @Query("SELECT p FROM Product p WHERE p.category = :category AND p.productId != :productId AND p.isActive = true")
+        Page<Product> findByCategoryAndProductIdNot(@Param("category") Category category,
+                        @Param("productId") UUID productId, Pageable pageable);
+
+        @Query("SELECT p FROM Product p WHERE p.category = :category AND p.productId != :productId AND p.isActive = true "
+                        +
+                        "AND p.productId IN (SELECT s.product.productId FROM Stock s WHERE s.product IS NOT NULL AND s.quantity > 0)")
+        Page<Product> findByCategoryAndProductIdNotAndInStock(@Param("category") Category category,
+                        @Param("productId") UUID productId, Pageable pageable);
+
+        @Query("SELECT p FROM Product p LEFT JOIN p.productDetail pd " +
+                        "WHERE p.productId != :productId AND p.isActive = true " +
+                        "AND (LOWER(p.productName) LIKE LOWER(CONCAT('%', :keywords, '%')) " +
+                        "OR LOWER(p.shortDescription) LIKE LOWER(CONCAT('%', :keywords, '%')) " +
+                        "OR LOWER(pd.description) LIKE LOWER(CONCAT('%', :keywords, '%')) " +
+                        "OR LOWER(pd.metaKeywords) LIKE LOWER(CONCAT('%', :keywords, '%')))")
+        Page<Product> findByKeywordsAndProductIdNot(@Param("keywords") String keywords,
+                        @Param("productId") UUID productId, Pageable pageable);
+
+        @Query("SELECT p FROM Product p LEFT JOIN p.productDetail pd " +
+                        "WHERE p.productId != :productId AND p.isActive = true " +
+                        "AND p.productId IN (SELECT s.product.productId FROM Stock s WHERE s.product IS NOT NULL AND s.quantity > 0) "
+                        +
+                        "AND (LOWER(p.productName) LIKE LOWER(CONCAT('%', :keywords, '%')) " +
+                        "OR LOWER(p.shortDescription) LIKE LOWER(CONCAT('%', :keywords, '%')) " +
+                        "OR LOWER(pd.description) LIKE LOWER(CONCAT('%', :keywords, '%')) " +
+                        "OR LOWER(pd.metaKeywords) LIKE LOWER(CONCAT('%', :keywords, '%')))")
+        Page<Product> findByKeywordsAndProductIdNotAndInStock(@Param("keywords") String keywords,
+                        @Param("productId") UUID productId, Pageable pageable);
+
+        @Query("SELECT p FROM Product p WHERE p.productId != :productId AND p.isActive = true " +
+                        "ORDER BY p.isBestseller DESC, p.isFeatured DESC, p.createdAt DESC")
+        Page<Product> findByPopularityAndProductIdNot(@Param("productId") UUID productId, Pageable pageable);
+
+        @Query("SELECT p FROM Product p WHERE p.productId != :productId AND p.isActive = true " +
+                        "AND p.productId IN (SELECT s.product.productId FROM Stock s WHERE s.product IS NOT NULL AND s.quantity > 0) "
+                        +
+                        "ORDER BY p.isBestseller DESC, p.isFeatured DESC, p.createdAt DESC")
+        Page<Product> findByPopularityAndProductIdNotAndInStock(@Param("productId") UUID productId, Pageable pageable);
 }
