@@ -677,7 +677,9 @@ public class OrderController {
                 return ResponseEntity.status(HttpStatus.NOT_FOUND).body(response);
             }
 
-            // Check if order is already delivered
+            log.info("Found order: ID={}, Status={}, PickupTokenUsed={}",
+                    order.getOrderId(), order.getOrderStatus(), order.getPickupTokenUsed());
+
             if (order.getOrderStatus() == Order.OrderStatus.DELIVERED) {
                 Map<String, Object> response = new HashMap<>();
                 response.put("success", false);
@@ -687,7 +689,6 @@ public class OrderController {
                 return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(response);
             }
 
-            // Check if pickup token is already used
             if (Boolean.TRUE.equals(order.getPickupTokenUsed())) {
                 Map<String, Object> response = new HashMap<>();
                 response.put("success", false);
@@ -697,10 +698,27 @@ public class OrderController {
                 return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(response);
             }
 
-            // Mark order as delivered and token as used
+            log.info("Updating order status to DELIVERED and marking token as used");
             order.setOrderStatus(Order.OrderStatus.DELIVERED);
             order.setPickupTokenUsed(true);
-            orderService.saveOrder(order);
+            Order savedOrder = orderService.saveOrder(order);
+
+            log.info("Order updated successfully: ID={}, Status={}, PickupTokenUsed={}",
+                    savedOrder.getOrderId(), savedOrder.getOrderStatus(), savedOrder.getPickupTokenUsed());
+
+            if (savedOrder.getReadyForDeliveryGroup() != null) {
+                log.info("Checking if all orders in delivery group {} are delivered",
+                        savedOrder.getReadyForDeliveryGroup().getDeliveryGroupId());
+
+                boolean allOrdersDelivered = orderService.checkAllOrdersDeliveredInGroup(
+                        savedOrder.getReadyForDeliveryGroup().getDeliveryGroupId());
+
+                if (allOrdersDelivered) {
+                    log.info("All orders in group {} are delivered, auto-finishing delivery",
+                            savedOrder.getReadyForDeliveryGroup().getDeliveryGroupId());
+                    orderService.autoFinishDeliveryGroup(savedOrder.getReadyForDeliveryGroup().getDeliveryGroupId());
+                }
+            }
 
             Map<String, Object> response = new HashMap<>();
             response.put("success", true);

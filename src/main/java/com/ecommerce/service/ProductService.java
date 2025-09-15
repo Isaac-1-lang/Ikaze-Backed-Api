@@ -112,4 +112,6 @@ public interface ProductService {
     WarehouseStockPageResponse getVariantWarehouseStock(UUID productId, Long variantId, Pageable pageable);
 
     Page<ManyProductsDto> getSimilarProducts(SimilarProductsRequestDTO request);
+
+    List<ManyProductsDto> getProductsByIds(List<String> productIds);
 }

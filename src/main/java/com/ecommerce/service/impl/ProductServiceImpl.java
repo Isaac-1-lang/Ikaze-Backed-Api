@@ -4112,6 +4112,7 @@ public class ProductServiceImpl implements ProductService {
         } else {
             return productRepository.findByCategoryAndProductIdNotAndInStock(currentProduct.getCategory(),
                     currentProduct.getProductId(), pageable);
+
         }
     }
 
@@ -4197,5 +4198,29 @@ public class ProductServiceImpl implements ProductService {
         }
 
         return keywords.toString().trim();
+    }
+
+    @Override
+    public List<ManyProductsDto> getProductsByIds(List<String> productIds) {
+        try {
+            log.info("Fetching products by IDs: {}", productIds);
+
+            // Convert string IDs to UUIDs
+            List<UUID> uuids = productIds.stream()
+                    .map(UUID::fromString)
+                    .collect(Collectors.toList());
+
+            // Fetch products from database
+            List<Product> products = productRepository.findAllById(uuids);
+
+            // Convert to DTOs
+            return products.stream()
+                    .map(this::mapProductToManyProductsDto)
+                    .collect(Collectors.toList());
+
+        } catch (Exception e) {
+            log.error("Error fetching products by IDs: {}", productIds, e);
+            throw new RuntimeException("Failed to fetch products by IDs", e);
+        }
     }
 }
