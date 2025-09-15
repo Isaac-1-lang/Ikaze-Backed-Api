@@ -58,12 +58,9 @@ public interface OrderService {
 
     Order getOrderByPickupToken(String pickupToken);
 
-    // Save order method
     Order saveOrder(Order order);
 
-    // Check if all orders in a delivery group are delivered
     boolean checkAllOrdersDeliveredInGroup(Long groupId);
 
-    // Auto-finish delivery group when all orders are delivered
     void autoFinishDeliveryGroup(Long groupId);
 }
