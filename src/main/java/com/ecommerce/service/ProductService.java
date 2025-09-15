@@ -5,6 +5,8 @@ import com.ecommerce.dto.ManyProductsDto;
 import com.ecommerce.dto.ProductDTO;
 import com.ecommerce.dto.ProductSearchDTO;
 import com.ecommerce.dto.ProductUpdateDTO;
+import com.ecommerce.dto.SimilarProductsRequestDTO;
+import com.ecommerce.dto.WarehouseStockPageResponse;
 
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -89,4 +91,25 @@ public interface ProductService {
     Page<ManyProductsDto> searchProducts(ProductSearchDTO searchDTO);
 
     List<Map<String, Object>> getSearchSuggestions(String query);
+
+    /**
+     * Get warehouse stock information for a product with pagination
+     * 
+     * @param productId The product ID
+     * @param pageable  Pagination information
+     * @return Paginated warehouse stock information
+     */
+    WarehouseStockPageResponse getProductWarehouseStock(UUID productId, Pageable pageable);
+
+    /**
+     * Get warehouse stock information for a product variant with pagination
+     * 
+     * @param productId The product ID
+     * @param variantId The variant ID
+     * @param pageable  Pagination information
+     * @return Paginated warehouse stock information for the variant
+     */
+    WarehouseStockPageResponse getVariantWarehouseStock(UUID productId, Long variantId, Pageable pageable);
+
+    Page<ManyProductsDto> getSimilarProducts(SimilarProductsRequestDTO request);
 }

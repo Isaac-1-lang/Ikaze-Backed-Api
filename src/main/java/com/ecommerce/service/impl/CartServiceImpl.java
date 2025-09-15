@@ -276,16 +276,15 @@ public class CartServiceImpl implements CartService {
 
     private CartItemDTO mapCartItemToDTO(CartItem cartItem) {
         String productImage = null;
-        BigDecimal price;
         String productName;
         String sku;
         boolean inStock;
         Integer availableStock;
 
+        // Get basic information
         if (cartItem.isVariantBased()) {
             // Handle variant-based cart item
             ProductVariant variant = cartItem.getProductVariant();
-            price = variant.getPrice();
             productName = variant.getProduct().getProductName() + " - " + variant.getVariantName();
             sku = variant.getVariantSku();
             inStock = variant.isInStock();
@@ -301,7 +300,6 @@ public class CartServiceImpl implements CartService {
         } else {
             // Handle product-based cart item
             Product product = cartItem.getProduct();
-            price = product.getDiscountedPrice();
             productName = product.getProductName();
             sku = product.getSku();
             inStock = product.isInStock();
@@ -316,6 +314,15 @@ public class CartServiceImpl implements CartService {
             }
         }
 
+        // Get pricing information with discount
+        BigDecimal originalPrice = cartItem.getOriginalPrice();
+        BigDecimal effectivePrice = cartItem.getEffectivePrice();
+        BigDecimal discountPercentage = cartItem.getDiscountPercentage();
+        String discountName = cartItem.getDiscountName();
+        boolean hasDiscount = discountPercentage.compareTo(BigDecimal.ZERO) > 0;
+        BigDecimal discountAmount = originalPrice.subtract(effectivePrice);
+        BigDecimal totalPrice = effectivePrice.multiply(BigDecimal.valueOf(cartItem.getQuantity()));
+
         return CartItemDTO.builder()
                 .id(cartItem.getId())
                 .productId(
@@ -325,12 +332,17 @@ public class CartServiceImpl implements CartService {
                 .productName(productName)
                 .productImage(productImage)
                 .quantity(cartItem.getQuantity())
-                .price(price)
-                .totalPrice(price.multiply(BigDecimal.valueOf(cartItem.getQuantity())))
+                .price(effectivePrice) // Current price with discount
+                .originalPrice(originalPrice) // Original price before discount
+                .totalPrice(totalPrice)
                 .addedAt(cartItem.getAddedAt())
                 .inStock(inStock)
                 .availableStock(availableStock)
                 .isVariantBased(cartItem.isVariantBased())
+                .discountPercentage(discountPercentage)
+                .discountName(discountName)
+                .discountAmount(discountAmount)
+                .hasDiscount(hasDiscount)
                 .build();
     }
 
@@ -373,20 +385,26 @@ public class CartServiceImpl implements CartService {
                                                 .build())
                                         .collect(Collectors.toList()) : new ArrayList<>();
 
+                        // Calculate discount information for variant
+                        BigDecimal variantOriginalPrice = variant.getPrice();
+                        BigDecimal variantEffectivePrice = getVariantEffectivePrice(variant);
+                        BigDecimal variantDiscountPercentage = getVariantDiscountPercentage(variant);
+                        String variantDiscountName = getVariantDiscountName(variant);
+
                         cartProduct = CartProductsResponseDTO.CartProductDTO.builder()
                                 .itemId(item.getItemId())
                                 .productId(product.getProductId().toString())
                                 .variantId(variant.getId())
                                 .productName(product.getProductName())
                                 .productDescription(product.getDescription())
-                                .price(variant.getPrice())
-                                .previousPrice(product.getSalePercentage() != null && product.getSalePercentage() > 0
-                                        ? product.getPrice()
+                                .price(variantEffectivePrice) // Use effective price with discount
+                                .previousPrice(variantDiscountPercentage.compareTo(BigDecimal.ZERO) > 0
+                                        ? variantOriginalPrice
                                         : null)
                                 .productImage(imageUrl)
                                 .quantity(item.getQuantity())
                                 .availableStock(variant.getTotalStockQuantity())
-                                .totalPrice(variant.getPrice().multiply(BigDecimal.valueOf(item.getQuantity())))
+                                .totalPrice(variantEffectivePrice.multiply(BigDecimal.valueOf(item.getQuantity())))
                                 .averageRating(product.getAverageRating())
                                 .reviewCount(product.getReviewCount())
                                 .variantSku(variant.getVariantSku())
@@ -407,21 +425,26 @@ public class CartServiceImpl implements CartService {
 
                         String imageUrl = getProductMainImage(product);
 
+                        // Calculate discount information for product
+                        BigDecimal productOriginalPrice = product.getPrice();
+                        BigDecimal productEffectivePrice = getProductEffectivePrice(product);
+                        BigDecimal productDiscountPercentage = getProductDiscountPercentage(product);
+                        String productDiscountName = getProductDiscountName(product);
+
                         cartProduct = CartProductsResponseDTO.CartProductDTO.builder()
                                 .itemId(item.getItemId())
                                 .productId(product.getProductId().toString())
                                 .variantId(null)
                                 .productName(product.getProductName())
                                 .productDescription(product.getDescription())
-                                .price(product.getDiscountedPrice())
-                                .previousPrice(product.getSalePercentage() != null && product.getSalePercentage() > 0
-                                        ? product.getPrice()
+                                .price(productEffectivePrice) // Use effective price with discount
+                                .previousPrice(productDiscountPercentage.compareTo(BigDecimal.ZERO) > 0
+                                        ? productOriginalPrice
                                         : null)
                                 .productImage(imageUrl)
                                 .quantity(item.getQuantity())
                                 .availableStock(product.getTotalStockQuantity())
-                                .totalPrice(
-                                        product.getDiscountedPrice().multiply(BigDecimal.valueOf(item.getQuantity())))
+                                .totalPrice(productEffectivePrice.multiply(BigDecimal.valueOf(item.getQuantity())))
                                 .averageRating(product.getAverageRating())
                                 .reviewCount(product.getReviewCount())
                                 .variantSku(null)
@@ -475,5 +498,107 @@ public class CartServiceImpl implements CartService {
                     .orElse(product.getImages().get(0).getImageUrl());
         }
         return ""; // Return empty string if no image found
+    }
+
+    /**
+     * Calculates the effective price for a variant considering discounts
+     */
+    private BigDecimal getVariantEffectivePrice(ProductVariant variant) {
+        // Check if variant has its own discount
+        if (variant.getDiscount() != null && isDiscountActive(variant.getDiscount())) {
+            return calculateDiscountedPrice(variant.getPrice(), variant.getDiscount().getPercentage());
+        }
+        // If product has discount, apply it to variant
+        if (variant.getProduct().getDiscount() != null && isDiscountActive(variant.getProduct().getDiscount())) {
+            return calculateDiscountedPrice(variant.getPrice(), variant.getProduct().getDiscount().getPercentage());
+        }
+        return variant.getPrice();
+    }
+
+    /**
+     * Calculates the effective price for a product considering discounts
+     */
+    private BigDecimal getProductEffectivePrice(Product product) {
+        // Check if product has discount
+        if (product.getDiscount() != null && isDiscountActive(product.getDiscount())) {
+            return calculateDiscountedPrice(product.getPrice(), product.getDiscount().getPercentage());
+        }
+        return product.getPrice();
+    }
+
+    /**
+     * Gets the discount percentage for a variant
+     */
+    private BigDecimal getVariantDiscountPercentage(ProductVariant variant) {
+        // Check if variant has its own discount
+        if (variant.getDiscount() != null && isDiscountActive(variant.getDiscount())) {
+            return variant.getDiscount().getPercentage();
+        }
+        // If product has discount, return product discount percentage
+        if (variant.getProduct().getDiscount() != null && isDiscountActive(variant.getProduct().getDiscount())) {
+            return variant.getProduct().getDiscount().getPercentage();
+        }
+        return BigDecimal.ZERO;
+    }
+
+    /**
+     * Gets the discount percentage for a product
+     */
+    private BigDecimal getProductDiscountPercentage(Product product) {
+        if (product.getDiscount() != null && isDiscountActive(product.getDiscount())) {
+            return product.getDiscount().getPercentage();
+        }
+        return BigDecimal.ZERO;
+    }
+
+    /**
+     * Gets the discount name for a variant
+     */
+    private String getVariantDiscountName(ProductVariant variant) {
+        // Check if variant has its own discount
+        if (variant.getDiscount() != null && isDiscountActive(variant.getDiscount())) {
+            return variant.getDiscount().getName();
+        }
+        // If product has discount, return product discount name
+        if (variant.getProduct().getDiscount() != null && isDiscountActive(variant.getProduct().getDiscount())) {
+            return variant.getProduct().getDiscount().getName();
+        }
+        return null;
+    }
+
+    /**
+     * Gets the discount name for a product
+     */
+    private String getProductDiscountName(Product product) {
+        if (product.getDiscount() != null && isDiscountActive(product.getDiscount())) {
+            return product.getDiscount().getName();
+        }
+        return null;
+    }
+
+    /**
+     * Checks if a discount is currently active based on its date range
+     */
+    private boolean isDiscountActive(com.ecommerce.entity.Discount discount) {
+        if (discount == null || !discount.isActive()) {
+            return false;
+        }
+
+        java.time.LocalDateTime now = java.time.LocalDateTime.now();
+        return (discount.getStartDate() == null || now.isAfter(discount.getStartDate())
+                || now.isEqual(discount.getStartDate())) &&
+                (discount.getEndDate() == null || now.isBefore(discount.getEndDate())
+                        || now.isEqual(discount.getEndDate()));
+    }
+
+    /**
+     * Calculates the discounted price based on original price and discount
+     * percentage
+     */
+    private BigDecimal calculateDiscountedPrice(BigDecimal originalPrice, BigDecimal discountPercentage) {
+        if (originalPrice == null || discountPercentage == null) {
+            return originalPrice;
+        }
+        return originalPrice.multiply(BigDecimal.ONE.subtract(discountPercentage.divide(BigDecimal.valueOf(100))));
     }
 }

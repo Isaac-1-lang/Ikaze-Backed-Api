@@ -1,12 +1,14 @@
 package com.ecommerce.dto;
 
 import com.ecommerce.Enum.UserRole;
+import com.fasterxml.jackson.annotation.JsonInclude;
 import lombok.Data;
 
 import java.time.LocalDateTime;
 import java.util.UUID;
 
 @Data
+@JsonInclude(JsonInclude.Include.ALWAYS)
 public class UserDTO {
     private UUID id;
     private String firstName;
@@ -17,6 +19,7 @@ public class UserDTO {
     private boolean emailVerified;
     private boolean phoneVerified;
     private boolean enabled;
+    private Integer points;
     private LocalDateTime lastLogin;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;

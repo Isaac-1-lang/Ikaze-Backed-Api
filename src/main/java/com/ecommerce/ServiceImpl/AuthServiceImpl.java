@@ -12,6 +12,8 @@ import com.ecommerce.Enum.UserRole;
 import com.ecommerce.Exception.CustomException;
 import com.ecommerce.dto.UserRegistrationDTO;
 import com.ecommerce.dto.UserDTO;
+import com.ecommerce.dto.SignupResponseDTO;
+import com.ecommerce.dto.UserPointsDTO;
 import com.ecommerce.entity.User;
 import com.ecommerce.repository.UserRepository;
 import com.ecommerce.service.AuthService;
@@ -48,12 +50,11 @@ public class AuthServiceImpl implements AuthService {
     }
 
     @Override
-    public String registerUser(UserRegistrationDTO registrationDTO) {
+    public SignupResponseDTO registerUser(UserRegistrationDTO registrationDTO) {
         if (userRepository.findByUserEmail(registrationDTO.getEmail()).isPresent()) {
             throw new CustomException("Email already exists");
         }
 
-        // Validate phone number if provided
         if (registrationDTO.getPhoneNumber() != null && !registrationDTO.getPhoneNumber().trim().isEmpty()) {
             validatePhoneNumber(registrationDTO.getPhoneNumber());
         }
@@ -75,13 +76,24 @@ public class AuthServiceImpl implements AuthService {
                 "Welcome to Our App!",
                 "Hello " + savedUser.getFirstName() + ",\n\nThank you for signing up!");
 
+        Integer awardedPoints = 0;
+        String pointsDescription = null;
+
         try {
-            rewardService.awardPointsForSignup(savedUser.getId());
+            UserPointsDTO rewardResult = rewardService.awardPointsForSignup(savedUser.getId());
+            if (rewardResult != null) {
+                awardedPoints = rewardResult.getPoints();
+                pointsDescription = rewardResult.getDescription();
+            }
         } catch (Exception e) {
             log.warn("Failed to award signup points for user {}: {}", savedUser.getId(), e.getMessage());
         }
 
-        return "User registered successfully with ID: " + savedUser.getId().toString();
+        return new SignupResponseDTO(
+                "User registered successfully",
+                savedUser.getId(),
+                awardedPoints,
+                pointsDescription);
     }
 
     @Override
@@ -165,6 +177,7 @@ public class AuthServiceImpl implements AuthService {
         userDTO.setEmailVerified(user.isEmailVerified());
         userDTO.setPhoneVerified(user.isPhoneVerified());
         userDTO.setEnabled(user.isEnabled());
+        userDTO.setPoints(user.getPoints());
         userDTO.setLastLogin(user.getLastLogin());
         userDTO.setCreatedAt(user.getCreatedAt());
         userDTO.setUpdatedAt(user.getUpdatedAt());

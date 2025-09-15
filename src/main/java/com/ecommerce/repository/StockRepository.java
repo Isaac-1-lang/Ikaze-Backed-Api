@@ -48,6 +48,11 @@ public interface StockRepository extends JpaRepository<Stock, Long> {
         List<Stock> findByProductVariant(ProductVariant variant);
 
         /**
+         * Find all stock entries for a variant across all warehouses with pagination
+         */
+        Page<Stock> findByProductVariant(ProductVariant variant, Pageable pageable);
+
+        /**
          * Find stock entries with low stock (quantity <= lowStockThreshold)
          */
         @Query("SELECT s FROM Stock s WHERE s.quantity <= s.lowStockThreshold AND s.quantity > 0")
@@ -90,4 +95,10 @@ public interface StockRepository extends JpaRepository<Stock, Long> {
          */
         @Query("SELECT s FROM Stock s WHERE s.warehouse.id = :warehouseId")
         List<Stock> findByWarehouseWarehouseId(@Param("warehouseId") Long warehouseId);
+
+        /**
+         * Find all stock entries for a product or its variants with pagination
+         */
+        @Query("SELECT s FROM Stock s WHERE s.product = :product OR s.productVariant.product = :product")
+        Page<Stock> findByProductOrProductVariantProduct(@Param("product") Product product, Pageable pageable);
 }

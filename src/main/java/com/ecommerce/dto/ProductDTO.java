@@ -48,6 +48,11 @@ public class ProductDTO {
     // Product variants
     private List<ProductVariantDTO> variants;
 
+    // Warehouse stock information
+    private List<WarehouseStockDTO> warehouseStock;
+    private Integer totalWarehouseStock;
+    private Integer totalWarehouses;
+
     // Product details
     private String fullDescription;
     private String metaTitle;

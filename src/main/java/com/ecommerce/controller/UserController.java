@@ -2,6 +2,7 @@ package com.ecommerce.controller;
 
 import com.ecommerce.dto.UserRegistrationDTO;
 import com.ecommerce.dto.UserDTO;
+import com.ecommerce.dto.SignupResponseDTO;
 import com.ecommerce.service.AuthService;
 import com.ecommerce.dto.LoginDto;
 import com.ecommerce.dto.LoginResponseDto;
@@ -36,11 +37,11 @@ public class UserController {
     @PostMapping("/register")
     public ResponseEntity<?> registerUser(@Valid @RequestBody UserRegistrationDTO registrationDTO) {
         try {
-            String response = authService.registerUser(registrationDTO);
+            SignupResponseDTO response = authService.registerUser(registrationDTO);
             return ResponseEntity.ok(Map.of(
                     "success", true,
-                    "message", response,
-                    "data", Map.of("message", response)));
+                    "message", response.getMessage(),
+                    "data", response));
         } catch (Exception e) {
             return ResponseEntity.badRequest().body(Map.of(
                     "success", false,

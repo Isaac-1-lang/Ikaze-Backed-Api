@@ -13,7 +13,7 @@ import com.ecommerce.dto.ProductDTO;
 import com.ecommerce.dto.ProductSearchDTO;
 
 import com.ecommerce.dto.ProductUpdateDTO;
-
+import com.ecommerce.dto.SimilarProductsRequestDTO;
 import com.ecommerce.dto.ProductVariantDTO;
 
 import com.ecommerce.dto.VariantAttributeDTO;
@@ -22,7 +22,9 @@ import com.ecommerce.dto.VariantImageMetadata;
 
 import com.ecommerce.dto.VideoMetadata;
 import com.ecommerce.dto.ReviewDTO;
+import com.ecommerce.dto.DiscountDTO;
 import com.ecommerce.dto.WarehouseStockDTO;
+import com.ecommerce.dto.WarehouseStockPageResponse;
 
 import com.ecommerce.entity.*;
 
@@ -57,6 +59,8 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
 import org.springframework.data.domain.Page;
+
+import org.springframework.data.domain.PageImpl;
 
 import org.springframework.data.domain.PageRequest;
 
@@ -132,8 +136,6 @@ public class ProductServiceImpl implements ProductService {
 
     private final ElasticsearchClient elasticsearchClient;
 
-    // Using thread pool for concurrent image/video uploads
-
     private final ExecutorService executorService = Executors.newFixedThreadPool(10);
 
     @Override
@@ -148,10 +150,6 @@ public class ProductServiceImpl implements ProductService {
             log.info("Starting product creation for: {}", createProductDTO.getName());
 
             Category category = validateAndGetCategory(createProductDTO.getCategoryId());
-
-            // SKU resolution will happen after brand/discount validation
-
-            // Validate brand if provided
 
             Brand brand = null;
 
@@ -1553,9 +1551,23 @@ public class ProductServiceImpl implements ProductService {
             }
 
             if (searchDTO.getDiscountIds() != null && !searchDTO.getDiscountIds().isEmpty()) {
+                // Filter products that have the discount directly OR have variants with the
+                // discount
+                Predicate productDiscountPredicate = root.get("discount").get("discountId")
+                        .in(searchDTO.getDiscountIds());
 
-                predicates.add(root.get("discount").get("discountId").in(searchDTO.getDiscountIds()));
+                // Create subquery for variants with the discount
+                Subquery<ProductVariant> variantSubquery = query.subquery(ProductVariant.class);
+                Root<ProductVariant> variantRoot = variantSubquery.from(ProductVariant.class);
+                variantSubquery.select(variantRoot)
+                        .where(criteriaBuilder.and(
+                                criteriaBuilder.equal(variantRoot.get("product"), root),
+                                variantRoot.get("discount").get("discountId").in(searchDTO.getDiscountIds())));
 
+                Predicate variantDiscountPredicate = criteriaBuilder.exists(variantSubquery);
+
+                // Combine both conditions with OR
+                predicates.add(criteriaBuilder.or(productDiscountPredicate, variantDiscountPredicate));
             }
 
             if (searchDTO.getHasDiscount() != null) {
@@ -2144,8 +2156,6 @@ public class ProductServiceImpl implements ProductService {
                     log.debug("No attributes to process for variant {}", savedVariant.getId());
                 }
 
-                // Process variant images from the main variant images list if available
-                // (primary method)
                 if (variantImages != null && !variantImages.isEmpty() && variantImageMapping != null) {
                     try {
                         List<MultipartFile> variantSpecificImages = getVariantImagesForIndex(variantImages,
@@ -2167,8 +2177,6 @@ public class ProductServiceImpl implements ProductService {
                             savedVariant.getId(), savedVariant.getVariantSku());
                 }
 
-                // Also check if variant has its own embedded images (for backward
-                // compatibility)
                 if (variantDTO.getVariantImages() != null && !variantDTO.getVariantImages().isEmpty()) {
                     log.info("Processing {} embedded images for variant {} (SKU: {})",
                             variantDTO.getVariantImages().size(), savedVariant.getId(),
@@ -2954,6 +2962,9 @@ public class ProductServiceImpl implements ProductService {
                     .collect(Collectors.toList()));
         }
 
+        // Map warehouse stock information
+        mapWarehouseStockToDTO(product, dto);
+
         return dto;
 
     }
@@ -3049,6 +3060,27 @@ public class ProductServiceImpl implements ProductService {
 
         dto.setUpdatedAt(variant.getUpdatedAt());
 
+        // Map discount information
+        if (variant.getDiscount() != null) {
+            DiscountDTO discountDTO = mapDiscountToDTO(variant.getDiscount());
+            dto.setDiscount(discountDTO);
+
+            // Check if discount is currently active
+            boolean isActive = isDiscountCurrentlyActive(variant.getDiscount());
+            dto.setHasActiveDiscount(isActive);
+
+            // Calculate discounted price if discount is active
+            if (isActive && variant.getDiscount().getPercentage() != null) {
+                BigDecimal discountPercentage = variant.getDiscount().getPercentage();
+                BigDecimal originalPrice = variant.getPrice();
+                BigDecimal discountedPrice = originalPrice.multiply(
+                        BigDecimal.ONE.subtract(discountPercentage.divide(BigDecimal.valueOf(100))));
+                dto.setDiscountedPrice(discountedPrice);
+            }
+        } else {
+            dto.setHasActiveDiscount(false);
+        }
+
         // Map variant images
 
         if (variant.getImages() != null) {
@@ -3113,6 +3145,37 @@ public class ProductServiceImpl implements ProductService {
 
                 .build();
 
+    }
+
+    private DiscountDTO mapDiscountToDTO(Discount discount) {
+        return DiscountDTO.builder()
+                .discountId(discount.getDiscountId())
+                .name(discount.getName())
+                .description(discount.getDescription())
+                .percentage(discount.getPercentage())
+                .discountCode(discount.getDiscountCode())
+                .startDate(discount.getStartDate())
+                .endDate(discount.getEndDate())
+                .active(discount.isActive())
+                .usageLimit(discount.getUsageLimit())
+                .usedCount(discount.getUsedCount())
+                .discountType(discount.getDiscountType() != null ? discount.getDiscountType().toString() : null)
+                .createdAt(discount.getCreatedAt())
+                .updatedAt(discount.getUpdatedAt())
+                .valid(discount.isValid())
+                .build();
+    }
+
+    private boolean isDiscountCurrentlyActive(Discount discount) {
+        if (discount == null || !discount.isActive()) {
+            return false;
+        }
+
+        LocalDateTime now = LocalDateTime.now();
+        return (discount.getStartDate() == null || now.isAfter(discount.getStartDate())
+                || now.isEqual(discount.getStartDate())) &&
+                (discount.getEndDate() == null || now.isBefore(discount.getEndDate())
+                        || now.isEqual(discount.getEndDate()));
     }
 
     @Override
@@ -3830,5 +3893,309 @@ public class ProductServiceImpl implements ProductService {
                     return matchesMin && matchesMax;
                 })
                 .collect(Collectors.toList());
+    }
+
+    @Override
+    public WarehouseStockPageResponse getProductWarehouseStock(UUID productId, Pageable pageable) {
+        try {
+            log.info("Getting warehouse stock for product ID: {}", productId);
+
+            // Verify product exists
+            Product product = productRepository.findById(productId)
+                    .orElseThrow(() -> new EntityNotFoundException("Product not found with ID: " + productId));
+
+            // Get stock entries for the product (both product-level and variant-level)
+            Page<Stock> stockPage = stockRepository.findByProductOrProductVariantProduct(product, pageable);
+
+            // Map to DTOs
+            List<WarehouseStockDTO> warehouseStockDTOs = stockPage.getContent().stream()
+                    .map(this::mapStockToWarehouseStockDTO)
+                    .collect(Collectors.toList());
+
+            // Build response
+            return WarehouseStockPageResponse.builder()
+                    .content(warehouseStockDTOs)
+                    .page(stockPage.getNumber())
+                    .size(stockPage.getSize())
+                    .totalElements(stockPage.getTotalElements())
+                    .totalPages(stockPage.getTotalPages())
+                    .first(stockPage.isFirst())
+                    .last(stockPage.isLast())
+                    .hasNext(stockPage.hasNext())
+                    .hasPrevious(stockPage.hasPrevious())
+                    .build();
+
+        } catch (Exception e) {
+            log.error("Error getting warehouse stock for product ID {}: {}", productId, e.getMessage(), e);
+            throw new RuntimeException("Failed to get warehouse stock: " + e.getMessage(), e);
+        }
+    }
+
+    @Override
+    public WarehouseStockPageResponse getVariantWarehouseStock(UUID productId, Long variantId, Pageable pageable) {
+        try {
+            log.info("Getting warehouse stock for product ID: {} and variant ID: {}", productId, variantId);
+
+            // Verify product exists
+            Product product = productRepository.findById(productId)
+                    .orElseThrow(() -> new EntityNotFoundException("Product not found with ID: " + productId));
+
+            // Verify variant exists and belongs to the product
+            ProductVariant variant = productVariantRepository.findById(variantId)
+                    .orElseThrow(() -> new EntityNotFoundException("Product variant not found with ID: " + variantId));
+
+            if (!variant.getProduct().getProductId().equals(productId)) {
+                throw new IllegalArgumentException("Variant does not belong to the specified product");
+            }
+
+            // Get stock entries for the variant
+            Page<Stock> stockPage = stockRepository.findByProductVariant(variant, pageable);
+
+            // Map to DTOs
+            List<WarehouseStockDTO> warehouseStockDTOs = stockPage.getContent().stream()
+                    .map(this::mapStockToWarehouseStockDTO)
+                    .collect(Collectors.toList());
+
+            // Build response
+            return WarehouseStockPageResponse.builder()
+                    .content(warehouseStockDTOs)
+                    .page(stockPage.getNumber())
+                    .size(stockPage.getSize())
+                    .totalElements(stockPage.getTotalElements())
+                    .totalPages(stockPage.getTotalPages())
+                    .first(stockPage.isFirst())
+                    .last(stockPage.isLast())
+                    .hasNext(stockPage.hasNext())
+                    .hasPrevious(stockPage.hasPrevious())
+                    .build();
+
+        } catch (Exception e) {
+            log.error("Error getting warehouse stock for product ID {} and variant ID {}: {}",
+                    productId, variantId, e.getMessage(), e);
+            throw new RuntimeException("Failed to get variant warehouse stock: " + e.getMessage(), e);
+        }
+    }
+
+    /**
+     * Map warehouse stock information to ProductDTO
+     */
+    private void mapWarehouseStockToDTO(Product product, ProductDTO dto) {
+        try {
+            // Get all stock entries for the product (both product-level and variant-level)
+            List<Stock> allStock = stockRepository.findByProductOrProductVariantProduct(product,
+                    org.springframework.data.domain.PageRequest.of(0, Integer.MAX_VALUE)).getContent();
+
+            if (!allStock.isEmpty()) {
+                // Map stock entries to DTOs
+                List<WarehouseStockDTO> warehouseStockDTOs = allStock.stream()
+                        .map(this::mapStockToWarehouseStockDTO)
+                        .collect(Collectors.toList());
+
+                dto.setWarehouseStock(warehouseStockDTOs);
+                dto.setTotalWarehouses((int) warehouseStockDTOs.stream()
+                        .mapToLong(WarehouseStockDTO::getWarehouseId)
+                        .distinct()
+                        .count());
+                dto.setTotalWarehouseStock(warehouseStockDTOs.stream()
+                        .mapToInt(WarehouseStockDTO::getQuantity)
+                        .sum());
+            } else {
+                dto.setWarehouseStock(new ArrayList<>());
+                dto.setTotalWarehouses(0);
+                dto.setTotalWarehouseStock(0);
+            }
+        } catch (Exception e) {
+            log.warn("Error mapping warehouse stock for product {}: {}", product.getProductId(), e.getMessage());
+            dto.setWarehouseStock(new ArrayList<>());
+            dto.setTotalWarehouses(0);
+            dto.setTotalWarehouseStock(0);
+        }
+    }
+
+    /**
+     * Map Stock entity to WarehouseStockDTO
+     */
+    private WarehouseStockDTO mapStockToWarehouseStockDTO(Stock stock) {
+        Warehouse warehouse = stock.getWarehouse();
+
+        return WarehouseStockDTO.builder()
+                .stockId(stock.getId())
+                .warehouseId(warehouse.getId())
+                .warehouseName(warehouse.getName())
+                .warehouseAddress(warehouse.getAddress())
+                .warehouseCity(warehouse.getCity())
+                .warehouseState(warehouse.getState())
+                .warehouseCountry(warehouse.getCountry())
+                .warehouseContactNumber(warehouse.getContactNumber())
+                .warehouseEmail(warehouse.getEmail())
+                .quantity(stock.getQuantity())
+                .lowStockThreshold(stock.getLowStockThreshold())
+                .isInStock(stock.isInStock())
+                .isLowStock(stock.isLowStock())
+                .isOutOfStock(stock.isOutOfStock())
+                .createdAt(stock.getCreatedAt())
+                .updatedAt(stock.getUpdatedAt())
+                .variantId(stock.getProductVariant() != null ? stock.getProductVariant().getId() : null)
+                .variantSku(stock.getProductVariant() != null ? stock.getProductVariant().getVariantSku() : null)
+                .variantName(stock.getProductVariant() != null ? stock.getProductVariant().getVariantName() : null)
+                .isVariantBased(stock.isVariantBased())
+                .build();
+    }
+
+    @Override
+    public Page<ManyProductsDto> getSimilarProducts(SimilarProductsRequestDTO request) {
+        try {
+            log.info("Getting similar products for product ID: {}", request.getProductId());
+
+            Product currentProduct = productRepository.findById(request.getProductId())
+                    .orElseThrow(
+                            () -> new EntityNotFoundException("Product not found with ID: " + request.getProductId()));
+
+            Pageable pageable = PageRequest.of(request.getPage(), request.getSize());
+            Page<Product> similarProducts;
+
+            switch (request.getAlgorithm().toLowerCase()) {
+                case "brand":
+                    similarProducts = getSimilarProductsByBrand(currentProduct, pageable,
+                            request.isIncludeOutOfStock());
+                    break;
+                case "category":
+                    similarProducts = getSimilarProductsByCategory(currentProduct, pageable,
+                            request.isIncludeOutOfStock());
+                    break;
+                case "keywords":
+                    similarProducts = getSimilarProductsByKeywords(currentProduct, pageable,
+                            request.isIncludeOutOfStock());
+                    break;
+                case "popular":
+                    similarProducts = getSimilarProductsByPopularity(currentProduct, pageable,
+                            request.isIncludeOutOfStock());
+                    break;
+                case "mixed":
+                default:
+                    similarProducts = getSimilarProductsMixed(currentProduct, pageable, request.isIncludeOutOfStock());
+                    break;
+            }
+
+            return similarProducts.map(this::mapProductToManyProductsDto);
+
+        } catch (Exception e) {
+            log.error("Error getting similar products for product ID: {}", request.getProductId(), e);
+            throw new RuntimeException("Failed to get similar products", e);
+        }
+    }
+
+    private Page<Product> getSimilarProductsByBrand(Product currentProduct, Pageable pageable,
+            boolean includeOutOfStock) {
+        if (currentProduct.getBrand() == null) {
+            return Page.empty(pageable);
+        }
+
+        if (includeOutOfStock) {
+            return productRepository.findByBrandAndProductIdNot(currentProduct.getBrand(),
+                    currentProduct.getProductId(), pageable);
+        } else {
+            return productRepository.findByBrandAndProductIdNotAndInStock(currentProduct.getBrand(),
+                    currentProduct.getProductId(), pageable);
+        }
+    }
+
+    private Page<Product> getSimilarProductsByCategory(Product currentProduct, Pageable pageable,
+            boolean includeOutOfStock) {
+        if (currentProduct.getCategory() == null) {
+            return Page.empty(pageable);
+        }
+
+        if (includeOutOfStock) {
+            return productRepository.findByCategoryAndProductIdNot(currentProduct.getCategory(),
+                    currentProduct.getProductId(), pageable);
+        } else {
+            return productRepository.findByCategoryAndProductIdNotAndInStock(currentProduct.getCategory(),
+                    currentProduct.getProductId(), pageable);
+        }
+    }
+
+    private Page<Product> getSimilarProductsByKeywords(Product currentProduct, Pageable pageable,
+            boolean includeOutOfStock) {
+        String searchKeywords = extractKeywords(currentProduct);
+        if (searchKeywords.isEmpty()) {
+            return Page.empty(pageable);
+        }
+
+        if (includeOutOfStock) {
+            return productRepository.findByKeywordsAndProductIdNot(searchKeywords, currentProduct.getProductId(),
+                    pageable);
+        } else {
+            return productRepository.findByKeywordsAndProductIdNotAndInStock(searchKeywords,
+                    currentProduct.getProductId(), pageable);
+        }
+    }
+
+    private Page<Product> getSimilarProductsByPopularity(Product currentProduct, Pageable pageable,
+            boolean includeOutOfStock) {
+        if (includeOutOfStock) {
+            return productRepository.findByPopularityAndProductIdNot(currentProduct.getProductId(), pageable);
+        } else {
+            return productRepository.findByPopularityAndProductIdNotAndInStock(currentProduct.getProductId(), pageable);
+        }
+    }
+
+    private Page<Product> getSimilarProductsMixed(Product currentProduct, Pageable pageable,
+            boolean includeOutOfStock) {
+        List<Product> similarProducts = new ArrayList<>();
+
+        if (currentProduct.getBrand() != null) {
+            Page<Product> brandProducts = getSimilarProductsByBrand(currentProduct, PageRequest.of(0, 4),
+                    includeOutOfStock);
+            similarProducts.addAll(brandProducts.getContent());
+        }
+
+        if (currentProduct.getCategory() != null) {
+            Page<Product> categoryProducts = getSimilarProductsByCategory(currentProduct, PageRequest.of(0, 4),
+                    includeOutOfStock);
+            similarProducts.addAll(categoryProducts.getContent());
+        }
+
+        String keywords = extractKeywords(currentProduct);
+        if (!keywords.isEmpty()) {
+            Page<Product> keywordProducts = getSimilarProductsByKeywords(currentProduct, PageRequest.of(0, 4),
+                    includeOutOfStock);
+            similarProducts.addAll(keywordProducts.getContent());
+        }
+
+        Page<Product> popularProducts = getSimilarProductsByPopularity(currentProduct, PageRequest.of(0, 4),
+                includeOutOfStock);
+        similarProducts.addAll(popularProducts.getContent());
+
+        Set<Product> uniqueProducts = new LinkedHashSet<>(similarProducts);
+        List<Product> finalList = new ArrayList<>(uniqueProducts);
+
+        int start = (int) pageable.getOffset();
+        int end = Math.min(start + pageable.getPageSize(), finalList.size());
+
+        if (start >= finalList.size()) {
+            return Page.empty(pageable);
+        }
+
+        List<Product> pageContent = finalList.subList(start, end);
+        return new PageImpl<>(pageContent, pageable, finalList.size());
+    }
+
+    private String extractKeywords(Product product) {
+        StringBuilder keywords = new StringBuilder();
+
+        if (product.getProductName() != null) {
+            keywords.append(product.getProductName()).append(" ");
+        }
+
+        if (product.getDescription() != null) {
+            keywords.append(product.getDescription()).append(" ");
+        }
+
+        if (product.getMetaKeywords() != null) {
+            keywords.append(product.getMetaKeywords()).append(" ");
+        }
+
+        return keywords.toString().trim();
     }
 }

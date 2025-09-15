@@ -101,4 +101,53 @@ public interface ProductRepository extends JpaRepository<Product, UUID>, JpaSpec
                         "(SELECT r.product.productId FROM Review r GROUP BY r.product.productId " +
                         "HAVING AVG(r.rating) <= :maxRating)")
         List<Product> findProductsByMaxRating(@Param("maxRating") Double maxRating);
+
+        @Query("SELECT p FROM Product p WHERE p.brand = :brand AND p.productId != :productId AND p.isActive = true")
+        Page<Product> findByBrandAndProductIdNot(@Param("brand") Brand brand, @Param("productId") UUID productId,
+                        Pageable pageable);
+
+        @Query("SELECT p FROM Product p WHERE p.brand = :brand AND p.productId != :productId AND p.isActive = true " +
+                        "AND p.productId IN (SELECT s.product.productId FROM Stock s WHERE s.product IS NOT NULL AND s.quantity > 0)")
+        Page<Product> findByBrandAndProductIdNotAndInStock(@Param("brand") Brand brand,
+                        @Param("productId") UUID productId, Pageable pageable);
+
+        @Query("SELECT p FROM Product p WHERE p.category = :category AND p.productId != :productId AND p.isActive = true")
+        Page<Product> findByCategoryAndProductIdNot(@Param("category") Category category,
+                        @Param("productId") UUID productId, Pageable pageable);
+
+        @Query("SELECT p FROM Product p WHERE p.category = :category AND p.productId != :productId AND p.isActive = true "
+                        +
+                        "AND p.productId IN (SELECT s.product.productId FROM Stock s WHERE s.product IS NOT NULL AND s.quantity > 0)")
+        Page<Product> findByCategoryAndProductIdNotAndInStock(@Param("category") Category category,
+                        @Param("productId") UUID productId, Pageable pageable);
+
+        @Query("SELECT p FROM Product p LEFT JOIN p.productDetail pd " +
+                        "WHERE p.productId != :productId AND p.isActive = true " +
+                        "AND (LOWER(p.productName) LIKE LOWER(CONCAT('%', :keywords, '%')) " +
+                        "OR LOWER(p.shortDescription) LIKE LOWER(CONCAT('%', :keywords, '%')) " +
+                        "OR LOWER(pd.description) LIKE LOWER(CONCAT('%', :keywords, '%')) " +
+                        "OR LOWER(pd.metaKeywords) LIKE LOWER(CONCAT('%', :keywords, '%')))")
+        Page<Product> findByKeywordsAndProductIdNot(@Param("keywords") String keywords,
+                        @Param("productId") UUID productId, Pageable pageable);
+
+        @Query("SELECT p FROM Product p LEFT JOIN p.productDetail pd " +
+                        "WHERE p.productId != :productId AND p.isActive = true " +
+                        "AND p.productId IN (SELECT s.product.productId FROM Stock s WHERE s.product IS NOT NULL AND s.quantity > 0) "
+                        +
+                        "AND (LOWER(p.productName) LIKE LOWER(CONCAT('%', :keywords, '%')) " +
+                        "OR LOWER(p.shortDescription) LIKE LOWER(CONCAT('%', :keywords, '%')) " +
+                        "OR LOWER(pd.description) LIKE LOWER(CONCAT('%', :keywords, '%')) " +
+                        "OR LOWER(pd.metaKeywords) LIKE LOWER(CONCAT('%', :keywords, '%')))")
+        Page<Product> findByKeywordsAndProductIdNotAndInStock(@Param("keywords") String keywords,
+                        @Param("productId") UUID productId, Pageable pageable);
+
+        @Query("SELECT p FROM Product p WHERE p.productId != :productId AND p.isActive = true " +
+                        "ORDER BY p.isBestseller DESC, p.isFeatured DESC, p.createdAt DESC")
+        Page<Product> findByPopularityAndProductIdNot(@Param("productId") UUID productId, Pageable pageable);
+
+        @Query("SELECT p FROM Product p WHERE p.productId != :productId AND p.isActive = true " +
+                        "AND p.productId IN (SELECT s.product.productId FROM Stock s WHERE s.product IS NOT NULL AND s.quantity > 0) "
+                        +
+                        "ORDER BY p.isBestseller DESC, p.isFeatured DESC, p.createdAt DESC")
+        Page<Product> findByPopularityAndProductIdNotAndInStock(@Param("productId") UUID productId, Pageable pageable);
 }
