@@ -77,7 +77,7 @@ public class SecurityConfig {
         CorsConfiguration configuration = new CorsConfiguration();
         configuration.setAllowedOriginPatterns(
                 Arrays.asList("http://localhost:3000", "http://127.0.0.1:3000", "http://localhost:3001",
-                        "https://ecom-olive-delta.vercel.app"));
+                        "https://admin-shopshpere.vercel.app","https://shopsphere-frontend.vercel.app"));
         configuration.setAllowedMethods(Arrays.asList("GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"));
         configuration.setAllowedHeaders(Arrays.asList("*"));
         configuration.setAllowCredentials(true);
