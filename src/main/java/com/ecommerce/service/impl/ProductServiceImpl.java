@@ -13,6 +13,12 @@ import com.ecommerce.dto.ProductDTO;
 import com.ecommerce.dto.ProductSearchDTO;
 
 import com.ecommerce.dto.ProductUpdateDTO;
+import com.ecommerce.dto.ProductBasicInfoDTO;
+import com.ecommerce.dto.ProductBasicInfoUpdateDTO;
+import com.ecommerce.dto.ProductPricingDTO;
+import com.ecommerce.dto.ProductPricingUpdateDTO;
+import com.ecommerce.dto.ProductMediaDTO;
+import com.ecommerce.dto.ProductVideoDTO;
 import com.ecommerce.dto.SimilarProductsRequestDTO;
 import com.ecommerce.dto.ProductVariantDTO;
 
@@ -77,6 +83,7 @@ import org.springframework.web.multipart.MultipartFile;
 import java.io.IOException;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 
 import java.time.LocalDateTime;
 
@@ -577,6 +584,153 @@ public class ProductServiceImpl implements ProductService {
 
         return mapProductToDTO(product);
 
+    }
+
+    @Override
+
+    public ProductBasicInfoDTO getProductBasicInfo(UUID productId) {
+
+        Product product = productRepository.findById(productId)
+
+                .orElseThrow(() -> new EntityNotFoundException("Product not found with ID: " + productId));
+
+        return mapProductToBasicInfoDTO(product);
+
+    }
+
+    @Override
+    public ProductBasicInfoDTO updateProductBasicInfo(UUID productId, ProductBasicInfoUpdateDTO updateDTO) {
+        Product product = productRepository.findById(productId)
+                .orElseThrow(() -> new EntityNotFoundException("Product not found with ID: " + productId));
+
+        // Validate that at least one field is provided for update
+        boolean hasUpdates = updateDTO.getProductName() != null ||
+                updateDTO.getShortDescription() != null ||
+                updateDTO.getDescription() != null ||
+                updateDTO.getSku() != null ||
+                updateDTO.getBarcode() != null ||
+                updateDTO.getModel() != null ||
+                updateDTO.getSlug() != null ||
+                updateDTO.getMaterial() != null ||
+                updateDTO.getWarrantyInfo() != null ||
+                updateDTO.getCareInstructions() != null ||
+                updateDTO.getPrice() != null ||
+                updateDTO.getCompareAtPrice() != null ||
+                updateDTO.getCostPrice() != null ||
+                updateDTO.getCategoryId() != null ||
+                updateDTO.getBrandId() != null ||
+                updateDTO.getActive() != null ||
+                updateDTO.getFeatured() != null ||
+                updateDTO.getBestseller() != null ||
+                updateDTO.getNewArrival() != null ||
+                updateDTO.getOnSale() != null ||
+                updateDTO.getSalePercentage() != null;
+
+        if (!hasUpdates) {
+            throw new IllegalArgumentException("At least one field must be provided for update");
+        }
+
+        // Check if SKU is being changed and if it's unique
+        if (updateDTO.getSku() != null && !product.getSku().equals(updateDTO.getSku())) {
+            Optional<Product> existingProductWithSku = productRepository.findBySku(updateDTO.getSku());
+            if (existingProductWithSku.isPresent()) {
+                throw new IllegalArgumentException("SKU '" + updateDTO.getSku() + "' already exists");
+            }
+        }
+
+        // Update basic product fields only if provided
+        if (updateDTO.getProductName() != null) {
+            product.setProductName(updateDTO.getProductName());
+        }
+        if (updateDTO.getShortDescription() != null) {
+            product.setShortDescription(updateDTO.getShortDescription());
+        }
+        if (updateDTO.getSku() != null) {
+            product.setSku(updateDTO.getSku());
+        }
+        if (updateDTO.getBarcode() != null) {
+            product.setBarcode(updateDTO.getBarcode());
+        }
+        if (updateDTO.getModel() != null) {
+            product.setModel(updateDTO.getModel());
+        }
+        if (updateDTO.getSlug() != null) {
+            product.setSlug(updateDTO.getSlug());
+        }
+        if (updateDTO.getPrice() != null) {
+            product.setPrice(updateDTO.getPrice());
+        }
+        if (updateDTO.getCompareAtPrice() != null) {
+            product.setCompareAtPrice(updateDTO.getCompareAtPrice());
+        }
+        if (updateDTO.getCostPrice() != null) {
+            product.setCostPrice(updateDTO.getCostPrice());
+        }
+        if (updateDTO.getActive() != null) {
+            product.setActive(updateDTO.getActive());
+        }
+        if (updateDTO.getFeatured() != null) {
+            product.setFeatured(updateDTO.getFeatured());
+        }
+        if (updateDTO.getBestseller() != null) {
+            product.setBestseller(updateDTO.getBestseller());
+        }
+        if (updateDTO.getNewArrival() != null) {
+            product.setNewArrival(updateDTO.getNewArrival());
+        }
+        if (updateDTO.getOnSale() != null) {
+            product.setOnSale(updateDTO.getOnSale());
+        }
+        if (updateDTO.getSalePercentage() != null) {
+            product.setSalePercentage(updateDTO.getSalePercentage());
+        }
+
+        // Update category if provided
+        if (updateDTO.getCategoryId() != null) {
+            Category category = categoryRepository.findById(updateDTO.getCategoryId())
+                    .orElseThrow(() -> new EntityNotFoundException(
+                            "Category not found with ID: " + updateDTO.getCategoryId()));
+            product.setCategory(category);
+        }
+
+        // Update brand if provided
+        if (updateDTO.getBrandId() != null) {
+            Brand brand = brandRepository.findById(updateDTO.getBrandId())
+                    .orElseThrow(
+                            () -> new EntityNotFoundException("Brand not found with ID: " + updateDTO.getBrandId()));
+            product.setBrand(brand);
+        }
+
+        // Update product detail fields only if provided
+        ProductDetail productDetail = product.getProductDetail();
+        if (updateDTO.getDescription() != null || updateDTO.getMaterial() != null ||
+                updateDTO.getWarrantyInfo() != null || updateDTO.getCareInstructions() != null) {
+
+            if (productDetail == null) {
+                productDetail = new ProductDetail();
+                productDetail.setProduct(product);
+                product.setProductDetail(productDetail);
+            }
+
+            if (updateDTO.getDescription() != null) {
+                productDetail.setDescription(updateDTO.getDescription());
+            }
+            if (updateDTO.getMaterial() != null) {
+                productDetail.setMaterial(updateDTO.getMaterial());
+            }
+            if (updateDTO.getWarrantyInfo() != null) {
+                productDetail.setWarrantyInfo(updateDTO.getWarrantyInfo());
+            }
+            if (updateDTO.getCareInstructions() != null) {
+                productDetail.setCareInstructions(updateDTO.getCareInstructions());
+            }
+        }
+
+        // Save the updated product
+        Product savedProduct = productRepository.save(product);
+
+        // Return the updated basic info
+        return mapProductToBasicInfoDTO(savedProduct);
     }
 
     @Override
@@ -1630,9 +1784,6 @@ public class ProductServiceImpl implements ProductService {
 
             }
 
-            // Rating filters - temporarily disabled due to complexity with JPA Criteria API
-            // TODO: Implement rating filter using custom query or add computed column to
-            // database
             /*
              * if (searchDTO.getAverageRatingMin() != null ||
              * searchDTO.getAverageRatingMax() != null) {
@@ -2969,6 +3120,68 @@ public class ProductServiceImpl implements ProductService {
 
     }
 
+    private ProductBasicInfoDTO mapProductToBasicInfoDTO(Product product) {
+
+        ProductBasicInfoDTO dto = new ProductBasicInfoDTO();
+
+        dto.setProductId(product.getProductId());
+
+        dto.setProductName(product.getProductName());
+
+        dto.setShortDescription(product.getShortDescription());
+
+        dto.setSku(product.getSku());
+
+        dto.setBarcode(product.getBarcode());
+
+        dto.setModel(product.getModel());
+
+        dto.setSlug(product.getSlug());
+
+        dto.setPrice(product.getPrice());
+
+        dto.setCompareAtPrice(product.getCompareAtPrice());
+
+        dto.setCostPrice(product.getCostPrice());
+
+        dto.setCategoryId(product.getCategory() != null ? product.getCategory().getId() : null);
+
+        dto.setCategoryName(product.getCategory() != null ? product.getCategory().getName() : null);
+
+        dto.setBrandId(product.getBrand() != null ? product.getBrand().getBrandId() : null);
+
+        dto.setBrandName(product.getBrand() != null ? product.getBrand().getBrandName() : null);
+
+        dto.setBrandLogoUrl(product.getBrand() != null ? product.getBrand().getLogoUrl() : null);
+
+        dto.setActive(product.isActive());
+
+        dto.setFeatured(product.isFeatured());
+
+        dto.setBestseller(product.isBestseller());
+
+        dto.setNewArrival(product.isNewArrival());
+
+        dto.setOnSale(product.isOnSale());
+
+        dto.setSalePercentage(product.getSalePercentage());
+
+        if (product.getProductDetail() != null) {
+
+            dto.setDescription(product.getProductDetail().getDescription());
+
+            dto.setMaterial(product.getProductDetail().getMaterial());
+
+            dto.setWarrantyInfo(product.getProductDetail().getWarrantyInfo());
+
+            dto.setCareInstructions(product.getProductDetail().getCareInstructions());
+
+        }
+
+        return dto;
+
+    }
+
     private ProductDTO.ProductImageDTO mapProductImageToDTO(ProductImage image) {
 
         return ProductDTO.ProductImageDTO.builder()
@@ -4222,5 +4435,304 @@ public class ProductServiceImpl implements ProductService {
             log.error("Error fetching products by IDs: {}", productIds, e);
             throw new RuntimeException("Failed to fetch products by IDs", e);
         }
+    }
+
+    @Override
+    public ProductPricingDTO getProductPricing(UUID productId) {
+        Product product = productRepository.findById(productId)
+                .orElseThrow(() -> new EntityNotFoundException("Product not found with ID: " + productId));
+
+        return mapProductToPricingDTO(product);
+    }
+
+    @Override
+    public ProductPricingDTO updateProductPricing(UUID productId, ProductPricingUpdateDTO updateDTO) {
+        Product product = productRepository.findById(productId)
+                .orElseThrow(() -> new EntityNotFoundException("Product not found with ID: " + productId));
+
+        // Validate that at least one pricing field is provided
+        boolean hasUpdates = updateDTO.getPrice() != null ||
+                updateDTO.getCompareAtPrice() != null ||
+                updateDTO.getCostPrice() != null;
+
+        if (!hasUpdates) {
+            throw new IllegalArgumentException("At least one pricing field must be provided for update");
+        }
+
+        // Update pricing fields only if provided
+        if (updateDTO.getPrice() != null) {
+            if (updateDTO.getPrice().compareTo(BigDecimal.ZERO) < 0) {
+                throw new IllegalArgumentException("Price cannot be negative");
+            }
+            product.setPrice(updateDTO.getPrice());
+        }
+
+        if (updateDTO.getCompareAtPrice() != null) {
+            if (updateDTO.getCompareAtPrice().compareTo(BigDecimal.ZERO) < 0) {
+                throw new IllegalArgumentException("Compare at price cannot be negative");
+            }
+            product.setCompareAtPrice(updateDTO.getCompareAtPrice());
+        }
+
+        if (updateDTO.getCostPrice() != null) {
+            if (updateDTO.getCostPrice().compareTo(BigDecimal.ZERO) < 0) {
+                throw new IllegalArgumentException("Cost price cannot be negative");
+            }
+            product.setCostPrice(updateDTO.getCostPrice());
+        }
+
+        // Save the updated product
+        Product savedProduct = productRepository.save(product);
+
+        // Return the updated pricing info
+        return mapProductToPricingDTO(savedProduct);
+    }
+
+    /**
+     * Maps a Product entity to ProductPricingDTO
+     */
+    private ProductPricingDTO mapProductToPricingDTO(Product product) {
+        ProductPricingDTO dto = new ProductPricingDTO();
+        dto.setProductId(product.getProductId());
+        dto.setProductName(product.getProductName());
+        dto.setSku(product.getSku());
+        dto.setPrice(product.getPrice());
+        dto.setCompareAtPrice(product.getCompareAtPrice());
+        dto.setCostPrice(product.getCostPrice());
+        dto.setCurrency("USD"); // Default currency, can be made configurable
+
+        // Calculate profit margin and percentage
+        if (product.getPrice() != null && product.getCostPrice() != null) {
+            BigDecimal profitMargin = product.getPrice().subtract(product.getCostPrice());
+            dto.setProfitMargin(profitMargin);
+
+            if (product.getCostPrice().compareTo(BigDecimal.ZERO) > 0) {
+                BigDecimal profitPercentage = profitMargin.divide(product.getCostPrice(), 4, RoundingMode.HALF_UP)
+                        .multiply(new BigDecimal("100"));
+                dto.setProfitPercentage(profitPercentage);
+            } else {
+                dto.setProfitPercentage(BigDecimal.ZERO);
+            }
+        } else {
+            dto.setProfitMargin(BigDecimal.ZERO);
+            dto.setProfitPercentage(BigDecimal.ZERO);
+        }
+
+        return dto;
+    }
+
+    @Override
+    public List<ProductMediaDTO> getProductImages(UUID productId) {
+        Product product = productRepository.findById(productId)
+                .orElseThrow(() -> new EntityNotFoundException("Product not found with ID: " + productId));
+
+        return product.getImages().stream()
+                .map(this::mapProductImageToMediaDTO)
+                .collect(Collectors.toList());
+    }
+
+    @Override
+    public List<ProductVideoDTO> getProductVideos(UUID productId) {
+        Product product = productRepository.findById(productId)
+                .orElseThrow(() -> new EntityNotFoundException("Product not found with ID: " + productId));
+
+        return product.getVideos().stream()
+                .map(this::mapProductVideoToVideoDTO)
+                .collect(Collectors.toList());
+    }
+
+    @Override
+    @Transactional
+    public void deleteProductImage(UUID productId, Long imageId) {
+        Product product = productRepository.findById(productId)
+                .orElseThrow(() -> new EntityNotFoundException("Product not found with ID: " + productId));
+
+        ProductImage image = productImageRepository.findById(imageId)
+                .orElseThrow(() -> new EntityNotFoundException("Image not found with ID: " + imageId));
+
+        if (!image.getProduct().getProductId().equals(productId)) {
+            throw new EntityNotFoundException("Image does not belong to the specified product");
+        }
+
+        try {
+            if (image.getImageUrl() != null && !image.getImageUrl().isEmpty()) {
+                cloudinaryService.deleteImage(image.getImageUrl());
+            }
+        } catch (Exception e) {
+            log.warn("Failed to delete image from Cloudinary: {}. Error: {}", image.getImageUrl(), e.getMessage());
+        }
+
+        productImageRepository.delete(image);
+        log.info("Successfully deleted product image with ID: {}", imageId);
+    }
+
+    @Override
+    @Transactional
+    public void deleteProductVideo(UUID productId, Long videoId) {
+        Product product = productRepository.findById(productId)
+                .orElseThrow(() -> new EntityNotFoundException("Product not found with ID: " + productId));
+
+        ProductVideo video = productVideoRepository.findById(videoId)
+                .orElseThrow(() -> new EntityNotFoundException("Video not found with ID: " + videoId));
+
+        if (!video.getProduct().getProductId().equals(productId)) {
+            throw new EntityNotFoundException("Video does not belong to the specified product");
+        }
+
+        try {
+            if (video.getUrl() != null && !video.getUrl().isEmpty()) {
+                cloudinaryService.deleteFile(video.getUrl());
+            }
+        } catch (Exception e) {
+            log.warn("Failed to delete video from Cloudinary: {}. Error: {}", video.getUrl(), e.getMessage());
+        }
+
+        productVideoRepository.delete(video);
+        log.info("Successfully deleted product video with ID: {}", videoId);
+    }
+
+    @Override
+    @Transactional
+    public void setPrimaryImage(UUID productId, Long imageId) {
+        Product product = productRepository.findById(productId)
+                .orElseThrow(() -> new EntityNotFoundException("Product not found with ID: " + productId));
+
+        ProductImage targetImage = productImageRepository.findById(imageId)
+                .orElseThrow(() -> new EntityNotFoundException("Image not found with ID: " + imageId));
+
+        if (!targetImage.getProduct().getProductId().equals(productId)) {
+            throw new EntityNotFoundException("Image does not belong to the specified product");
+        }
+
+        product.getImages().forEach(image -> image.setPrimary(false));
+        targetImage.setPrimary(true);
+
+        productImageRepository.saveAll(product.getImages());
+        log.info("Successfully set image {} as primary for product {}", imageId, productId);
+    }
+
+    private ProductMediaDTO mapProductImageToMediaDTO(ProductImage image) {
+        ProductMediaDTO dto = new ProductMediaDTO();
+        dto.setImageId(image.getId());
+        dto.setUrl(image.getImageUrl());
+        dto.setAltText(image.getAltText());
+        dto.setPrimary(image.isPrimary());
+        dto.setSortOrder(image.getSortOrder());
+        dto.setFileSize(image.getFileSize());
+        dto.setMimeType(image.getMimeType());
+        return dto;
+    }
+
+    private ProductVideoDTO mapProductVideoToVideoDTO(ProductVideo video) {
+        ProductVideoDTO dto = new ProductVideoDTO();
+        dto.setVideoId(video.getVideoId());
+        dto.setUrl(video.getUrl());
+        dto.setTitle(video.getTitle());
+        dto.setDescription(video.getDescription());
+        dto.setSortOrder(video.getSortOrder());
+        return dto;
+    }
+
+    @Override
+    @Transactional
+    public List<ProductMediaDTO> uploadProductImages(UUID productId, List<MultipartFile> images) {
+        Product product = productRepository.findById(productId)
+                .orElseThrow(() -> new EntityNotFoundException("Product not found with ID: " + productId));
+
+        if (images == null || images.isEmpty()) {
+            throw new IllegalArgumentException("At least one image must be provided");
+        }
+
+        for (MultipartFile image : images) {
+            if (image.getSize() > 50 * 1024 * 1024) {
+                throw new IllegalArgumentException(
+                        String.format("Image '%s' file size (%.2f MB) exceeds maximum allowed (50 MB)",
+                                image.getOriginalFilename(), image.getSize() / (1024.0 * 1024.0)));
+            }
+        }
+
+        List<Map<String, String>> uploadResults = cloudinaryService.uploadMultipleImages(images);
+        List<ProductMediaDTO> uploadedImages = new ArrayList<>();
+
+        for (int i = 0; i < uploadResults.size(); i++) {
+            Map<String, String> uploadResult = uploadResults.get(i);
+
+            if (uploadResult.containsKey("error")) {
+                log.error("Failed to upload image {}: {}", i, uploadResult.get("error"));
+                throw new RuntimeException("Failed to upload image: " + uploadResult.get("error"));
+            }
+
+            ProductImage productImage = new ProductImage();
+            productImage.setProduct(product);
+            productImage.setImageUrl(uploadResult.get("url"));
+            productImage.setAltText(images.get(i).getOriginalFilename());
+
+            if (uploadResult.get("width") != null) {
+                productImage.setWidth(Integer.valueOf(uploadResult.get("width")));
+            }
+            if (uploadResult.get("height") != null) {
+                productImage.setHeight(Integer.valueOf(uploadResult.get("height")));
+            }
+            if (uploadResult.get("fileSize") != null) {
+                productImage.setFileSize(Long.valueOf(uploadResult.get("fileSize")));
+            }
+            if (uploadResult.get("mimeType") != null) {
+                productImage.setMimeType(uploadResult.get("mimeType"));
+            }
+
+            productImage.setSortOrder(product.getImages().size());
+            productImage.setPrimary(false);
+
+            ProductImage savedImage = productImageRepository.save(productImage);
+            uploadedImages.add(mapProductImageToMediaDTO(savedImage));
+        }
+
+        log.info("Successfully uploaded {} images for product {}", images.size(), productId);
+        return uploadedImages;
+    }
+
+    @Override
+    @Transactional
+    public List<ProductVideoDTO> uploadProductVideos(UUID productId, List<MultipartFile> videos) {
+        Product product = productRepository.findById(productId)
+                .orElseThrow(() -> new EntityNotFoundException("Product not found with ID: " + productId));
+
+        if (videos == null || videos.isEmpty()) {
+            throw new IllegalArgumentException("At least one video must be provided");
+        }
+
+        for (MultipartFile video : videos) {
+            if (video.getSize() > 100 * 1024 * 1024) {
+                throw new IllegalArgumentException(
+                        String.format("Video '%s' file size (%.2f MB) exceeds maximum allowed (100 MB)",
+                                video.getOriginalFilename(), video.getSize() / (1024.0 * 1024.0)));
+            }
+        }
+
+        List<Map<String, String>> uploadResults = cloudinaryService.uploadMultipleVideos(videos);
+        List<ProductVideoDTO> uploadedVideos = new ArrayList<>();
+
+        for (int i = 0; i < uploadResults.size(); i++) {
+            Map<String, String> uploadResult = uploadResults.get(i);
+
+            if (uploadResult.containsKey("error")) {
+                log.error("Failed to upload video {}: {}", i, uploadResult.get("error"));
+                throw new RuntimeException("Failed to upload video: " + uploadResult.get("error"));
+            }
+
+            ProductVideo productVideo = new ProductVideo();
+            productVideo.setProduct(product);
+            productVideo.setUrl(uploadResult.get("url"));
+            productVideo.setTitle(videos.get(i).getOriginalFilename());
+            productVideo.setDescription("Uploaded video");
+
+            productVideo.setSortOrder(product.getVideos().size());
+
+            ProductVideo savedVideo = productVideoRepository.save(productVideo);
+            uploadedVideos.add(mapProductVideoToVideoDTO(savedVideo));
+        }
+
+        log.info("Successfully uploaded {} videos for product {}", videos.size(), productId);
+        return uploadedVideos;
     }
 }

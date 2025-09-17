@@ -5,6 +5,12 @@ import com.ecommerce.dto.ManyProductsDto;
 import com.ecommerce.dto.ProductDTO;
 import com.ecommerce.dto.ProductSearchDTO;
 import com.ecommerce.dto.ProductUpdateDTO;
+import com.ecommerce.dto.ProductBasicInfoDTO;
+import com.ecommerce.dto.ProductBasicInfoUpdateDTO;
+import com.ecommerce.dto.ProductPricingDTO;
+import com.ecommerce.dto.ProductPricingUpdateDTO;
+import com.ecommerce.dto.ProductMediaDTO;
+import com.ecommerce.dto.ProductVideoDTO;
 import com.ecommerce.dto.SimilarProductsRequestDTO;
 import com.ecommerce.dto.WarehouseStockPageResponse;
 
@@ -36,6 +42,16 @@ public interface ProductService {
      * @return The product DTO
      */
     ProductDTO getProductById(UUID productId);
+
+    /**
+     * Get basic information of a product for update form
+     * 
+     * @param productId The product ID
+     * @return The product basic info DTO
+     */
+    ProductBasicInfoDTO getProductBasicInfo(UUID productId);
+
+    ProductBasicInfoDTO updateProductBasicInfo(UUID productId, ProductBasicInfoUpdateDTO updateDTO);
 
     /**
      * Get a product by its slug
@@ -114,4 +130,35 @@ public interface ProductService {
     Page<ManyProductsDto> getSimilarProducts(SimilarProductsRequestDTO request);
 
     List<ManyProductsDto> getProductsByIds(List<String> productIds);
+
+    /**
+     * Get product pricing information
+     * 
+     * @param productId The product ID
+     * @return Product pricing DTO
+     */
+    ProductPricingDTO getProductPricing(UUID productId);
+
+    /**
+     * Update product pricing information
+     * 
+     * @param productId The product ID
+     * @param updateDTO The pricing update data
+     * @return Updated product pricing DTO
+     */
+    ProductPricingDTO updateProductPricing(UUID productId, ProductPricingUpdateDTO updateDTO);
+
+    List<ProductMediaDTO> getProductImages(UUID productId);
+
+    List<ProductVideoDTO> getProductVideos(UUID productId);
+
+    void deleteProductImage(UUID productId, Long imageId);
+
+    void deleteProductVideo(UUID productId, Long videoId);
+
+    void setPrimaryImage(UUID productId, Long imageId);
+
+    List<ProductMediaDTO> uploadProductImages(UUID productId, List<MultipartFile> images);
+
+    List<ProductVideoDTO> uploadProductVideos(UUID productId, List<MultipartFile> videos);
 }
