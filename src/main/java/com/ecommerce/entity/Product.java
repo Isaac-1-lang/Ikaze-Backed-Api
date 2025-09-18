@@ -90,6 +90,9 @@ public class Product {
     @Column(name = "sale_percentage")
     private Integer salePercentage;
 
+    @Column(name = "maximum_days_for_return")
+    private Integer maximumDaysForReturn;
+
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "discount_id")
     @JsonBackReference

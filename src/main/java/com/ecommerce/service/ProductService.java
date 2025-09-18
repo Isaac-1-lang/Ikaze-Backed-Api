@@ -11,8 +11,15 @@ import com.ecommerce.dto.ProductPricingDTO;
 import com.ecommerce.dto.ProductPricingUpdateDTO;
 import com.ecommerce.dto.ProductMediaDTO;
 import com.ecommerce.dto.ProductVideoDTO;
+import com.ecommerce.dto.ProductVariantDTO;
+import com.ecommerce.dto.ProductVariantImageDTO;
+import com.ecommerce.dto.ProductVariantAttributeDTO;
+import com.ecommerce.dto.VariantAttributeRequest;
+import com.ecommerce.dto.CreateVariantRequest;
 import com.ecommerce.dto.SimilarProductsRequestDTO;
 import com.ecommerce.dto.WarehouseStockPageResponse;
+import com.ecommerce.dto.ProductDetailsDTO;
+import com.ecommerce.dto.ProductDetailsUpdateDTO;
 
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -24,141 +31,169 @@ import java.util.UUID;
 
 public interface ProductService {
 
-    /**
-     * Create a new product with variants, images, and videos
-     * 
-     * @param createProductDTO The product creation data
-     * @param productImages    List of product image files
-     * @param productVideos    List of product video files
-     * @return The created product DTO
-     */
-    ProductDTO createProduct(CreateProductDTO createProductDTO, List<MultipartFile> productImages,
-            List<MultipartFile> productVideos);
+        /**
+         * Create a new product with variants, images, and videos
+         * 
+         * @param createProductDTO The product creation data
+         * @param productImages    List of product image files
+         * @param productVideos    List of product video files
+         * @return The created product DTO
+         */
+        ProductDTO createProduct(CreateProductDTO createProductDTO, List<MultipartFile> productImages,
+                        List<MultipartFile> productVideos);
 
-    /**
-     * Get a product by its ID
-     * 
-     * @param productId The product ID
-     * @return The product DTO
-     */
-    ProductDTO getProductById(UUID productId);
+        /**
+         * Get a product by its ID
+         * 
+         * @param productId The product ID
+         * @return The product DTO
+         */
+        ProductDTO getProductById(UUID productId);
 
-    /**
-     * Get basic information of a product for update form
-     * 
-     * @param productId The product ID
-     * @return The product basic info DTO
-     */
-    ProductBasicInfoDTO getProductBasicInfo(UUID productId);
+        /**
+         * Get basic information of a product for update form
+         * 
+         * @param productId The product ID
+         * @return The product basic info DTO
+         */
+        ProductBasicInfoDTO getProductBasicInfo(UUID productId);
 
-    ProductBasicInfoDTO updateProductBasicInfo(UUID productId, ProductBasicInfoUpdateDTO updateDTO);
+        ProductBasicInfoDTO updateProductBasicInfo(UUID productId, ProductBasicInfoUpdateDTO updateDTO);
 
-    /**
-     * Get a product by its slug
-     * 
-     * @param slug The product slug
-     * @return The product DTO
-     */
-    ProductDTO getProductBySlug(String slug);
+        /**
+         * Get a product by its slug
+         * 
+         * @param slug The product slug
+         * @return The product DTO
+         */
+        ProductDTO getProductBySlug(String slug);
 
-    /**
-     * Get all products with pagination
-     * 
-     * @param pageable Pagination information
-     * @return Page of ManyProductsDto for card display
-     */
-    Page<ManyProductsDto> getAllProducts(Pageable pageable);
+        /**
+         * Get all products with pagination
+         * 
+         * @param pageable Pagination information
+         * @return Page of ManyProductsDto for card display
+         */
+        Page<ManyProductsDto> getAllProducts(Pageable pageable);
 
-    /**
-     * Update an existing product
-     * 
-     * @param productId        The product ID
-     * @param updateProductDTO The product update data
-     * @return The updated product DTO
-     */
-    ProductDTO updateProduct(UUID productId, ProductUpdateDTO updateProductDTO);
+        /**
+         * Update an existing product
+         * 
+         * @param productId        The product ID
+         * @param updateProductDTO The product update data
+         * @return The updated product DTO
+         */
+        ProductDTO updateProduct(UUID productId, ProductUpdateDTO updateProductDTO);
 
-    /**
-     * Delete a product variant
-     * 
-     * @param productId The product ID
-     * @param variantId The variant ID to delete
-     * @return true if deletion was successful
-     */
-    boolean deleteProductVariant(UUID productId, Long variantId);
+        /**
+         * Delete a product variant
+         * 
+         * @param productId The product ID
+         * @param variantId The variant ID to delete
+         * @return true if deletion was successful
+         */
+        boolean deleteProductVariant(UUID productId, Long variantId);
 
-    /**
-     * Delete a product with all its variants, images, and videos
-     * Also removes the product from carts and wishlists
-     * 
-     * @param productId The product ID
-     * @return true if deleted successfully
-     * @throws ProductDeletionException if the product cannot be deleted due to
-     *                                  pending orders
-     */
-    boolean deleteProduct(UUID productId);
+        /**
+         * Delete a product with all its variants, images, and videos
+         * Also removes the product from carts and wishlists
+         * 
+         * @param productId The product ID
+         * @return true if deleted successfully
+         * @throws ProductDeletionException if the product cannot be deleted due to
+         *                                  pending orders
+         */
+        boolean deleteProduct(UUID productId);
 
-    /**
-     * Search products with comprehensive filtering
-     * 
-     * @param searchDTO The search criteria DTO
-     * @return Page of ManyProductsDto for found products
-     */
-    Page<ManyProductsDto> searchProducts(ProductSearchDTO searchDTO);
+        /**
+         * Search products with comprehensive filtering
+         * 
+         * @param searchDTO The search criteria DTO
+         * @return Page of ManyProductsDto for found products
+         */
+        Page<ManyProductsDto> searchProducts(ProductSearchDTO searchDTO);
 
-    List<Map<String, Object>> getSearchSuggestions(String query);
+        List<Map<String, Object>> getSearchSuggestions(String query);
 
-    /**
-     * Get warehouse stock information for a product with pagination
-     * 
-     * @param productId The product ID
-     * @param pageable  Pagination information
-     * @return Paginated warehouse stock information
-     */
-    WarehouseStockPageResponse getProductWarehouseStock(UUID productId, Pageable pageable);
+        /**
+         * Get warehouse stock information for a product with pagination
+         * 
+         * @param productId The product ID
+         * @param pageable  Pagination information
+         * @return Paginated warehouse stock information
+         */
+        WarehouseStockPageResponse getProductWarehouseStock(UUID productId, Pageable pageable);
 
-    /**
-     * Get warehouse stock information for a product variant with pagination
-     * 
-     * @param productId The product ID
-     * @param variantId The variant ID
-     * @param pageable  Pagination information
-     * @return Paginated warehouse stock information for the variant
-     */
-    WarehouseStockPageResponse getVariantWarehouseStock(UUID productId, Long variantId, Pageable pageable);
+        /**
+         * Get warehouse stock information for a product variant with pagination
+         * 
+         * @param productId The product ID
+         * @param variantId The variant ID
+         * @param pageable  Pagination information
+         * @return Paginated warehouse stock information for the variant
+         */
+        WarehouseStockPageResponse getVariantWarehouseStock(UUID productId, Long variantId, Pageable pageable);
 
-    Page<ManyProductsDto> getSimilarProducts(SimilarProductsRequestDTO request);
+        Page<ManyProductsDto> getSimilarProducts(SimilarProductsRequestDTO request);
 
-    List<ManyProductsDto> getProductsByIds(List<String> productIds);
+        List<ManyProductsDto> getProductsByIds(List<String> productIds);
 
-    /**
-     * Get product pricing information
-     * 
-     * @param productId The product ID
-     * @return Product pricing DTO
-     */
-    ProductPricingDTO getProductPricing(UUID productId);
+        /**
+         * Get product pricing information
+         * 
+         * @param productId The product ID
+         * @return Product pricing DTO
+         */
+        ProductPricingDTO getProductPricing(UUID productId);
 
-    /**
-     * Update product pricing information
-     * 
-     * @param productId The product ID
-     * @param updateDTO The pricing update data
-     * @return Updated product pricing DTO
-     */
-    ProductPricingDTO updateProductPricing(UUID productId, ProductPricingUpdateDTO updateDTO);
+        /**
+         * Update product pricing information
+         * 
+         * @param productId The product ID
+         * @param updateDTO The pricing update data
+         * @return Updated product pricing DTO
+         */
+        ProductPricingDTO updateProductPricing(UUID productId, ProductPricingUpdateDTO updateDTO);
 
-    List<ProductMediaDTO> getProductImages(UUID productId);
+        /**
+         * Get all variants for a product with pagination
+         * 
+         * @param productId The product ID
+         * @param pageable  Pagination information
+         * @return Page of ProductVariantDTO
+         */
+        Page<ProductVariantDTO> getProductVariants(UUID productId, Pageable pageable);
 
-    List<ProductVideoDTO> getProductVideos(UUID productId);
+        List<ProductMediaDTO> getProductImages(UUID productId);
 
-    void deleteProductImage(UUID productId, Long imageId);
+        List<ProductVideoDTO> getProductVideos(UUID productId);
 
-    void deleteProductVideo(UUID productId, Long videoId);
+        void deleteProductImage(UUID productId, Long imageId);
 
-    void setPrimaryImage(UUID productId, Long imageId);
+        void deleteProductVideo(UUID productId, Long videoId);
 
-    List<ProductMediaDTO> uploadProductImages(UUID productId, List<MultipartFile> images);
+        void setPrimaryImage(UUID productId, Long imageId);
 
-    List<ProductVideoDTO> uploadProductVideos(UUID productId, List<MultipartFile> videos);
+        List<ProductMediaDTO> uploadProductImages(UUID productId, List<MultipartFile> images);
+
+        List<ProductVideoDTO> uploadProductVideos(UUID productId, List<MultipartFile> videos);
+
+        ProductVariantDTO updateProductVariant(UUID productId, Long variantId, Map<String, Object> updates);
+
+        void deleteVariantImage(UUID productId, Long variantId, Long imageId);
+
+        void setPrimaryVariantImage(UUID productId, Long variantId, Long imageId);
+
+        List<ProductVariantImageDTO> uploadVariantImages(UUID productId, Long variantId, List<MultipartFile> images);
+
+        void removeVariantAttribute(UUID productId, Long variantId, Long attributeValueId);
+
+        List<ProductVariantAttributeDTO> addVariantAttributes(UUID productId, Long variantId,
+                        List<VariantAttributeRequest> attributeRequests);
+
+        ProductVariantDTO createProductVariant(UUID productId, CreateVariantRequest request);
+
+        ProductDetailsDTO getProductDetails(UUID productId);
+
+        ProductDetailsDTO updateProductDetails(UUID productId, ProductDetailsUpdateDTO updateDTO);
 }
