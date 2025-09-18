@@ -43,6 +43,14 @@ public interface ProductService {
                         List<MultipartFile> productVideos);
 
         /**
+         * Create an empty product for step-by-step editing
+         * 
+         * @param name The initial product name
+         * @return Map containing product ID and status information
+         */
+        Map<String, Object> createEmptyProduct(String name);
+
+        /**
          * Get a product by its ID
          * 
          * @param productId The product ID

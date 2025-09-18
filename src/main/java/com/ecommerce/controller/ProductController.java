@@ -101,6 +101,26 @@ public class ProductController {
         }
     }
 
+    @PostMapping("/create-empty")
+    @PreAuthorize("hasAnyRole('ADMIN', 'EMPLOYEE')")
+    @Operation(summary = "Create empty product for editing", description = "Create a minimal product that can be enhanced step by step", responses = {
+            @ApiResponse(responseCode = "201", description = "Empty product created successfully"),
+            @ApiResponse(responseCode = "400", description = "Invalid input data"),
+            @ApiResponse(responseCode = "401", description = "Unauthorized"),
+            @ApiResponse(responseCode = "500", description = "Internal server error")
+    })
+    public ResponseEntity<?> createEmptyProduct(@RequestParam String name) {
+        try {
+            log.info("Creating empty product with name: {}", name);
+            Map<String, Object> response = productService.createEmptyProduct(name);
+            return ResponseEntity.status(HttpStatus.CREATED).body(response);
+        } catch (Exception e) {
+            log.error("Error creating empty product: {}", e.getMessage(), e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(createErrorResponse("INTERNAL_ERROR", "Failed to create empty product"));
+        }
+    }
+
     @GetMapping("/{productId}")
     @Operation(summary = "Get a product by ID", description = "Retrieve a product by its UUID", responses = {
             @ApiResponse(responseCode = "200", description = "Product found", content = @Content(schema = @Schema(implementation = ProductDTO.class))),

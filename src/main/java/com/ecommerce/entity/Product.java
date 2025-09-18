@@ -11,6 +11,7 @@ import lombok.EqualsAndHashCode;
 import lombok.NoArgsConstructor;
 import com.fasterxml.jackson.annotation.JsonManagedReference;
 import com.fasterxml.jackson.annotation.JsonBackReference;
+import com.ecommerce.enums.ProductStatus;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -92,6 +93,16 @@ public class Product {
 
     @Column(name = "maximum_days_for_return")
     private Integer maximumDaysForReturn;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "status")
+    private ProductStatus status = ProductStatus.DRAFT;
+
+    @Column(name = "completion_percentage")
+    private Integer completionPercentage = 0;
+
+    @Column(name = "display_to_customers")
+    private Boolean displayToCustomers = false;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "discount_id")

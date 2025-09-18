@@ -303,6 +303,45 @@ public class ProductServiceImpl implements ProductService {
 
     }
 
+    @Override
+    @Transactional
+    public Map<String, Object> createEmptyProduct(String name) {
+        try {
+            log.info("Creating empty product with name: {}", name);
+
+            Product product = new Product();
+            product.setProductName(name);
+            product.setSku(generateTemporarySku(name));
+            product.setPrice(new java.math.BigDecimal("0.01"));
+            product.setStatus(com.ecommerce.enums.ProductStatus.DRAFT);
+            product.setCompletionPercentage(0);
+            product.setDisplayToCustomers(false);
+            product.setActive(false);
+
+            Product savedProduct = productRepository.save(product);
+
+            Map<String, Object> response = new HashMap<>();
+            response.put("productId", savedProduct.getProductId());
+            response.put("status", savedProduct.getStatus());
+            response.put("completionPercentage", savedProduct.getCompletionPercentage());
+            response.put("displayToCustomers", savedProduct.getDisplayToCustomers());
+
+            log.info("Empty product created successfully with ID: {}", savedProduct.getProductId());
+            return response;
+
+        } catch (Exception e) {
+            log.error("Error creating empty product: {}", e.getMessage(), e);
+            throw new RuntimeException("Failed to create empty product: " + e.getMessage(), e);
+        }
+    }
+
+    private String generateTemporarySku(String name) {
+        String baseSku = name.toUpperCase()
+                .replaceAll("[^A-Z0-9]", "")
+                .substring(0, Math.min(name.length(), 8));
+        return "TEMP-" + baseSku + "-" + System.currentTimeMillis();
+    }
+
     private Category validateAndGetCategory(Long categoryId) {
 
         Category category = categoryRepository.findById(categoryId)
