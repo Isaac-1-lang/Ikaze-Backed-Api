@@ -1,234 +1,83 @@
 package com.ecommerce.service;
 
-import com.ecommerce.dto.CreateStockBatchDTO;
 import com.ecommerce.dto.StockBatchDTO;
-import com.ecommerce.entity.StockBatch;
-import com.ecommerce.enums.BatchStatus;
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.Pageable;
+import com.ecommerce.dto.CreateStockBatchRequest;
+import com.ecommerce.dto.UpdateStockBatchRequest;
 
-import java.time.LocalDate;
 import java.util.List;
-import java.util.Optional;
+import java.util.UUID;
 
-/**
- * Service interface for StockBatch management operations
- */
 public interface StockBatchService {
 
     /**
      * Create a new stock batch
      * 
-     * @param createStockBatchDTO The batch creation data
-     * @return Created stock batch DTO
+     * @param request The request containing batch details
+     * @return The created stock batch DTO
+     * @throws IllegalArgumentException if stock not found or validation fails
      */
-    StockBatchDTO createStockBatch(CreateStockBatchDTO createStockBatchDTO);
+    StockBatchDTO createStockBatch(CreateStockBatchRequest request);
 
     /**
-     * Get a stock batch by ID
+     * Get all stock batches for a specific stock entry
      * 
-     * @param id The batch ID
-     * @return Optional stock batch DTO
+     * @param stockId The stock ID
+     * @return List of stock batch DTOs
+     * @throws IllegalArgumentException if stock not found
      */
-    Optional<StockBatchDTO> getStockBatchById(Long id);
+    List<StockBatchDTO> getStockBatchesByStockId(Long stockId);
 
     /**
-     * Get all stock batches with pagination
+     * Get all stock batches for a specific product across all warehouses
      * 
-     * @param pageable Pagination information
-     * @return Page of stock batch DTOs
+     * @param productId The product ID
+     * @return List of stock batch DTOs
+     * @throws IllegalArgumentException if product not found
      */
-    Page<StockBatchDTO> getAllStockBatches(Pageable pageable);
+    List<StockBatchDTO> getStockBatchesByProductId(UUID productId);
 
     /**
-     * Get stock batches by stock ID
-     * 
-     * @param stockId  The stock ID
-     * @param pageable Pagination information
-     * @return Page of stock batch DTOs
-     */
-    Page<StockBatchDTO> getStockBatchesByStockId(Long stockId, Pageable pageable);
-
-    /**
-     * Get stock batches by status
-     * 
-     * @param status   The batch status
-     * @param pageable Pagination information
-     * @return Page of stock batch DTOs
-     */
-    Page<StockBatchDTO> getStockBatchesByStatus(BatchStatus status, Pageable pageable);
-
-    /**
-     * Get batches expiring soon
-     * 
-     * @param daysThreshold Number of days to consider as "soon"
-     * @param pageable      Pagination information
-     * @return Page of stock batch DTOs
-     */
-    Page<StockBatchDTO> getBatchesExpiringSoon(int daysThreshold, Pageable pageable);
-
-    /**
-     * Get expired batches
-     * 
-     * @param pageable Pagination information
-     * @return Page of expired stock batch DTOs
-     */
-    Page<StockBatchDTO> getExpiredBatches(Pageable pageable);
-
-    /**
-     * Update batch quantity
-     * 
-     * @param batchId     The batch ID
-     * @param newQuantity The new quantity
-     * @return Updated stock batch DTO
-     */
-    StockBatchDTO updateBatchQuantity(Long batchId, Integer newQuantity);
-
-    /**
-     * Reduce batch quantity
+     * Get a specific stock batch by ID
      * 
      * @param batchId The batch ID
-     * @param amount  The amount to reduce
-     * @return Updated stock batch DTO
+     * @return The stock batch DTO
+     * @throws IllegalArgumentException if batch not found
      */
-    StockBatchDTO reduceBatchQuantity(Long batchId, Integer amount);
+    StockBatchDTO getStockBatchById(Long batchId);
 
     /**
-     * Increase batch quantity
+     * Update an existing stock batch
      * 
      * @param batchId The batch ID
-     * @param amount  The amount to increase
-     * @return Updated stock batch DTO
+     * @param request The update request
+     * @return The updated stock batch DTO
+     * @throws IllegalArgumentException if batch not found or validation fails
      */
-    StockBatchDTO increaseBatchQuantity(Long batchId, Integer amount);
-
-    /**
-     * Recall a batch
-     * 
-     * @param batchId The batch ID
-     * @param reason  The reason for recall
-     * @return Updated stock batch DTO
-     */
-    StockBatchDTO recallBatch(Long batchId, String reason);
-
-    /**
-     * Update batch status
-     * 
-     * @param batchId The batch ID
-     * @param status  The new status
-     * @return Updated stock batch DTO
-     */
-    StockBatchDTO updateBatchStatus(Long batchId, BatchStatus status);
+    StockBatchDTO updateStockBatch(Long batchId, UpdateStockBatchRequest request);
 
     /**
      * Delete a stock batch
      * 
      * @param batchId The batch ID
+     * @throws IllegalArgumentException if batch not found
      */
     void deleteStockBatch(Long batchId);
 
     /**
-     * Check if batch number exists
+     * Recall a stock batch
      * 
-     * @param batchNumber The batch number to check
-     * @return true if batch number exists
+     * @param batchId The batch ID
+     * @param reason  The reason for recall (optional)
+     * @return The recalled stock batch DTO
+     * @throws IllegalArgumentException if batch not found
      */
-    boolean batchNumberExists(String batchNumber);
+    StockBatchDTO recallStockBatch(Long batchId, String reason);
 
     /**
-     * Get batches by batch number (partial match)
+     * Get batches that are expiring soon
      * 
-     * @param batchNumber The batch number to search for
-     * @param pageable    Pagination information
-     * @return Page of stock batch DTOs
+     * @param daysThreshold Number of days to consider as "soon"
+     * @return List of expiring stock batch DTOs
      */
-    Page<StockBatchDTO> searchBatchesByNumber(String batchNumber, Pageable pageable);
-
-    /**
-     * Update expired batch statuses
-     * This method should be called periodically to update batch statuses
-     */
-    void updateExpiredBatchStatuses();
-
-    /**
-     * Get batch statistics
-     * 
-     * @return Batch statistics summary
-     */
-    BatchStatisticsDTO getBatchStatistics();
-
-    /**
-     * DTO for batch statistics
-     */
-    class BatchStatisticsDTO {
-        private long totalBatches;
-        private long activeBatches;
-        private long expiredBatches;
-        private long emptyBatches;
-        private long recalledBatches;
-        private long batchesExpiringSoon;
-
-        // Constructors, getters, and setters
-        public BatchStatisticsDTO() {
-        }
-
-        public BatchStatisticsDTO(long totalBatches, long activeBatches, long expiredBatches,
-                long emptyBatches, long recalledBatches, long batchesExpiringSoon) {
-            this.totalBatches = totalBatches;
-            this.activeBatches = activeBatches;
-            this.expiredBatches = expiredBatches;
-            this.emptyBatches = emptyBatches;
-            this.recalledBatches = recalledBatches;
-            this.batchesExpiringSoon = batchesExpiringSoon;
-        }
-
-        // Getters and setters
-        public long getTotalBatches() {
-            return totalBatches;
-        }
-
-        public void setTotalBatches(long totalBatches) {
-            this.totalBatches = totalBatches;
-        }
-
-        public long getActiveBatches() {
-            return activeBatches;
-        }
-
-        public void setActiveBatches(long activeBatches) {
-            this.activeBatches = activeBatches;
-        }
-
-        public long getExpiredBatches() {
-            return expiredBatches;
-        }
-
-        public void setExpiredBatches(long expiredBatches) {
-            this.expiredBatches = expiredBatches;
-        }
-
-        public long getEmptyBatches() {
-            return emptyBatches;
-        }
-
-        public void setEmptyBatches(long emptyBatches) {
-            this.emptyBatches = emptyBatches;
-        }
-
-        public long getRecalledBatches() {
-            return recalledBatches;
-        }
-
-        public void setRecalledBatches(long recalledBatches) {
-            this.recalledBatches = recalledBatches;
-        }
-
-        public long getBatchesExpiringSoon() {
-            return batchesExpiringSoon;
-        }
-
-        public void setBatchesExpiringSoon(long batchesExpiringSoon) {
-            this.batchesExpiringSoon = batchesExpiringSoon;
-        }
-    }
+    List<StockBatchDTO> getBatchesExpiringSoon(int daysThreshold);
 }

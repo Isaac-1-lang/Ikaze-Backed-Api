@@ -18,6 +18,7 @@ import com.ecommerce.dto.CreateVariantRequest;
 import com.ecommerce.dto.SimilarProductsRequestDTO;
 import com.ecommerce.dto.WarehouseStockPageResponse;
 import com.ecommerce.dto.WarehouseStockRequest;
+import com.ecommerce.dto.WarehouseStockWithBatchesRequest;
 import com.ecommerce.dto.ProductDetailsDTO;
 import com.ecommerce.dto.ProductDetailsUpdateDTO;
 
@@ -48,6 +49,21 @@ public interface ProductService {
         boolean productHasVariants(UUID productId);
 
         /**
+         * Check if product has stock assigned
+         * 
+         * @param productId The product ID
+         * @return true if product has stock, false otherwise
+         */
+        boolean productHasStock(UUID productId);
+
+        /**
+         * Remove all stock for a product
+         * 
+         * @param productId The product ID
+         */
+        void removeProductStock(UUID productId);
+
+        /**
          * Assign stock to product (only when product has no variants)
          * 
          * @param productId       The product ID
@@ -55,6 +71,16 @@ public interface ProductService {
          * @return Map containing success status and message
          */
         Map<String, Object> assignProductStock(UUID productId, List<WarehouseStockRequest> warehouseStocks);
+
+        /**
+         * Assign stock with batches to a product
+         * 
+         * @param productId       The product ID
+         * @param warehouseStocks List of warehouse stock assignments with batch details
+         * @return Map containing success status and message
+         */
+        Map<String, Object> assignProductStockWithBatches(UUID productId,
+                        List<WarehouseStockWithBatchesRequest> warehouseStocks);
 
         /**
          * Get a product by its ID

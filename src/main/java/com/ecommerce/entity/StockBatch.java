@@ -93,13 +93,6 @@ public class StockBatch {
     private String supplierBatchNumber;
 
     /**
-     * Cost price for this batch
-     * Optional field - tracks the cost price for this specific batch
-     */
-    @Column(name = "cost_price", precision = 10, scale = 2)
-    private java.math.BigDecimal costPrice;
-
-    /**
      * Timestamp when the batch was created
      */
     @Column(name = "created_at")

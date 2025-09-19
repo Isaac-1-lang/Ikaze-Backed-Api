@@ -6,6 +6,7 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 import java.time.LocalDateTime;
+import java.util.List;
 
 @Data
 @Builder
@@ -34,6 +35,13 @@ public class WarehouseStockDTO {
     private String variantSku;
     private String variantName;
     private Boolean isVariantBased;
+
+    // Batch information
+    private List<StockBatchDTO> batches;
+    private Integer totalBatches;
+    private Integer activeBatches;
+    private Integer expiredBatches;
+    private Integer recalledBatches;
 
     // Convenience method for backward compatibility
     public Integer getStockQuantity() {

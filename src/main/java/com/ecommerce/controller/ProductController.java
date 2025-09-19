@@ -16,6 +16,7 @@ import com.ecommerce.dto.ProductVariantAttributeDTO;
 import com.ecommerce.dto.VariantAttributeRequest;
 import com.ecommerce.dto.CreateVariantRequest;
 import com.ecommerce.dto.WarehouseStockRequest;
+import com.ecommerce.dto.WarehouseStockWithBatchesRequest;
 import com.ecommerce.dto.ProductDetailsDTO;
 import com.ecommerce.dto.ProductDetailsUpdateDTO;
 import com.ecommerce.Exception.ProductDeletionException;
@@ -131,6 +132,91 @@ public class ProductController {
             log.error("Error assigning product stock: {}", e.getMessage(), e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                     .body(createErrorResponse("INTERNAL_ERROR", "Failed to assign product stock"));
+        }
+    }
+
+    @PostMapping("/{productId}/assign-stock-with-batches")
+    @PreAuthorize("hasAnyRole('ADMIN', 'EMPLOYEE')")
+    @Operation(summary = "Assign stock with batches to product", description = "Assign stock quantities with batch details to warehouses for a product", responses = {
+            @ApiResponse(responseCode = "200", description = "Stock with batches assigned successfully"),
+            @ApiResponse(responseCode = "400", description = "Invalid input data"),
+            @ApiResponse(responseCode = "404", description = "Product not found"),
+            @ApiResponse(responseCode = "401", description = "Unauthorized"),
+            @ApiResponse(responseCode = "500", description = "Internal server error")
+    })
+    public ResponseEntity<?> assignProductStockWithBatches(
+            @PathVariable UUID productId,
+            @RequestBody List<WarehouseStockWithBatchesRequest> warehouseStocks) {
+        try {
+            log.info("Assigning stock with batches to product {} for {} warehouses", productId, warehouseStocks.size());
+            Map<String, Object> response = productService.assignProductStockWithBatches(productId, warehouseStocks);
+            return ResponseEntity.ok(response);
+        } catch (IllegalArgumentException e) {
+            log.error("Validation error assigning product stock with batches: {}", e.getMessage());
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                    .body(createErrorResponse("VALIDATION_ERROR", e.getMessage()));
+        } catch (Exception e) {
+            log.error("Error assigning product stock with batches: {}", e.getMessage(), e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(createErrorResponse("INTERNAL_ERROR", "Failed to assign product stock with batches"));
+        }
+    }
+
+    @GetMapping("/{productId}/has-stock")
+    @PreAuthorize("hasAnyRole('ADMIN', 'EMPLOYEE')")
+    @Operation(summary = "Check if product has stock", description = "Check whether a product has stock assigned", responses = {
+            @ApiResponse(responseCode = "200", description = "Product stock status retrieved successfully"),
+            @ApiResponse(responseCode = "404", description = "Product not found"),
+            @ApiResponse(responseCode = "401", description = "Unauthorized"),
+            @ApiResponse(responseCode = "500", description = "Internal server error")
+    })
+    public ResponseEntity<?> checkProductHasStock(@PathVariable UUID productId) {
+        try {
+            log.info("Checking if product {} has stock", productId);
+            boolean hasStock = productService.productHasStock(productId);
+
+            Map<String, Object> response = new HashMap<>();
+            response.put("hasStock", hasStock);
+            response.put("message", hasStock ? "Product has stock assigned." : "Product has no stock assigned.");
+
+            return ResponseEntity.ok(response);
+        } catch (IllegalArgumentException e) {
+            log.error("Product not found: {}", e.getMessage());
+            return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                    .body(createErrorResponse("PRODUCT_NOT_FOUND", e.getMessage()));
+        } catch (Exception e) {
+            log.error("Error checking product stock: {}", e.getMessage(), e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(createErrorResponse("INTERNAL_ERROR", "Failed to check product stock"));
+        }
+    }
+
+    @DeleteMapping("/{productId}/stock")
+    @PreAuthorize("hasAnyRole('ADMIN', 'EMPLOYEE')")
+    @Operation(summary = "Remove all product stock", description = "Remove all stock and batches for a product", responses = {
+            @ApiResponse(responseCode = "200", description = "Product stock removed successfully"),
+            @ApiResponse(responseCode = "404", description = "Product not found"),
+            @ApiResponse(responseCode = "401", description = "Unauthorized"),
+            @ApiResponse(responseCode = "500", description = "Internal server error")
+    })
+    public ResponseEntity<?> removeProductStock(@PathVariable UUID productId) {
+        try {
+            log.info("Removing all stock for product {}", productId);
+            productService.removeProductStock(productId);
+
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", true);
+            response.put("message", "All product stock removed successfully");
+
+            return ResponseEntity.ok(response);
+        } catch (IllegalArgumentException e) {
+            log.error("Product not found: {}", e.getMessage());
+            return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                    .body(createErrorResponse("PRODUCT_NOT_FOUND", e.getMessage()));
+        } catch (Exception e) {
+            log.error("Error removing product stock: {}", e.getMessage(), e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(createErrorResponse("INTERNAL_ERROR", "Failed to remove product stock"));
         }
     }
 

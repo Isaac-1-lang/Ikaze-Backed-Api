@@ -24,6 +24,8 @@ import com.ecommerce.dto.ProductVariantAttributeDTO;
 import com.ecommerce.dto.VariantAttributeRequest;
 import com.ecommerce.dto.CreateVariantRequest;
 import com.ecommerce.dto.WarehouseStockRequest;
+import com.ecommerce.dto.WarehouseStockWithBatchesRequest;
+import com.ecommerce.dto.StockBatchDTO;
 import com.ecommerce.dto.ProductDetailsDTO;
 import com.ecommerce.dto.ProductDetailsUpdateDTO;
 
@@ -136,6 +138,8 @@ public class ProductServiceImpl implements ProductService {
 
     private final StockRepository stockRepository;
 
+    private final StockBatchRepository stockBatchRepository;
+
     private final ProductDetailRepository productDetailRepository;
 
     private final CloudinaryService cloudinaryService;
@@ -199,6 +203,45 @@ public class ProductServiceImpl implements ProductService {
     }
 
     @Override
+    public boolean productHasStock(UUID productId) {
+        try {
+            log.info("Checking if product {} has stock", productId);
+            Product product = productRepository.findById(productId)
+                    .orElseThrow(() -> new IllegalArgumentException("Product not found"));
+
+            List<Stock> stocks = stockRepository.findByProduct(product);
+            boolean hasStock = !stocks.isEmpty();
+            log.info("Product {} has stock: {}", productId, hasStock);
+            return hasStock;
+
+        } catch (Exception e) {
+            log.error("Error checking product stock: {}", e.getMessage(), e);
+            throw new RuntimeException("Failed to check product stock: " + e.getMessage(), e);
+        }
+    }
+
+    @Override
+    @Transactional
+    public void removeProductStock(UUID productId) {
+        try {
+            log.info("Removing all stock for product {}", productId);
+            Product product = productRepository.findById(productId)
+                    .orElseThrow(() -> new IllegalArgumentException("Product not found"));
+
+            List<Stock> stocks = stockRepository.findByProduct(product);
+            for (Stock stock : stocks) {
+                stockBatchRepository.deleteByStock(stock);
+                stockRepository.delete(stock);
+            }
+            log.info("Successfully removed all stock for product {}", productId);
+
+        } catch (Exception e) {
+            log.error("Error removing product stock: {}", e.getMessage(), e);
+            throw new RuntimeException("Failed to remove product stock: " + e.getMessage(), e);
+        }
+    }
+
+    @Override
     @Transactional
     public Map<String, Object> assignProductStock(UUID productId, List<WarehouseStockRequest> warehouseStocks) {
         try {
@@ -214,6 +257,7 @@ public class ProductServiceImpl implements ProductService {
 
             List<Stock> existingStocks = stockRepository.findByProduct(product);
             for (Stock existingStock : existingStocks) {
+                stockBatchRepository.deleteByStock(existingStock);
                 stockRepository.delete(existingStock);
             }
 
@@ -226,13 +270,23 @@ public class ProductServiceImpl implements ProductService {
                 Stock stock = new Stock();
                 stock.setProduct(product);
                 stock.setWarehouse(warehouse);
-                stock.setQuantity(stockRequest.getStockQuantity());
+                stock.setQuantity(0);
                 stock.setLowStockThreshold(stockRequest.getLowStockThreshold());
 
-                newStocks.add(stock);
-            }
+                Stock savedStock = stockRepository.save(stock);
 
-            stockRepository.saveAll(newStocks);
+                StockBatch defaultBatch = new StockBatch();
+                defaultBatch.setStock(savedStock);
+                defaultBatch.setBatchNumber("DEFAULT-" + System.currentTimeMillis());
+                defaultBatch.setQuantity(stockRequest.getStockQuantity());
+                defaultBatch.setStatus(com.ecommerce.enums.BatchStatus.ACTIVE);
+
+                stockBatchRepository.save(defaultBatch);
+                savedStock.setQuantity(stockRequest.getStockQuantity());
+                stockRepository.save(savedStock);
+
+                newStocks.add(savedStock);
+            }
 
             Map<String, Object> response = new HashMap<>();
             response.put("success", true);
@@ -248,6 +302,100 @@ public class ProductServiceImpl implements ProductService {
         } catch (Exception e) {
             log.error("Error assigning product stock: {}", e.getMessage(), e);
             throw new RuntimeException("Failed to assign product stock: " + e.getMessage(), e);
+        }
+    }
+
+    @Override
+    @Transactional
+    public Map<String, Object> assignProductStockWithBatches(UUID productId,
+            List<WarehouseStockWithBatchesRequest> warehouseStocks) {
+        try {
+            log.info("Assigning stock with batches to product {} for {} warehouses", productId, warehouseStocks.size());
+
+            Product product = productRepository.findById(productId)
+                    .orElseThrow(() -> new IllegalArgumentException("Product not found"));
+
+            if (product.getVariants() != null && !product.getVariants().isEmpty()) {
+                throw new IllegalArgumentException(
+                        "Cannot assign stock to product with variants. Stock should be managed at variant level.");
+            }
+
+            // Remove existing stock and batches
+            List<Stock> existingStocks = stockRepository.findByProduct(product);
+            for (Stock existingStock : existingStocks) {
+                stockBatchRepository.deleteByStock(existingStock);
+                stockRepository.delete(existingStock);
+            }
+
+            List<Stock> newStocks = new ArrayList<>();
+            int totalBatchesCreated = 0;
+
+            for (WarehouseStockWithBatchesRequest stockRequest : warehouseStocks) {
+                Warehouse warehouse = warehouseRepository.findById(stockRequest.getWarehouseId())
+                        .orElseThrow(() -> new IllegalArgumentException(
+                                "Warehouse not found: " + stockRequest.getWarehouseId()));
+
+                // Create stock entry
+                Stock stock = new Stock();
+                stock.setProduct(product);
+                stock.setWarehouse(warehouse);
+                stock.setQuantity(0); // Will be calculated from batches
+                stock.setLowStockThreshold(stockRequest.getLowStockThreshold());
+
+                Stock savedStock = stockRepository.save(stock);
+
+                // Create batches for this stock
+                List<StockBatch> batches = new ArrayList<>();
+                for (WarehouseStockWithBatchesRequest.StockBatchRequest batchRequest : stockRequest.getBatches()) {
+                    // Check if batch number already exists for this stock
+                    if (stockBatchRepository.findByStockAndBatchNumber(savedStock, batchRequest.getBatchNumber())
+                            .isPresent()) {
+                        throw new IllegalArgumentException(
+                                "Batch number '" + batchRequest.getBatchNumber() + "' already exists for this stock");
+                    }
+
+                    StockBatch batch = new StockBatch();
+                    batch.setStock(savedStock);
+                    batch.setBatchNumber(batchRequest.getBatchNumber());
+                    batch.setManufactureDate(batchRequest.getManufactureDate());
+                    batch.setExpiryDate(batchRequest.getExpiryDate());
+                    batch.setQuantity(batchRequest.getQuantity());
+                    batch.setSupplierName(batchRequest.getSupplierName());
+                    batch.setSupplierBatchNumber(batchRequest.getSupplierBatchNumber());
+                    batch.setStatus(com.ecommerce.enums.BatchStatus.ACTIVE);
+
+                    StockBatch savedBatch = stockBatchRepository.save(batch);
+                    batches.add(savedBatch);
+                    totalBatchesCreated++;
+                }
+
+                // Update stock quantity based on active batches
+                Integer totalQuantity = batches.stream()
+                        .filter(batch -> batch.getStatus() == com.ecommerce.enums.BatchStatus.ACTIVE)
+                        .mapToInt(StockBatch::getQuantity)
+                        .sum();
+                savedStock.setQuantity(totalQuantity);
+                stockRepository.save(savedStock);
+
+                newStocks.add(savedStock);
+            }
+
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", true);
+            response.put("message", "Stock with batches assigned successfully");
+            response.put("assignedWarehouses", warehouseStocks.size());
+            response.put("totalBatchesCreated", totalBatchesCreated);
+
+            log.info("Successfully assigned stock with {} batches to product {} for {} warehouses",
+                    totalBatchesCreated, productId, warehouseStocks.size());
+            return response;
+
+        } catch (IllegalArgumentException e) {
+            log.error("Validation error assigning product stock with batches: {}", e.getMessage());
+            throw e;
+        } catch (Exception e) {
+            log.error("Error assigning product stock with batches: {}", e.getMessage(), e);
+            throw new RuntimeException("Failed to assign product stock with batches: " + e.getMessage(), e);
         }
     }
 
@@ -3586,7 +3734,6 @@ public class ProductServiceImpl implements ProductService {
 
             List<Stock> allStock = stockRepository.findByProduct(product);
 
-
             Page<Stock> stockPage = stockRepository.findByProductOrProductVariantProduct(product, pageable);
 
             if (stockPage.getContent().isEmpty() && !allStock.isEmpty()) {
@@ -3711,6 +3858,24 @@ public class ProductServiceImpl implements ProductService {
     private WarehouseStockDTO mapStockToWarehouseStockDTO(Stock stock) {
         Warehouse warehouse = stock.getWarehouse();
 
+        // Get batches for this stock
+        List<StockBatch> batches = stockBatchRepository.findByStockOrderByCreatedAtDesc(stock);
+        List<StockBatchDTO> batchDTOs = batches.stream()
+                .map(this::mapStockBatchToDTO)
+                .collect(Collectors.toList());
+
+        // Calculate batch statistics
+        int totalBatches = batches.size();
+        int activeBatches = (int) batches.stream()
+                .filter(batch -> batch.getStatus() == com.ecommerce.enums.BatchStatus.ACTIVE)
+                .count();
+        int expiredBatches = (int) batches.stream()
+                .filter(batch -> batch.getStatus() == com.ecommerce.enums.BatchStatus.EXPIRED)
+                .count();
+        int recalledBatches = (int) batches.stream()
+                .filter(batch -> batch.getStatus() == com.ecommerce.enums.BatchStatus.RECALLED)
+                .count();
+
         return WarehouseStockDTO.builder()
                 .stockId(stock.getId())
                 .warehouseId(warehouse.getId())
@@ -3732,6 +3897,47 @@ public class ProductServiceImpl implements ProductService {
                 .variantSku(stock.getProductVariant() != null ? stock.getProductVariant().getVariantSku() : null)
                 .variantName(stock.getProductVariant() != null ? stock.getProductVariant().getVariantName() : null)
                 .isVariantBased(stock.isVariantBased())
+                .batches(batchDTOs)
+                .totalBatches(totalBatches)
+                .activeBatches(activeBatches)
+                .expiredBatches(expiredBatches)
+                .recalledBatches(recalledBatches)
+                .build();
+    }
+
+    /**
+     * Map StockBatch entity to StockBatchDTO
+     */
+    private StockBatchDTO mapStockBatchToDTO(StockBatch stockBatch) {
+        return StockBatchDTO.builder()
+                .id(stockBatch.getId())
+                .stockId(stockBatch.getStock().getId())
+                .batchNumber(stockBatch.getBatchNumber())
+                .manufactureDate(stockBatch.getManufactureDate())
+                .expiryDate(stockBatch.getExpiryDate())
+                .quantity(stockBatch.getQuantity())
+                .status(stockBatch.getStatus())
+                .supplierName(stockBatch.getSupplierName())
+                .supplierBatchNumber(stockBatch.getSupplierBatchNumber())
+                .createdAt(stockBatch.getCreatedAt())
+                .updatedAt(stockBatch.getUpdatedAt())
+                .productName(stockBatch.getEffectiveProductName())
+                .warehouseName(stockBatch.getWarehouseName())
+                .warehouseId(stockBatch.getStock().getWarehouse().getId())
+                .productId(stockBatch.getStock().getEffectiveProduct() != null
+                        ? stockBatch.getStock().getEffectiveProduct().getProductId().toString()
+                        : null)
+                .variantId(stockBatch.getStock().getProductVariant() != null
+                        ? stockBatch.getStock().getProductVariant().getId().toString()
+                        : null)
+                .variantName(stockBatch.getStock().getProductVariant() != null
+                        ? stockBatch.getStock().getProductVariant().getVariantName()
+                        : null)
+                .isExpired(stockBatch.isExpired())
+                .isExpiringSoon(stockBatch.isExpiringSoon(30))
+                .isEmpty(stockBatch.isEmpty())
+                .isRecalled(stockBatch.isRecalled())
+                .isAvailable(stockBatch.isAvailable())
                 .build();
     }
 
