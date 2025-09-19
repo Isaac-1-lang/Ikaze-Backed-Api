@@ -1,7 +1,5 @@
 package com.ecommerce.service.impl;
 
-import com.ecommerce.dto.CreateProductDTO;
-
 import com.ecommerce.dto.CreateProductVariantDTO;
 
 import com.ecommerce.dto.ImageMetadata;
@@ -29,11 +27,8 @@ import com.ecommerce.dto.WarehouseStockRequest;
 import com.ecommerce.dto.ProductDetailsDTO;
 import com.ecommerce.dto.ProductDetailsUpdateDTO;
 
-import com.ecommerce.dto.VariantAttributeDTO;
-
 import com.ecommerce.dto.VariantImageMetadata;
 
-import com.ecommerce.dto.VideoMetadata;
 import com.ecommerce.dto.ReviewDTO;
 import com.ecommerce.dto.DiscountDTO;
 import com.ecommerce.dto.WarehouseStockDTO;
@@ -55,7 +50,6 @@ import co.elastic.clients.elasticsearch.indices.ExistsRequest;
 import jakarta.annotation.PostConstruct;
 
 import com.ecommerce.Exception.ProductDeletionException;
-import com.fasterxml.jackson.databind.ObjectMapper;
 
 import com.ecommerce.service.CloudinaryService;
 
@@ -87,8 +81,6 @@ import org.springframework.stereotype.Service;
 
 import org.springframework.web.multipart.MultipartFile;
 
-import java.io.IOException;
-
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 
@@ -96,15 +88,11 @@ import java.time.LocalDateTime;
 
 import java.util.*;
 
-import java.util.concurrent.CompletableFuture;
-
 import java.util.concurrent.ExecutorService;
 
 import java.util.concurrent.Executors;
 
 import java.util.stream.Collectors;
-
-import java.security.SecureRandom;
 
 @Service
 
@@ -144,8 +132,6 @@ public class ProductServiceImpl implements ProductService {
 
     private final CartRepository cartRepository;
 
-    private final WishlistRepository wishlistRepository;
-
     private final WarehouseRepository warehouseRepository;
 
     private final StockRepository stockRepository;
@@ -155,153 +141,6 @@ public class ProductServiceImpl implements ProductService {
     private final CloudinaryService cloudinaryService;
 
     private final ElasticsearchClient elasticsearchClient;
-
-    private final ExecutorService executorService = Executors.newFixedThreadPool(10);
-
-    @Override
-
-    @Transactional
-
-    public ProductDTO createProduct(CreateProductDTO createProductDTO, List<MultipartFile> productImages,
-            List<MultipartFile> productVideos) {
-        Product savedProduct = null;
-        try {
-
-            log.info("Starting product creation for: {}", createProductDTO.getName());
-
-            Category category = validateAndGetCategory(createProductDTO.getCategoryId());
-
-            Brand brand = null;
-
-            if (createProductDTO.getBrandId() != null) {
-
-                brand = validateAndGetBrand(createProductDTO.getBrandId());
-
-            }
-
-            Discount discount = null;
-
-            if (createProductDTO.getDiscountId() != null) {
-
-                discount = validateAndGetDiscount(createProductDTO.getDiscountId());
-
-            }
-
-            // Create and save product entity
-
-            // Resolve or generate SKU now that we know category and brand
-
-            String resolvedSku = resolveOrGenerateSku(
-
-                    createProductDTO.getSku(),
-
-                    createProductDTO.getName(),
-
-                    category,
-
-                    brand);
-
-            Product product = createProductEntity(createProductDTO, category, brand, discount);
-
-            product.setSku(resolvedSku);
-
-            savedProduct = productRepository.save(product);
-
-            // Verify the product was saved successfully
-            if (savedProduct.getProductId() == null) {
-                throw new RuntimeException("Failed to save product - no ID generated");
-            }
-
-            log.info("Product saved with ID: {}", savedProduct.getProductId());
-
-            // Flush to ensure the product is committed to the database
-            productRepository.flush();
-
-            // Handle warehouse stock assignments for products without variants
-            if (createProductDTO.getVariants() == null || createProductDTO.getVariants().isEmpty()) {
-                log.info("Product has no variants, creating warehouse stock assignments for product");
-                createProductStockAssignments(savedProduct, createProductDTO.getWarehouseStock());
-            } else {
-                log.info("Product has variants, warehouse stock will be assigned to variants instead");
-            }
-
-            if (productImages != null && !productImages.isEmpty()) {
-                try {
-                    processProductImages(savedProduct, productImages,
-                            createProductDTO.getImageMetadata());
-                    log.info("Successfully processed {} product images", productImages.size());
-                } catch (Exception e) {
-                    log.error("Failed to process product images: {}", e.getMessage(), e);
-                    throw new RuntimeException("Failed to process product images: " + e.getMessage(), e);
-                }
-            }
-
-            // Process product videos
-            if (productVideos != null && !productVideos.isEmpty()) {
-                try {
-                    processProductVideos(savedProduct, productVideos,
-                            parseVideoMetadataFromString(createProductDTO.getVideoMetadata()));
-                    log.info("Successfully processed {} product videos", productVideos.size());
-                } catch (Exception e) {
-                    log.error("Failed to process product videos: {}", e.getMessage(), e);
-                    throw new RuntimeException("Failed to process product videos: " + e.getMessage(), e);
-                }
-            }
-
-            // Process variants
-            log.info("Checking for variants: variants={}, size={}",
-                    createProductDTO.getVariants() != null ? "not null" : "null",
-                    createProductDTO.getVariants() != null ? createProductDTO.getVariants().size() : "N/A");
-
-            if (createProductDTO.getVariants() != null && !createProductDTO.getVariants().isEmpty()) {
-                log.info("Processing {} variants", createProductDTO.getVariants().size());
-                try {
-                    processProductVariants(savedProduct, createProductDTO.getVariants(),
-                            createProductDTO.getVariantImages(), createProductDTO.getVariantImageMapping());
-                    log.info("Successfully processed {} product variants", createProductDTO.getVariants().size());
-                } catch (Exception e) {
-                    log.error("Failed to process product variants: {}", e.getMessage(), e);
-                    throw new RuntimeException("Failed to process product variants: " + e.getMessage(), e);
-                }
-            } else {
-                log.info("No variants to process");
-            }
-
-            // Refresh product from database to get all relationships
-
-            Product refreshedProduct = productRepository.findById(savedProduct.getProductId())
-
-                    .orElseThrow(() -> new EntityNotFoundException("Product not found after saving"));
-
-            log.info("Product creation completed successfully for: {}", createProductDTO.getName());
-
-            // Index product in Elasticsearch
-            indexProductInElasticsearch(refreshedProduct);
-
-            return mapProductToDTO(refreshedProduct);
-
-        } catch (Exception e) {
-
-            log.error("Error creating product: {}", e.getMessage(), e);
-
-            // If we have a saved product but something failed, try to clean up
-            if (savedProduct != null && savedProduct.getProductId() != null) {
-                try {
-                    log.warn("Attempting to clean up partially created product with ID: {}",
-                            savedProduct.getProductId());
-                    productRepository.deleteById(savedProduct.getProductId());
-                    log.info("Successfully cleaned up partially created product");
-                } catch (Exception cleanupError) {
-                    log.error("Failed to clean up partially created product: {}", cleanupError.getMessage(),
-                            cleanupError);
-                }
-            }
-
-            throw new RuntimeException("Failed to create product: " + e.getMessage(), e);
-
-        }
-
-    }
 
     @Override
     @Transactional
@@ -342,6 +181,76 @@ public class ProductServiceImpl implements ProductService {
         return "TEMP-" + baseSku + "-" + System.currentTimeMillis();
     }
 
+    @Override
+    public boolean productHasVariants(UUID productId) {
+        try {
+            log.info("Checking if product {} has variants", productId);
+            Product product = productRepository.findById(productId)
+                    .orElseThrow(() -> new IllegalArgumentException("Product not found"));
+
+            boolean hasVariants = product.getVariants() != null && !product.getVariants().isEmpty();
+            log.info("Product {} has variants: {}", productId, hasVariants);
+            return hasVariants;
+
+        } catch (Exception e) {
+            log.error("Error checking product variants: {}", e.getMessage(), e);
+            throw new RuntimeException("Failed to check product variants: " + e.getMessage(), e);
+        }
+    }
+
+    @Override
+    @Transactional
+    public Map<String, Object> assignProductStock(UUID productId, List<WarehouseStockRequest> warehouseStocks) {
+        try {
+            log.info("Assigning stock to product {} for {} warehouses", productId, warehouseStocks.size());
+
+            Product product = productRepository.findById(productId)
+                    .orElseThrow(() -> new IllegalArgumentException("Product not found"));
+
+            if (product.getVariants() != null && !product.getVariants().isEmpty()) {
+                throw new IllegalArgumentException(
+                        "Cannot assign stock to product with variants. Stock should be managed at variant level.");
+            }
+
+            List<Stock> existingStocks = stockRepository.findByProduct(product);
+            for (Stock existingStock : existingStocks) {
+                stockRepository.delete(existingStock);
+            }
+
+            List<Stock> newStocks = new ArrayList<>();
+            for (WarehouseStockRequest stockRequest : warehouseStocks) {
+                Warehouse warehouse = warehouseRepository.findById(stockRequest.getWarehouseId())
+                        .orElseThrow(() -> new IllegalArgumentException(
+                                "Warehouse not found: " + stockRequest.getWarehouseId()));
+
+                Stock stock = new Stock();
+                stock.setProduct(product);
+                stock.setWarehouse(warehouse);
+                stock.setQuantity(stockRequest.getStockQuantity());
+                stock.setLowStockThreshold(stockRequest.getLowStockThreshold());
+
+                newStocks.add(stock);
+            }
+
+            stockRepository.saveAll(newStocks);
+
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", true);
+            response.put("message", "Stock assigned successfully");
+            response.put("assignedWarehouses", warehouseStocks.size());
+
+            log.info("Successfully assigned stock to product {} for {} warehouses", productId, warehouseStocks.size());
+            return response;
+
+        } catch (IllegalArgumentException e) {
+            log.error("Validation error assigning product stock: {}", e.getMessage());
+            throw e;
+        } catch (Exception e) {
+            log.error("Error assigning product stock: {}", e.getMessage(), e);
+            throw new RuntimeException("Failed to assign product stock: " + e.getMessage(), e);
+        }
+    }
+
     private Category validateAndGetCategory(Long categoryId) {
 
         Category category = categoryRepository.findById(categoryId)
@@ -374,94 +283,6 @@ public class ProductServiceImpl implements ProductService {
 
     }
 
-    private String resolveOrGenerateSku(String requestedSku, String productName, Category category, Brand brand) {
-
-        if (requestedSku != null && !requestedSku.trim().isEmpty()) {
-
-            validateSkuUniqueness(requestedSku);
-
-            return requestedSku.trim().toUpperCase();
-
-        }
-
-        // Build a base SKU: CAT-Brand-Name + 6 random alphanumerics
-
-        String categoryPart = category != null && category.getName() != null
-
-                ? abbreviate(category.getName(), 3)
-
-                : "GEN";
-
-        String brandPart = brand != null && brand.getBrandName() != null
-
-                ? abbreviate(brand.getBrandName(), 3)
-
-                : "NON";
-
-        String namePart = productName != null ? abbreviate(productName, 4) : "PRD";
-
-        String base = String.join("-", categoryPart, brandPart, namePart);
-
-        String candidate;
-
-        int attempts = 0;
-
-        do {
-
-            String suffix = randomAlphaNum(6);
-
-            candidate = (base + "-" + suffix).toUpperCase();
-
-            attempts++;
-
-            if (attempts > 10) {
-
-                // fallback to a timestamp-based suffix to avoid rare collisions
-
-                candidate = (base + "-" + System.currentTimeMillis()).toUpperCase();
-
-                break;
-
-            }
-
-        } while (productRepository.findBySku(candidate).isPresent());
-
-        return candidate;
-
-    }
-
-    private String abbreviate(String input, int maxLen) {
-
-        String cleaned = input.replaceAll("[^A-Za-z0-9]", "");
-
-        if (cleaned.isEmpty())
-
-            return "X".repeat(Math.max(1, maxLen)).substring(0, maxLen);
-
-        cleaned = cleaned.toUpperCase();
-
-        return cleaned.length() <= maxLen ? cleaned : cleaned.substring(0, maxLen);
-
-    }
-
-    private static final char[] ALPHANUM = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789".toCharArray();
-
-    private static final SecureRandom RANDOM = new SecureRandom();
-
-    private String randomAlphaNum(int len) {
-
-        StringBuilder sb = new StringBuilder(len);
-
-        for (int i = 0; i < len; i++) {
-
-            sb.append(ALPHANUM[RANDOM.nextInt(ALPHANUM.length)]);
-
-        }
-
-        return sb.toString();
-
-    }
-
     private Brand validateAndGetBrand(UUID brandId) {
 
         Brand brand = brandRepository.findById(brandId)
@@ -491,130 +312,6 @@ public class ProductServiceImpl implements ProductService {
         }
 
         return discount;
-
-    }
-
-    private Product createProductEntity(CreateProductDTO createProductDTO, Category category, Brand brand,
-
-            Discount discount) {
-
-        Product product = new Product();
-
-        product.setProductName(createProductDTO.getName());
-
-        product.setShortDescription(createProductDTO.getDescription());
-
-        // SKU set externally before save using resolved logic
-
-        product.setBarcode(createProductDTO.getBarcode());
-
-        product.setPrice(createProductDTO.getBasePrice());
-
-        product.setCompareAtPrice(createProductDTO.getSalePrice());
-
-        product.setCostPrice(createProductDTO.getCostPrice());
-
-        product.setCategory(category);
-
-        product.setBrand(brand);
-
-        product.setDiscount(discount);
-
-        product.setModel(createProductDTO.getModel());
-
-        product.setSlug(createProductDTO.getSlug() != null ? createProductDTO.getSlug()
-
-                : generateSlug(createProductDTO.getName()));
-
-        product.setActive(createProductDTO.getIsActive() != null ? createProductDTO.getIsActive() : true);
-
-        product.setFeatured(createProductDTO.getIsFeatured() != null ? createProductDTO.getIsFeatured() : false);
-
-        product.setBestseller(createProductDTO.getIsBestseller() != null ? createProductDTO.getIsBestseller() : false);
-
-        product.setNewArrival(createProductDTO.getIsNewArrival() != null ? createProductDTO.getIsNewArrival() : false);
-
-        product.setOnSale(createProductDTO.getIsOnSale() != null ? createProductDTO.getIsOnSale() : false);
-
-        product.setSalePercentage(createProductDTO.getSalePercentage());
-
-        // Create product detail if needed
-
-        if (hasProductDetailData(createProductDTO)) {
-
-            ProductDetail productDetail = createProductDetail(createProductDTO);
-
-            productDetail.setProduct(product);
-
-            product.setProductDetail(productDetail);
-
-        }
-
-        return product;
-
-    }
-
-    private boolean hasProductDetailData(CreateProductDTO createProductDTO) {
-
-        return createProductDTO.getFullDescription() != null ||
-
-                createProductDTO.getMetaTitle() != null ||
-
-                createProductDTO.getMetaDescription() != null ||
-
-                createProductDTO.getMetaKeywords() != null ||
-
-                createProductDTO.getSearchKeywords() != null ||
-
-                createProductDTO.getDimensionsCm() != null ||
-
-                createProductDTO.getWeightKg() != null;
-
-    }
-
-    private ProductDetail createProductDetail(CreateProductDTO createProductDTO) {
-
-        ProductDetail productDetail = new ProductDetail();
-
-        productDetail.setDescription(createProductDTO.getFullDescription());
-
-        if (createProductDTO.getMetaTitle() != null) {
-
-            productDetail.setMetaTitle(createProductDTO.getMetaTitle());
-
-        }
-
-        if (createProductDTO.getMetaDescription() != null) {
-
-            productDetail.setMetaDescription(createProductDTO.getMetaDescription());
-
-        }
-
-        if (createProductDTO.getMetaKeywords() != null) {
-
-            productDetail.setMetaKeywords(createProductDTO.getMetaKeywords());
-
-        }
-
-        if (createProductDTO.getSearchKeywords() != null) {
-
-            productDetail.setSearchKeywords(createProductDTO.getSearchKeywords());
-
-        }
-
-        if (createProductDTO.getDimensionsCm() != null) {
-
-            productDetail.setDimensionsCm(createProductDTO.getDimensionsCm());
-
-        }
-
-        if (createProductDTO.getWeightKg() != null) {
-
-            productDetail.setWeightKg(createProductDTO.getWeightKg());
-
-        }
-
-        return productDetail;
 
     }
 
@@ -2132,307 +1829,6 @@ public class ProductServiceImpl implements ProductService {
 
         }
 
-    }
-
-    private void processProductVideos(Product product, List<String> videoUrls,
-
-            String videoMetadataJson) {
-
-        // Parse metadata from JSON string if provided
-
-        List<VideoMetadata> metadata = parseVideoMetadataFromString(videoMetadataJson);
-
-        // Process video URLs directly (assuming they're already uploaded)
-
-        for (int i = 0; i < videoUrls.size(); i++) {
-
-            String videoUrl = videoUrls.get(i);
-
-            ProductVideo productVideo = new ProductVideo();
-
-            productVideo.setProduct(product);
-
-            productVideo.setUrl(videoUrl);
-
-            productVideoRepository.save(productVideo);
-
-        }
-
-        log.info("Successfully processed {} product videos from URLs", videoUrls.size());
-
-    }
-
-    private List<VideoMetadata> parseVideoMetadataFromString(String videoMetadataJson) {
-        List<VideoMetadata> metadata = new ArrayList<>();
-        if (videoMetadataJson != null && !videoMetadataJson.trim().isEmpty()) {
-            try {
-                // For now, we'll create a simple metadata object
-                // In a real implementation, you'd parse the JSON
-                // TODO: Implement JSON parsing for metadata
-            } catch (Exception e) {
-                log.warn("Failed to parse video metadata JSON: {}", e.getMessage());
-            }
-        }
-        return metadata;
-    }
-
-    private List<ImageMetadata> parseImageMetadataFromString(String imageMetadataJson) {
-        List<ImageMetadata> metadata = new ArrayList<>();
-        if (imageMetadataJson != null && !imageMetadataJson.trim().isEmpty()) {
-            try {
-                // For now, we'll create a simple metadata object
-                // In a real implementation, you'd parse the JSON
-                // TODO: Implement JSON parsing for metadata
-            } catch (Exception e) {
-                log.warn("Failed to parse image metadata JSON: {}", e.getMessage());
-            }
-        }
-        return metadata;
-    }
-
-    private List<VariantImageMetadata> parseVariantImageMetadataFromString(String imageMetadataJson) {
-        List<VariantImageMetadata> metadata = new ArrayList<>();
-        if (imageMetadataJson != null && !imageMetadataJson.trim().isEmpty()) {
-            try {
-                // For now, we'll create a simple metadata object
-                // In a real implementation, you'd parse the JSON
-                // TODO: Implement JSON parsing for metadata
-            } catch (Exception e) {
-                log.warn("Failed to parse variant image metadata JSON: {}", e.getMessage());
-            }
-        }
-        return metadata;
-    }
-
-    private void processProductVideos(Product product, List<MultipartFile> videos,
-
-            List<VideoMetadata> metadata) {
-
-        try {
-
-            log.info("Processing {} product videos", videos.size());
-
-            // Validate product has a valid ID
-            if (product == null || product.getProductId() == null) {
-                throw new RuntimeException("Cannot process videos for null product or product without ID");
-            }
-
-            // Validate video duration (max 30 seconds) and file size
-            for (int i = 0; i < videos.size(); i++) {
-                MultipartFile video = videos.get(i);
-
-                // Check file size (max 100MB)
-                if (video.getSize() > 100 * 1024 * 1024) {
-                    throw new IllegalArgumentException(
-                            String.format("Video '%s' file size (%.2f MB) exceeds maximum allowed (100 MB)",
-                                    video.getOriginalFilename(), video.getSize() / (1024.0 * 1024.0)));
-                }
-
-                // Validate video duration if metadata provided
-                if (metadata != null && i < metadata.size()) {
-                    VideoMetadata videoMetadata = metadata.get(i);
-                    if (videoMetadata.getDuration() != null && videoMetadata.getDuration() > 30) {
-                        throw new IllegalArgumentException(
-                                String.format("Video '%s' duration (%d seconds) exceeds maximum allowed (30 seconds)",
-                                        video.getOriginalFilename(), videoMetadata.getDuration()));
-                    }
-                }
-            }
-
-            // Upload videos to Cloudinary concurrently
-            List<Map<String, String>> uploadResults = cloudinaryService.uploadMultipleVideos(videos);
-
-            // Create product videos
-
-            for (int i = 0; i < uploadResults.size(); i++) {
-
-                Map<String, String> uploadResult = uploadResults.get(i);
-
-                if (uploadResult.containsKey("error")) {
-
-                    log.error("Failed to upload video {}: {}", i, uploadResult.get("error"));
-
-                    throw new RuntimeException("Failed to upload video: " + uploadResult.get("error"));
-
-                }
-
-                ProductVideo productVideo = new ProductVideo();
-
-                productVideo.setProduct(product);
-
-                productVideo.setUrl(uploadResult.get("url"));
-
-                // Set metadata if available
-
-                if (metadata != null && i < metadata.size()) {
-
-                    VideoMetadata vidMetadata = metadata.get(i);
-
-                    productVideo.setTitle(vidMetadata.getTitle());
-
-                    productVideo.setDescription(vidMetadata.getDescription());
-
-                    productVideo.setSortOrder(vidMetadata.getSortOrder() != null ? vidMetadata.getSortOrder() : i);
-
-                } else {
-
-                    productVideo.setSortOrder(i);
-
-                }
-
-                productVideoRepository.save(productVideo);
-
-            }
-
-            log.info("Successfully processed {} product videos", uploadResults.size());
-
-        } catch (Exception e) {
-
-            log.error("Error processing product videos", e);
-
-            // Check if it's a foreign key constraint violation
-            if (e.getMessage() != null && e.getMessage().contains("violates foreign key constraint")) {
-                throw new RuntimeException("Product was not properly saved before processing videos. Please try again.",
-                        e);
-            }
-            throw new RuntimeException("Failed to process product videos: " + e.getMessage(), e);
-
-        }
-
-    }
-
-    private void processProductVariants(Product product, List<CreateProductVariantDTO> variantDTOs,
-            List<MultipartFile> variantImages, String variantImageMapping) {
-
-        log.info("Processing {} product variants", variantDTOs.size());
-        log.info("Variant images available: {}", variantImages != null ? variantImages.size() : "null");
-        log.info("Variant image mapping: {}", variantImageMapping);
-
-        if (variantImages != null && !variantImages.isEmpty()) {
-            for (int i = 0; i < variantImages.size(); i++) {
-                log.debug("Variant image {}: {} (size: {} bytes)", i,
-                        variantImages.get(i).getOriginalFilename(), variantImages.get(i).getSize());
-            }
-        }
-
-        // Validate product has a valid ID
-        if (product == null || product.getProductId() == null) {
-            throw new RuntimeException("Cannot process variants for null product or product without ID");
-        }
-
-        try {
-            for (int i = 0; i < variantDTOs.size(); i++) {
-                CreateProductVariantDTO variantDTO = variantDTOs.get(i);
-                log.info("Processing variant {}/{}: {}", i + 1, variantDTOs.size(), variantDTO.getVariantSku());
-
-                // Validate variant SKU uniqueness if provided
-                if (variantDTO.getVariantSku() != null &&
-                        productVariantRepository.findByVariantSku(variantDTO.getVariantSku()).isPresent()) {
-                    throw new IllegalArgumentException(
-                            "Variant with SKU " + variantDTO.getVariantSku() + " already exists");
-                }
-
-                // Create variant
-                ProductVariant variant = createProductVariant(product, variantDTO);
-                log.debug("Created variant entity for SKU: {}", variant.getVariantSku());
-
-                ProductVariant savedVariant = productVariantRepository.save(variant);
-                log.info("Saved variant with ID: {} and SKU: {}", savedVariant.getId(), savedVariant.getVariantSku());
-
-                // Handle warehouse stock assignments for this variant
-                createVariantStockAssignments(savedVariant, variantDTO.getWarehouseStock());
-
-                // Process variant attributes if any
-                if (variantDTO.getAttributes() != null && !variantDTO.getAttributes().isEmpty()) {
-                    log.debug("Processing {} attributes for variant {}", variantDTO.getAttributes().size(),
-                            savedVariant.getId());
-                    processVariantAttributes(savedVariant, variantDTO.getAttributes());
-                } else {
-                    log.debug("No attributes to process for variant {}", savedVariant.getId());
-                }
-
-                if (variantImages != null && !variantImages.isEmpty() && variantImageMapping != null) {
-                    try {
-                        List<MultipartFile> variantSpecificImages = getVariantImagesForIndex(variantImages,
-                                variantImageMapping, i);
-                        if (!variantSpecificImages.isEmpty()) {
-                            log.info("Processing {} images for variant {} (SKU: {})", variantSpecificImages.size(),
-                                    savedVariant.getId(), savedVariant.getVariantSku());
-                            processVariantImages(savedVariant, variantSpecificImages, null);
-                        } else {
-                            log.debug("No images mapped for variant {} (SKU: {})", savedVariant.getId(),
-                                    savedVariant.getVariantSku());
-                        }
-                    } catch (Exception e) {
-                        log.error("Failed to process variant images for variant {} (SKU: {}): {}",
-                                savedVariant.getId(), savedVariant.getVariantSku(), e.getMessage(), e);
-                    }
-                } else {
-                    log.debug("No variant images or mapping available for variant {} (SKU: {})",
-                            savedVariant.getId(), savedVariant.getVariantSku());
-                }
-
-                if (variantDTO.getVariantImages() != null && !variantDTO.getVariantImages().isEmpty()) {
-                    log.info("Processing {} embedded images for variant {} (SKU: {})",
-                            variantDTO.getVariantImages().size(), savedVariant.getId(),
-                            savedVariant.getVariantSku());
-                    processVariantImages(savedVariant, variantDTO.getVariantImages(),
-                            parseVariantImageMetadataFromString(variantDTO.getImageMetadata()));
-                }
-
-                log.info("Successfully processed variant {}/{} with ID: {}", i + 1, variantDTOs.size(),
-                        savedVariant.getId());
-            }
-
-            log.info("Successfully processed {} product variants", variantDTOs.size());
-        } catch (Exception e) {
-            log.error("Error processing product variants: {}", e.getMessage(), e);
-            throw new RuntimeException("Failed to process product variants: " + e.getMessage(), e);
-        }
-    }
-
-    /**
-     * Get variant images for a specific variant index based on the mapping
-     */
-    private List<MultipartFile> getVariantImagesForIndex(List<MultipartFile> allVariantImages,
-            String variantImageMapping, int variantIndex) {
-        try {
-            if (variantImageMapping == null || variantImageMapping.trim().isEmpty()) {
-                log.debug("No variant image mapping provided for variant index {}", variantIndex);
-                return new ArrayList<>();
-            }
-
-            log.debug("Parsing variant image mapping: {}", variantImageMapping);
-            ObjectMapper objectMapper = new ObjectMapper();
-            Map<String, List<Integer>> mapping = objectMapper.readValue(variantImageMapping,
-                    objectMapper.getTypeFactory().constructMapType(Map.class, String.class, List.class));
-
-            log.debug("Parsed mapping: {}", mapping);
-            List<Integer> imageIndices = mapping.get(String.valueOf(variantIndex));
-            if (imageIndices == null || imageIndices.isEmpty()) {
-                log.debug("No image indices found for variant index {}", variantIndex);
-                return new ArrayList<>();
-            }
-
-            log.debug("Found image indices {} for variant index {}", imageIndices, variantIndex);
-            List<MultipartFile> variantImages = new ArrayList<>();
-            for (Integer index : imageIndices) {
-                if (index >= 0 && index < allVariantImages.size()) {
-                    variantImages.add(allVariantImages.get(index));
-                    log.debug("Added image {} (filename: {}) for variant index {}",
-                            index, allVariantImages.get(index).getOriginalFilename(), variantIndex);
-                } else {
-                    log.warn("Invalid image index {} for variant index {} (total images: {})",
-                            index, variantIndex, allVariantImages.size());
-                }
-            }
-
-            log.info("Returning {} images for variant index {}", variantImages.size(), variantIndex);
-            return variantImages;
-        } catch (Exception e) {
-            log.error("Failed to parse variant image mapping: {}", e.getMessage(), e);
-            return new ArrayList<>();
-        }
     }
 
     private ProductVariant createProductVariant(Product product, CreateProductVariantDTO variantDTO) {
@@ -4188,8 +3584,22 @@ public class ProductServiceImpl implements ProductService {
             Product product = productRepository.findById(productId)
                     .orElseThrow(() -> new EntityNotFoundException("Product not found with ID: " + productId));
 
-            // Get stock entries for the product (both product-level and variant-level)
+            List<Stock> allStock = stockRepository.findByProduct(product);
+
+
             Page<Stock> stockPage = stockRepository.findByProductOrProductVariantProduct(product, pageable);
+
+            if (stockPage.getContent().isEmpty() && !allStock.isEmpty()) {
+
+                int start = (int) pageable.getOffset();
+                int end = Math.min(start + pageable.getPageSize(), allStock.size());
+                List<Stock> paginatedStock = allStock.subList(start, end);
+
+                stockPage = new org.springframework.data.domain.PageImpl<>(
+                        paginatedStock,
+                        pageable,
+                        allStock.size());
+            }
 
             // Map to DTOs
             List<WarehouseStockDTO> warehouseStockDTOs = stockPage.getContent().stream()
@@ -4218,7 +3628,6 @@ public class ProductServiceImpl implements ProductService {
     @Override
     public WarehouseStockPageResponse getVariantWarehouseStock(UUID productId, Long variantId, Pageable pageable) {
         try {
-            log.info("Getting warehouse stock for product ID: {} and variant ID: {}", productId, variantId);
 
             // Verify product exists
             Product product = productRepository.findById(productId)

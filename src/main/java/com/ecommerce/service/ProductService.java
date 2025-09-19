@@ -1,6 +1,5 @@
 package com.ecommerce.service;
 
-import com.ecommerce.dto.CreateProductDTO;
 import com.ecommerce.dto.ManyProductsDto;
 import com.ecommerce.dto.ProductDTO;
 import com.ecommerce.dto.ProductSearchDTO;
@@ -18,6 +17,7 @@ import com.ecommerce.dto.VariantAttributeRequest;
 import com.ecommerce.dto.CreateVariantRequest;
 import com.ecommerce.dto.SimilarProductsRequestDTO;
 import com.ecommerce.dto.WarehouseStockPageResponse;
+import com.ecommerce.dto.WarehouseStockRequest;
 import com.ecommerce.dto.ProductDetailsDTO;
 import com.ecommerce.dto.ProductDetailsUpdateDTO;
 
@@ -32,23 +32,29 @@ import java.util.UUID;
 public interface ProductService {
 
         /**
-         * Create a new product with variants, images, and videos
-         * 
-         * @param createProductDTO The product creation data
-         * @param productImages    List of product image files
-         * @param productVideos    List of product video files
-         * @return The created product DTO
-         */
-        ProductDTO createProduct(CreateProductDTO createProductDTO, List<MultipartFile> productImages,
-                        List<MultipartFile> productVideos);
-
-        /**
          * Create an empty product for step-by-step editing
          * 
          * @param name The initial product name
          * @return Map containing product ID and status information
          */
         Map<String, Object> createEmptyProduct(String name);
+
+        /**
+         * Check if product has variants
+         * 
+         * @param productId The product ID
+         * @return true if product has variants, false otherwise
+         */
+        boolean productHasVariants(UUID productId);
+
+        /**
+         * Assign stock to product (only when product has no variants)
+         * 
+         * @param productId       The product ID
+         * @param warehouseStocks List of warehouse stock assignments
+         * @return Map containing success status and message
+         */
+        Map<String, Object> assignProductStock(UUID productId, List<WarehouseStockRequest> warehouseStocks);
 
         /**
          * Get a product by its ID
