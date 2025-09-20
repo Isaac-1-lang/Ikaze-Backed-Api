@@ -2,6 +2,7 @@ package com.ecommerce.service.impl;
 
 import com.ecommerce.dto.StockBatchDTO;
 import com.ecommerce.dto.CreateStockBatchRequest;
+import com.ecommerce.dto.CreateVariantBatchRequest;
 import com.ecommerce.dto.UpdateStockBatchRequest;
 import com.ecommerce.entity.StockBatch;
 import com.ecommerce.entity.Stock;
@@ -30,6 +31,44 @@ public class StockBatchServiceImpl implements StockBatchService {
         private final StockBatchRepository stockBatchRepository;
         private final StockRepository stockRepository;
         private final ProductRepository productRepository;
+
+        @Override
+        public StockBatchDTO createStockBatchForVariant(Long variantId, Long warehouseId, CreateVariantBatchRequest request) {
+                log.info("Creating stock batch for variant ID: {} and warehouse ID: {}", variantId, warehouseId);
+
+                // Find or create stock entry for this variant and warehouse
+                Stock stock = stockRepository.findByProductVariantVariantIdAndWarehouseWarehouseId(variantId, warehouseId)
+                                .orElseThrow(() -> new IllegalArgumentException(
+                                                "No stock entry found for variant ID: " + variantId + " and warehouse ID: " + warehouseId + 
+                                                ". Please ensure the variant is assigned to this warehouse first."));
+
+                // Check if batch number already exists for this stock
+                if (stockBatchRepository.findByStockAndBatchNumber(stock, request.getBatchNumber()).isPresent()) {
+                        throw new IllegalArgumentException(
+                                        "Batch number '" + request.getBatchNumber()
+                                                        + "' already exists for this stock");
+                }
+
+                // Create new stock batch
+                StockBatch stockBatch = new StockBatch();
+                stockBatch.setStock(stock);
+                stockBatch.setBatchNumber(request.getBatchNumber());
+                stockBatch.setManufactureDate(request.getManufactureDate());
+                stockBatch.setExpiryDate(request.getExpiryDate());
+                stockBatch.setQuantity(request.getQuantity());
+                stockBatch.setSupplierName(request.getSupplierName());
+                stockBatch.setSupplierBatchNumber(request.getSupplierBatchNumber());
+
+                // Save the batch
+                StockBatch savedBatch = stockBatchRepository.save(stockBatch);
+
+                // Update stock quantity
+                updateStockQuantity(stock);
+
+                log.info("Successfully created stock batch with ID: {} for variant: {} and warehouse: {}", 
+                        savedBatch.getId(), variantId, warehouseId);
+                return mapToDTO(savedBatch);
+        }
 
         @Override
         public StockBatchDTO createStockBatch(CreateStockBatchRequest request) {
@@ -91,6 +130,25 @@ public class StockBatchServiceImpl implements StockBatchService {
                                                 "Product not found with ID: " + productId));
 
                 List<StockBatch> batches = stockBatchRepository.findByWarehouseAndProduct(null, productId);
+                return batches.stream()
+                                .map(this::mapToDTO)
+                                .collect(Collectors.toList());
+        }
+
+        @Override
+        @Transactional(readOnly = true)
+        public List<StockBatchDTO> getStockBatchesByVariantId(Long variantId) {
+                log.info("Retrieving stock batches for variant ID: {}", variantId);
+
+                // Find all stocks for this variant
+                List<Stock> stocks = stockRepository.findByProductVariantId(variantId);
+                if (stocks.isEmpty()) {
+                        log.warn("No stocks found for variant ID: {}", variantId);
+                        return List.of();
+                }
+
+                // Get all batches for these stocks
+                List<StockBatch> batches = stockBatchRepository.findByStockInOrderByCreatedAtDesc(stocks);
                 return batches.stream()
                                 .map(this::mapToDTO)
                                 .collect(Collectors.toList());

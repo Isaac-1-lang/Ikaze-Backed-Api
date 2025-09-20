@@ -2,6 +2,7 @@ package com.ecommerce.controller;
 
 import com.ecommerce.dto.StockBatchDTO;
 import com.ecommerce.dto.CreateStockBatchRequest;
+import com.ecommerce.dto.CreateVariantBatchRequest;
 import com.ecommerce.dto.UpdateStockBatchRequest;
 import com.ecommerce.service.StockBatchService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -31,6 +32,34 @@ import java.util.UUID;
 public class StockBatchController {
 
     private final StockBatchService stockBatchService;
+
+    @PostMapping("/variant/{variantId}/warehouse/{warehouseId}")
+    @PreAuthorize("hasAnyRole('ADMIN', 'EMPLOYEE')")
+    @Operation(summary = "Create a new stock batch for variant", description = "Create a new stock batch for a specific variant and warehouse", responses = {
+            @ApiResponse(responseCode = "201", description = "Stock batch created successfully", content = @Content(schema = @Schema(implementation = StockBatchDTO.class))),
+            @ApiResponse(responseCode = "400", description = "Invalid input data"),
+            @ApiResponse(responseCode = "404", description = "Variant or warehouse not found"),
+            @ApiResponse(responseCode = "401", description = "Unauthorized"),
+            @ApiResponse(responseCode = "500", description = "Internal server error")
+    })
+    public ResponseEntity<?> createStockBatchForVariant(
+            @PathVariable Long variantId,
+            @PathVariable Long warehouseId,
+            @Valid @RequestBody CreateVariantBatchRequest request) {
+        try {
+            log.info("Creating stock batch for variant ID: {} and warehouse ID: {}", variantId, warehouseId);
+            StockBatchDTO stockBatch = stockBatchService.createStockBatchForVariant(variantId, warehouseId, request);
+            return ResponseEntity.status(HttpStatus.CREATED).body(stockBatch);
+        } catch (IllegalArgumentException e) {
+            log.error("Validation error creating stock batch: {}", e.getMessage());
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                    .body(createErrorResponse("VALIDATION_ERROR", e.getMessage()));
+        } catch (Exception e) {
+            log.error("Error creating stock batch: {}", e.getMessage(), e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(createErrorResponse("INTERNAL_ERROR", "Failed to create stock batch"));
+        }
+    }
 
     @PostMapping
     @PreAuthorize("hasAnyRole('ADMIN', 'EMPLOYEE')")
@@ -98,6 +127,30 @@ public class StockBatchController {
             log.error("Product not found: {}", e.getMessage());
             return ResponseEntity.status(HttpStatus.NOT_FOUND)
                     .body(createErrorResponse("PRODUCT_NOT_FOUND", e.getMessage()));
+        } catch (Exception e) {
+            log.error("Error retrieving stock batches: {}", e.getMessage(), e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(createErrorResponse("INTERNAL_ERROR", "Failed to retrieve stock batches"));
+        }
+    }
+
+    @GetMapping("/variant/{variantId}")
+    @PreAuthorize("hasAnyRole('ADMIN', 'EMPLOYEE')")
+    @Operation(summary = "Get all batches for a product variant", description = "Retrieve all stock batches for a specific product variant across all warehouses", responses = {
+            @ApiResponse(responseCode = "200", description = "Stock batches retrieved successfully"),
+            @ApiResponse(responseCode = "404", description = "Product variant not found"),
+            @ApiResponse(responseCode = "401", description = "Unauthorized"),
+            @ApiResponse(responseCode = "500", description = "Internal server error")
+    })
+    public ResponseEntity<?> getStockBatchesByVariantId(@PathVariable Long variantId) {
+        try {
+            log.info("Retrieving stock batches for variant ID: {}", variantId);
+            List<StockBatchDTO> batches = stockBatchService.getStockBatchesByVariantId(variantId);
+            return ResponseEntity.ok(batches);
+        } catch (IllegalArgumentException e) {
+            log.error("Product variant not found: {}", e.getMessage());
+            return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                    .body(createErrorResponse("VARIANT_NOT_FOUND", e.getMessage()));
         } catch (Exception e) {
             log.error("Error retrieving stock batches: {}", e.getMessage(), e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)

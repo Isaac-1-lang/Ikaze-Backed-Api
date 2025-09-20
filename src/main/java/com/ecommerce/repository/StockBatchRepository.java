@@ -38,5 +38,7 @@ public interface StockBatchRepository extends JpaRepository<StockBatch, Long> {
         List<StockBatch> findByWarehouseAndVariant(@Param("warehouseId") Long warehouseId,
                         @Param("variantId") Long variantId);
 
+        List<StockBatch> findByStockInOrderByCreatedAtDesc(List<Stock> stocks);
+
         void deleteByStock(Stock stock);
 }

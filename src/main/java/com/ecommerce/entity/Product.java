@@ -177,10 +177,13 @@ public class Product {
 
     public Integer getTotalStockQuantity() {
         if (variants != null && !variants.isEmpty()) {
+            // For products with variants, sum up all variant batch quantities
             return variants.stream()
                     .mapToInt(ProductVariant::getTotalStockQuantity)
                     .sum();
         }
+        // For products without variants, use traditional stock quantity
+        // (not batch-based since variants handle batch management)
         return stocks != null ? stocks.stream()
                 .mapToInt(Stock::getQuantity)
                 .sum() : 0;

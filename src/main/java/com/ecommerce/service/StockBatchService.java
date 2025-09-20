@@ -2,6 +2,7 @@ package com.ecommerce.service;
 
 import com.ecommerce.dto.StockBatchDTO;
 import com.ecommerce.dto.CreateStockBatchRequest;
+import com.ecommerce.dto.CreateVariantBatchRequest;
 import com.ecommerce.dto.UpdateStockBatchRequest;
 
 import java.util.List;
@@ -17,6 +18,17 @@ public interface StockBatchService {
      * @throws IllegalArgumentException if stock not found or validation fails
      */
     StockBatchDTO createStockBatch(CreateStockBatchRequest request);
+
+    /**
+     * Create a new stock batch for a variant and warehouse
+     * 
+     * @param variantId The variant ID
+     * @param warehouseId The warehouse ID
+     * @param request The request containing batch details
+     * @return The created stock batch DTO
+     * @throws IllegalArgumentException if variant or warehouse not found or validation fails
+     */
+    StockBatchDTO createStockBatchForVariant(Long variantId, Long warehouseId, CreateVariantBatchRequest request);
 
     /**
      * Get all stock batches for a specific stock entry
@@ -72,6 +84,15 @@ public interface StockBatchService {
      * @throws IllegalArgumentException if batch not found
      */
     StockBatchDTO recallStockBatch(Long batchId, String reason);
+
+    /**
+     * Get all stock batches for a specific product variant across all warehouses
+     * 
+     * @param variantId The product variant ID
+     * @return List of stock batch DTOs
+     * @throws IllegalArgumentException if variant not found
+     */
+    List<StockBatchDTO> getStockBatchesByVariantId(Long variantId);
 
     /**
      * Get batches that are expiring soon

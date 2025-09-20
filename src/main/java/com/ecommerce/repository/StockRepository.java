@@ -101,4 +101,10 @@ public interface StockRepository extends JpaRepository<Stock, Long> {
          */
         @Query("SELECT s FROM Stock s WHERE s.product = :product OR s.productVariant.product = :product")
         Page<Stock> findByProductOrProductVariantProduct(@Param("product") Product product, Pageable pageable);
+
+        /**
+         * Find all stock entries for a variant by variant ID
+         */
+        @Query("SELECT s FROM Stock s WHERE s.productVariant.id = :variantId")
+        List<Stock> findByProductVariantId(@Param("variantId") Long variantId);
 }
