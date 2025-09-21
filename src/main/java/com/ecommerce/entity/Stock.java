@@ -3,8 +3,11 @@ package com.ecommerce.entity;
 import jakarta.persistence.*;
 import jakarta.validation.constraints.NotNull;
 import lombok.*;
+import com.fasterxml.jackson.annotation.JsonManagedReference;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.List;
 
 @Entity
 @Table(name = "stocks", uniqueConstraints = {
@@ -43,6 +46,15 @@ public class Stock {
 
     @Column(name = "updated_at")
     private LocalDateTime updatedAt;
+
+    /**
+     * Collection of stock batches for this stock entry
+     * Each Stock can have multiple StockBatches to track different batches
+     * of the same product/variant in the same warehouse
+     */
+    @OneToMany(mappedBy = "stock", cascade = CascadeType.ALL, fetch = FetchType.LAZY, orphanRemoval = true)
+    @JsonManagedReference
+    private List<StockBatch> stockBatches = new ArrayList<>();
 
     @PrePersist
     protected void onCreate() {
@@ -160,5 +172,110 @@ public class Stock {
      */
     public void setProductVariant(ProductVariant productVariant) {
         this.productVariant = productVariant;
+    }
+
+    /**
+     * Adds a stock batch to this stock entry
+     * 
+     * @param stockBatch The stock batch to add
+     */
+    public void addStockBatch(StockBatch stockBatch) {
+        if (stockBatches == null) {
+            stockBatches = new ArrayList<>();
+        }
+        stockBatches.add(stockBatch);
+        stockBatch.setStock(this);
+    }
+
+    /**
+     * Removes a stock batch from this stock entry
+     * 
+     * @param stockBatch The stock batch to remove
+     */
+    public void removeStockBatch(StockBatch stockBatch) {
+        if (stockBatches != null) {
+            stockBatches.remove(stockBatch);
+            stockBatch.setStock(null);
+        }
+    }
+
+    /**
+     * Gets the total quantity from all active batches
+     * 
+     * @return Total quantity from active batches
+     */
+    public Integer getTotalBatchQuantity() {
+        if (stockBatches == null || stockBatches.isEmpty()) {
+            return 0;
+        }
+        return stockBatches.stream()
+                .filter(batch -> batch.getStatus() == com.ecommerce.enums.BatchStatus.ACTIVE)
+                .mapToInt(StockBatch::getQuantity)
+                .sum();
+    }
+
+    /**
+     * Gets the total quantity from all batches (including expired, empty, etc.)
+     * 
+     * @return Total quantity from all batches
+     */
+    public Integer getTotalAllBatchQuantity() {
+        if (stockBatches == null || stockBatches.isEmpty()) {
+            return 0;
+        }
+        return stockBatches.stream()
+                .mapToInt(StockBatch::getQuantity)
+                .sum();
+    }
+
+    /**
+     * Checks if this stock has any batches
+     * 
+     * @return true if stock has batches
+     */
+    public boolean hasBatches() {
+        return stockBatches != null && !stockBatches.isEmpty();
+    }
+
+    /**
+     * Gets the number of active batches
+     * 
+     * @return Number of active batches
+     */
+    public int getActiveBatchCount() {
+        if (stockBatches == null) {
+            return 0;
+        }
+        return (int) stockBatches.stream()
+                .filter(batch -> batch.getStatus() == com.ecommerce.enums.BatchStatus.ACTIVE)
+                .count();
+    }
+
+    /**
+     * Gets the number of expired batches
+     * 
+     * @return Number of expired batches
+     */
+    public int getExpiredBatchCount() {
+        if (stockBatches == null) {
+            return 0;
+        }
+        return (int) stockBatches.stream()
+                .filter(batch -> batch.getStatus() == com.ecommerce.enums.BatchStatus.EXPIRED)
+                .count();
+    }
+
+    /**
+     * Gets the number of recalled batches
+     * 
+     * @return Number of recalled batches
+     */
+    public int getRecalledBatchCount() {
+        if (stockBatches == null) {
+            return 0;
+        }
+        return (int) stockBatches.stream()
+                .filter(batch -> batch.getStatus() == com.ecommerce.enums.BatchStatus.RECALLED)
+                .count();
     }
 }

@@ -1,13 +1,28 @@
 package com.ecommerce.controller;
 
-import com.ecommerce.dto.CreateProductDTO;
-import com.ecommerce.dto.CreateProductRequestDTO;
 import com.ecommerce.dto.ManyProductsDto;
 import com.ecommerce.dto.ProductDTO;
 import com.ecommerce.dto.ProductSearchDTO;
 import com.ecommerce.dto.ProductUpdateDTO;
+import com.ecommerce.dto.ProductBasicInfoDTO;
+import com.ecommerce.dto.ProductBasicInfoUpdateDTO;
+import com.ecommerce.dto.ProductPricingDTO;
+import com.ecommerce.dto.ProductPricingUpdateDTO;
+import com.ecommerce.dto.ProductMediaDTO;
+import com.ecommerce.dto.ProductVideoDTO;
+import com.ecommerce.dto.ProductVariantDTO;
+import com.ecommerce.dto.ProductVariantImageDTO;
+import com.ecommerce.dto.ProductVariantAttributeDTO;
+import com.ecommerce.dto.VariantAttributeRequest;
+import com.ecommerce.dto.CreateVariantRequest;
+import com.ecommerce.dto.WarehouseStockRequest;
+import com.ecommerce.dto.WarehouseStockWithBatchesRequest;
+import com.ecommerce.dto.ProductDetailsDTO;
+import com.ecommerce.dto.ProductDetailsUpdateDTO;
 import com.ecommerce.Exception.ProductDeletionException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.ecommerce.service.ProductService;
+import java.math.BigDecimal;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.Schema;
@@ -43,45 +58,165 @@ public class ProductController {
 
     private final ProductService productService;
 
-    @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    @PostMapping("/create-empty")
     @PreAuthorize("hasAnyRole('ADMIN', 'EMPLOYEE')")
-    @Operation(summary = "Create a new product", description = "Create a new product with variants, images, and videos", responses = {
-            @ApiResponse(responseCode = "201", description = "Product created successfully", content = @Content(schema = @Schema(implementation = ProductDTO.class))),
+    @Operation(summary = "Create empty product for editing", description = "Create a minimal product that can be enhanced step by step", responses = {
+            @ApiResponse(responseCode = "201", description = "Empty product created successfully"),
             @ApiResponse(responseCode = "400", description = "Invalid input data"),
             @ApiResponse(responseCode = "401", description = "Unauthorized"),
-            @ApiResponse(responseCode = "403", description = "Forbidden"),
             @ApiResponse(responseCode = "500", description = "Internal server error")
     })
-    public ResponseEntity<?> createProduct(@Valid @ModelAttribute CreateProductRequestDTO createProductRequest) {
+    public ResponseEntity<?> createEmptyProduct(@RequestParam String name) {
         try {
-            log.info("Creating product with name: {}", createProductRequest.getName());
-
-            // Convert to CreateProductDTO for service layer
-            CreateProductDTO createProductDTO = createProductRequest.toCreateProductDTO();
-
-            // Handle file uploads separately
-            List<MultipartFile> productImages = createProductRequest.getProductImages();
-            List<MultipartFile> productVideos = createProductRequest.getProductVideos();
-
-            ProductDTO createdProduct = productService.createProduct(createProductDTO, productImages, productVideos);
-            log.info("Product created successfully with ID: {}", createdProduct.getProductId());
-            return new ResponseEntity<>(createdProduct, HttpStatus.CREATED);
-        } catch (EntityNotFoundException e) {
-            log.error("Entity not found while creating product: {}", e.getMessage());
-            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
-                    .body(createErrorResponse("ENTITY_NOT_FOUND", e.getMessage()));
-        } catch (IllegalArgumentException e) {
-            log.error("Invalid argument while creating product: {}", e.getMessage());
-            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
-                    .body(createErrorResponse("INVALID_ARGUMENT", e.getMessage()));
-        } catch (RuntimeException e) {
-            log.error("Runtime error while creating product: {}", e.getMessage(), e);
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body(createErrorResponse("INTERNAL_ERROR", "Failed to create product: " + e.getMessage()));
+            log.info("Creating empty product with name: {}", name);
+            Map<String, Object> response = productService.createEmptyProduct(name);
+            return ResponseEntity.status(HttpStatus.CREATED).body(response);
         } catch (Exception e) {
-            log.error("Unexpected error while creating product: {}", e.getMessage(), e);
+            log.error("Error creating empty product: {}", e.getMessage(), e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body(createErrorResponse("UNEXPECTED_ERROR", "An unexpected error occurred"));
+                    .body(createErrorResponse("INTERNAL_ERROR", "Failed to create empty product"));
+        }
+    }
+
+    @GetMapping("/{productId}/has-variants")
+    @PreAuthorize("hasAnyRole('ADMIN', 'EMPLOYEE')")
+    @Operation(summary = "Check if product has variants", description = "Check whether a product has variants to determine stock management approach", responses = {
+            @ApiResponse(responseCode = "200", description = "Product variant status retrieved successfully"),
+            @ApiResponse(responseCode = "404", description = "Product not found"),
+            @ApiResponse(responseCode = "401", description = "Unauthorized"),
+            @ApiResponse(responseCode = "500", description = "Internal server error")
+    })
+    public ResponseEntity<?> checkProductHasVariants(@PathVariable UUID productId) {
+        try {
+            log.info("Checking if product {} has variants", productId);
+            boolean hasVariants = productService.productHasVariants(productId);
+
+            Map<String, Object> response = new HashMap<>();
+            response.put("hasVariants", hasVariants);
+            response.put("message", hasVariants ? "Product has variants. Stock should be managed at variant level."
+                    : "Product has no variants. Stock can be managed at product level.");
+
+            return ResponseEntity.ok(response);
+        } catch (IllegalArgumentException e) {
+            log.error("Product not found: {}", e.getMessage());
+            return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                    .body(createErrorResponse("PRODUCT_NOT_FOUND", e.getMessage()));
+        } catch (Exception e) {
+            log.error("Error checking product variants: {}", e.getMessage(), e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(createErrorResponse("INTERNAL_ERROR", "Failed to check product variants"));
+        }
+    }
+
+    @PostMapping("/{productId}/assign-stock")
+    @PreAuthorize("hasAnyRole('ADMIN', 'EMPLOYEE')")
+    @Operation(summary = "Assign stock to product", description = "Assign stock quantities to warehouses for a product (only when product has no variants)", responses = {
+            @ApiResponse(responseCode = "200", description = "Stock assigned successfully"),
+            @ApiResponse(responseCode = "400", description = "Invalid input data or product has variants"),
+            @ApiResponse(responseCode = "404", description = "Product not found"),
+            @ApiResponse(responseCode = "401", description = "Unauthorized"),
+            @ApiResponse(responseCode = "500", description = "Internal server error")
+    })
+    public ResponseEntity<?> assignProductStock(
+            @PathVariable UUID productId,
+            @RequestBody List<WarehouseStockRequest> warehouseStocks) {
+        try {
+            log.info("Assigning stock to product {} for {} warehouses", productId, warehouseStocks.size());
+            Map<String, Object> response = productService.assignProductStock(productId, warehouseStocks);
+            return ResponseEntity.ok(response);
+        } catch (IllegalArgumentException e) {
+            log.error("Validation error assigning product stock: {}", e.getMessage());
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                    .body(createErrorResponse("VALIDATION_ERROR", e.getMessage()));
+        } catch (Exception e) {
+            log.error("Error assigning product stock: {}", e.getMessage(), e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(createErrorResponse("INTERNAL_ERROR", "Failed to assign product stock"));
+        }
+    }
+
+    @PostMapping("/{productId}/assign-stock-with-batches")
+    @PreAuthorize("hasAnyRole('ADMIN', 'EMPLOYEE')")
+    @Operation(summary = "Assign stock with batches to product", description = "Assign stock quantities with batch details to warehouses for a product", responses = {
+            @ApiResponse(responseCode = "200", description = "Stock with batches assigned successfully"),
+            @ApiResponse(responseCode = "400", description = "Invalid input data"),
+            @ApiResponse(responseCode = "404", description = "Product not found"),
+            @ApiResponse(responseCode = "401", description = "Unauthorized"),
+            @ApiResponse(responseCode = "500", description = "Internal server error")
+    })
+    public ResponseEntity<?> assignProductStockWithBatches(
+            @PathVariable UUID productId,
+            @RequestBody List<WarehouseStockWithBatchesRequest> warehouseStocks) {
+        try {
+            log.info("Assigning stock with batches to product {} for {} warehouses", productId, warehouseStocks.size());
+            Map<String, Object> response = productService.assignProductStockWithBatches(productId, warehouseStocks);
+            return ResponseEntity.ok(response);
+        } catch (IllegalArgumentException e) {
+            log.error("Validation error assigning product stock with batches: {}", e.getMessage());
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                    .body(createErrorResponse("VALIDATION_ERROR", e.getMessage()));
+        } catch (Exception e) {
+            log.error("Error assigning product stock with batches: {}", e.getMessage(), e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(createErrorResponse("INTERNAL_ERROR", "Failed to assign product stock with batches"));
+        }
+    }
+
+    @GetMapping("/{productId}/has-stock")
+    @PreAuthorize("hasAnyRole('ADMIN', 'EMPLOYEE')")
+    @Operation(summary = "Check if product has stock", description = "Check whether a product has stock assigned", responses = {
+            @ApiResponse(responseCode = "200", description = "Product stock status retrieved successfully"),
+            @ApiResponse(responseCode = "404", description = "Product not found"),
+            @ApiResponse(responseCode = "401", description = "Unauthorized"),
+            @ApiResponse(responseCode = "500", description = "Internal server error")
+    })
+    public ResponseEntity<?> checkProductHasStock(@PathVariable UUID productId) {
+        try {
+            log.info("Checking if product {} has stock", productId);
+            boolean hasStock = productService.productHasStock(productId);
+
+            Map<String, Object> response = new HashMap<>();
+            response.put("hasStock", hasStock);
+            response.put("message", hasStock ? "Product has stock assigned." : "Product has no stock assigned.");
+
+            return ResponseEntity.ok(response);
+        } catch (IllegalArgumentException e) {
+            log.error("Product not found: {}", e.getMessage());
+            return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                    .body(createErrorResponse("PRODUCT_NOT_FOUND", e.getMessage()));
+        } catch (Exception e) {
+            log.error("Error checking product stock: {}", e.getMessage(), e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(createErrorResponse("INTERNAL_ERROR", "Failed to check product stock"));
+        }
+    }
+
+    @DeleteMapping("/{productId}/stock")
+    @PreAuthorize("hasAnyRole('ADMIN', 'EMPLOYEE')")
+    @Operation(summary = "Remove all product stock", description = "Remove all stock and batches for a product", responses = {
+            @ApiResponse(responseCode = "200", description = "Product stock removed successfully"),
+            @ApiResponse(responseCode = "404", description = "Product not found"),
+            @ApiResponse(responseCode = "401", description = "Unauthorized"),
+            @ApiResponse(responseCode = "500", description = "Internal server error")
+    })
+    public ResponseEntity<?> removeProductStock(@PathVariable UUID productId) {
+        try {
+            log.info("Removing all stock for product {}", productId);
+            productService.removeProductStock(productId);
+
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", true);
+            response.put("message", "All product stock removed successfully");
+
+            return ResponseEntity.ok(response);
+        } catch (IllegalArgumentException e) {
+            log.error("Product not found: {}", e.getMessage());
+            return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                    .body(createErrorResponse("PRODUCT_NOT_FOUND", e.getMessage()));
+        } catch (Exception e) {
+            log.error("Error removing product stock: {}", e.getMessage(), e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(createErrorResponse("INTERNAL_ERROR", "Failed to remove product stock"));
         }
     }
 
@@ -103,6 +238,57 @@ public class ProductController {
             log.error("Error fetching product with ID {}: {}", productId, e.getMessage(), e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                     .body(createErrorResponse("INTERNAL_ERROR", "Failed to fetch product"));
+        }
+    }
+
+    @GetMapping("/{productId}/basic-info")
+    @Operation(summary = "Get product basic info", description = "Retrieve basic information of a product for update form", responses = {
+            @ApiResponse(responseCode = "200", description = "Product basic info found", content = @Content(schema = @Schema(implementation = ProductBasicInfoDTO.class))),
+            @ApiResponse(responseCode = "404", description = "Product not found")
+    })
+    public ResponseEntity<?> getProductBasicInfo(@PathVariable UUID productId) {
+        try {
+            log.debug("Fetching product basic info with ID: {}", productId);
+            ProductBasicInfoDTO productBasicInfo = productService.getProductBasicInfo(productId);
+            return ResponseEntity.ok(productBasicInfo);
+        } catch (EntityNotFoundException e) {
+            log.warn("Product not found with ID: {}", productId);
+            return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                    .body(createErrorResponse("PRODUCT_NOT_FOUND", e.getMessage()));
+        } catch (Exception e) {
+            log.error("Error fetching product basic info with ID {}: {}", productId, e.getMessage(), e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(createErrorResponse("INTERNAL_ERROR", "Failed to fetch product basic info"));
+        }
+    }
+
+    @PutMapping("/{productId}/basic-info")
+    @PreAuthorize("hasAnyRole('ADMIN', 'EMPLOYEE')")
+    @Operation(summary = "Update product basic info", description = "Update basic information of a product", responses = {
+            @ApiResponse(responseCode = "200", description = "Product basic info updated successfully", content = @Content(schema = @Schema(implementation = ProductBasicInfoDTO.class))),
+            @ApiResponse(responseCode = "400", description = "Invalid input data"),
+            @ApiResponse(responseCode = "404", description = "Product not found"),
+            @ApiResponse(responseCode = "409", description = "SKU already exists")
+    })
+    public ResponseEntity<?> updateProductBasicInfo(
+            @PathVariable UUID productId,
+            @RequestBody ProductBasicInfoUpdateDTO updateDTO) {
+        try {
+            log.debug("Updating product basic info with ID: {}", productId);
+            ProductBasicInfoDTO updatedProduct = productService.updateProductBasicInfo(productId, updateDTO);
+            return ResponseEntity.ok(updatedProduct);
+        } catch (EntityNotFoundException e) {
+            log.warn("Product not found with ID: {}", productId);
+            return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                    .body(createErrorResponse("PRODUCT_NOT_FOUND", e.getMessage()));
+        } catch (IllegalArgumentException e) {
+            log.warn("Invalid input for product ID {}: {}", productId, e.getMessage());
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                    .body(createErrorResponse("INVALID_INPUT", e.getMessage()));
+        } catch (Exception e) {
+            log.error("Error updating product basic info with ID {}: {}", productId, e.getMessage(), e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(createErrorResponse("INTERNAL_ERROR", "Failed to update product basic info"));
         }
     }
 
@@ -214,42 +400,6 @@ public class ProductController {
             log.error("Error searching products: {}", e.getMessage(), e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                     .body(createErrorResponse("INTERNAL_ERROR", "Failed to search products"));
-        }
-    }
-
-    @PutMapping(value = "/{productId}", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    @PreAuthorize("hasAnyRole('ADMIN', 'EMPLOYEE')")
-    @Operation(summary = "Update a product", description = "Update an existing product with optional new variants and images", responses = {
-            @ApiResponse(responseCode = "200", description = "Product updated successfully", content = @Content(schema = @Schema(implementation = ProductDTO.class))),
-            @ApiResponse(responseCode = "400", description = "Invalid input data"),
-            @ApiResponse(responseCode = "401", description = "Unauthorized"),
-            @ApiResponse(responseCode = "403", description = "Forbidden"),
-            @ApiResponse(responseCode = "404", description = "Product not found"),
-            @ApiResponse(responseCode = "500", description = "Internal server error")
-    })
-    public ResponseEntity<?> updateProduct(@PathVariable UUID productId,
-            @Valid @ModelAttribute ProductUpdateDTO updateProductDTO) {
-        try {
-            log.info("Updating product with ID: {}", productId);
-            ProductDTO updatedProduct = productService.updateProduct(productId, updateProductDTO);
-            log.info("Product updated successfully with ID: {}", productId);
-            return ResponseEntity.ok(updatedProduct);
-        } catch (EntityNotFoundException e) {
-            log.error("Entity not found while updating product: {}", e.getMessage());
-            return ResponseEntity.status(HttpStatus.NOT_FOUND)
-                    .body(createErrorResponse("ENTITY_NOT_FOUND", e.getMessage()));
-        } catch (IllegalArgumentException e) {
-            log.error("Invalid argument while updating product: {}", e.getMessage());
-            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
-                    .body(createErrorResponse("INVALID_ARGUMENT", e.getMessage()));
-        } catch (RuntimeException e) {
-            log.error("Runtime error while updating product: {}", e.getMessage(), e);
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body(createErrorResponse("INTERNAL_ERROR", "Failed to update product: " + e.getMessage()));
-        } catch (Exception e) {
-            log.error("Unexpected error while updating product: {}", e.getMessage(), e);
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body(createErrorResponse("UNEXPECTED_ERROR", "An unexpected error occurred"));
         }
     }
 
@@ -412,6 +562,561 @@ public class ProductController {
                     .body(Map.of(
                             "status", "error",
                             "message", "Elasticsearch integration failed: " + e.getMessage()));
+        }
+    }
+
+    @GetMapping("/{productId}/pricing")
+    @PreAuthorize("hasAnyRole('ADMIN', 'EMPLOYEE')")
+    @Operation(summary = "Get product pricing", description = "Retrieve pricing information for a product", responses = {
+            @ApiResponse(responseCode = "200", description = "Product pricing retrieved successfully", content = @Content(schema = @Schema(implementation = ProductPricingDTO.class))),
+            @ApiResponse(responseCode = "404", description = "Product not found"),
+            @ApiResponse(responseCode = "500", description = "Internal server error")
+    })
+    public ResponseEntity<?> getProductPricing(@PathVariable UUID productId) {
+        try {
+            log.debug("Fetching product pricing for ID: {}", productId);
+            ProductPricingDTO pricing = productService.getProductPricing(productId);
+            return ResponseEntity.ok(pricing);
+        } catch (EntityNotFoundException e) {
+            log.warn("Product not found with ID: {}", productId);
+            return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                    .body(createErrorResponse("PRODUCT_NOT_FOUND", e.getMessage()));
+        } catch (Exception e) {
+            log.error("Error fetching product pricing for ID {}: {}", productId, e.getMessage(), e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(createErrorResponse("INTERNAL_ERROR", "Failed to fetch product pricing"));
+        }
+    }
+
+    @PutMapping("/{productId}/pricing")
+    @PreAuthorize("hasAnyRole('ADMIN', 'EMPLOYEE')")
+    @Operation(summary = "Update product pricing", description = "Update pricing information for a product", responses = {
+            @ApiResponse(responseCode = "200", description = "Product pricing updated successfully", content = @Content(schema = @Schema(implementation = ProductPricingDTO.class))),
+            @ApiResponse(responseCode = "400", description = "Invalid input data"),
+            @ApiResponse(responseCode = "404", description = "Product not found"),
+            @ApiResponse(responseCode = "500", description = "Internal server error")
+    })
+    public ResponseEntity<?> updateProductPricing(
+            @PathVariable UUID productId,
+            @RequestBody ProductPricingUpdateDTO updateDTO) {
+        try {
+            log.debug("Updating product pricing for ID: {}", productId);
+            ProductPricingDTO updatedPricing = productService.updateProductPricing(productId, updateDTO);
+            return ResponseEntity.ok(updatedPricing);
+        } catch (EntityNotFoundException e) {
+            log.warn("Product not found with ID: {}", productId);
+            return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                    .body(createErrorResponse("PRODUCT_NOT_FOUND", e.getMessage()));
+        } catch (IllegalArgumentException e) {
+            log.warn("Invalid input for product ID {}: {}", productId, e.getMessage());
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                    .body(createErrorResponse("INVALID_INPUT", e.getMessage()));
+        } catch (Exception e) {
+            log.error("Error updating product pricing for ID {}: {}", productId, e.getMessage(), e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(createErrorResponse("INTERNAL_ERROR", "Failed to update product pricing"));
+        }
+    }
+
+    @GetMapping("/{productId}/variants")
+    @PreAuthorize("hasAnyRole('ADMIN', 'EMPLOYEE')")
+    @Operation(summary = "Get product variants", description = "Retrieve all variants for a product with pagination", responses = {
+            @ApiResponse(responseCode = "200", description = "Product variants retrieved successfully", content = @Content(schema = @Schema(implementation = ProductVariantDTO.class))),
+            @ApiResponse(responseCode = "404", description = "Product not found"),
+            @ApiResponse(responseCode = "500", description = "Internal server error")
+    })
+    public ResponseEntity<?> getProductVariants(
+            @PathVariable UUID productId,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "10") int size,
+            @RequestParam(defaultValue = "id") String sortBy,
+            @RequestParam(defaultValue = "asc") String sortDir) {
+        try {
+            log.debug("Fetching product variants for ID: {} with pagination", productId);
+
+            Sort sort = sortDir.equalsIgnoreCase("desc") ? Sort.by(sortBy).descending() : Sort.by(sortBy).ascending();
+            PageRequest pageRequest = PageRequest.of(page, size, sort);
+
+            Page<ProductVariantDTO> variants = productService.getProductVariants(productId, pageRequest);
+            return ResponseEntity.ok(variants);
+        } catch (EntityNotFoundException e) {
+            log.warn("Product not found with ID: {}", productId);
+            return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                    .body(createErrorResponse("PRODUCT_NOT_FOUND", e.getMessage()));
+        } catch (Exception e) {
+            log.error("Error fetching product variants for ID {}: {}", productId, e.getMessage(), e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(createErrorResponse("INTERNAL_ERROR", "Failed to fetch product variants"));
+        }
+    }
+
+    @GetMapping("/{productId}/media/images")
+    @PreAuthorize("hasAnyRole('ADMIN', 'EMPLOYEE')")
+    @Operation(summary = "Get product images", description = "Retrieve all images for a product", responses = {
+            @ApiResponse(responseCode = "200", description = "Product images retrieved successfully", content = @Content(schema = @Schema(implementation = ProductMediaDTO.class))),
+            @ApiResponse(responseCode = "404", description = "Product not found"),
+            @ApiResponse(responseCode = "500", description = "Internal server error")
+    })
+    public ResponseEntity<?> getProductImages(@PathVariable UUID productId) {
+        try {
+            log.debug("Fetching product images for ID: {}", productId);
+            List<ProductMediaDTO> images = productService.getProductImages(productId);
+            return ResponseEntity.ok(images);
+        } catch (EntityNotFoundException e) {
+            log.warn("Product not found with ID: {}", productId);
+            return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                    .body(createErrorResponse("PRODUCT_NOT_FOUND", e.getMessage()));
+        } catch (Exception e) {
+            log.error("Error fetching product images for ID {}: {}", productId, e.getMessage(), e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(createErrorResponse("INTERNAL_ERROR", "Failed to fetch product images"));
+        }
+    }
+
+    @GetMapping("/{productId}/media/videos")
+    @PreAuthorize("hasAnyRole('ADMIN', 'EMPLOYEE')")
+    @Operation(summary = "Get product videos", description = "Retrieve all videos for a product", responses = {
+            @ApiResponse(responseCode = "200", description = "Product videos retrieved successfully", content = @Content(schema = @Schema(implementation = ProductVideoDTO.class))),
+            @ApiResponse(responseCode = "404", description = "Product not found"),
+            @ApiResponse(responseCode = "500", description = "Internal server error")
+    })
+    public ResponseEntity<?> getProductVideos(@PathVariable UUID productId) {
+        try {
+            log.debug("Fetching product videos for ID: {}", productId);
+            List<ProductVideoDTO> videos = productService.getProductVideos(productId);
+            return ResponseEntity.ok(videos);
+        } catch (EntityNotFoundException e) {
+            log.warn("Product not found with ID: {}", productId);
+            return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                    .body(createErrorResponse("PRODUCT_NOT_FOUND", e.getMessage()));
+        } catch (Exception e) {
+            log.error("Error fetching product videos for ID {}: {}", productId, e.getMessage(), e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(createErrorResponse("INTERNAL_ERROR", "Failed to fetch product videos"));
+        }
+    }
+
+    @DeleteMapping("/{productId}/media/images/{imageId}")
+    @PreAuthorize("hasAnyRole('ADMIN', 'EMPLOYEE')")
+    @Operation(summary = "Delete product image", description = "Delete a specific product image", responses = {
+            @ApiResponse(responseCode = "200", description = "Image deleted successfully"),
+            @ApiResponse(responseCode = "404", description = "Product or image not found"),
+            @ApiResponse(responseCode = "500", description = "Internal server error")
+    })
+    public ResponseEntity<?> deleteProductImage(@PathVariable UUID productId, @PathVariable Long imageId) {
+        try {
+            log.debug("Deleting product image {} for product ID: {}", imageId, productId);
+            productService.deleteProductImage(productId, imageId);
+            return ResponseEntity.ok(Map.of("message", "Image deleted successfully"));
+        } catch (EntityNotFoundException e) {
+            log.warn("Product or image not found: {}", e.getMessage());
+            return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                    .body(createErrorResponse("NOT_FOUND", e.getMessage()));
+        } catch (Exception e) {
+            log.error("Error deleting product image {} for product ID {}: {}", imageId, productId, e.getMessage(), e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(createErrorResponse("INTERNAL_ERROR", "Failed to delete product image"));
+        }
+    }
+
+    @DeleteMapping("/{productId}/media/videos/{videoId}")
+    @PreAuthorize("hasAnyRole('ADMIN', 'EMPLOYEE')")
+    @Operation(summary = "Delete product video", description = "Delete a specific product video", responses = {
+            @ApiResponse(responseCode = "200", description = "Video deleted successfully"),
+            @ApiResponse(responseCode = "404", description = "Product or video not found"),
+            @ApiResponse(responseCode = "500", description = "Internal server error")
+    })
+    public ResponseEntity<?> deleteProductVideo(@PathVariable UUID productId, @PathVariable Long videoId) {
+        try {
+            log.debug("Deleting product video {} for product ID: {}", videoId, productId);
+            productService.deleteProductVideo(productId, videoId);
+            return ResponseEntity.ok(Map.of("message", "Video deleted successfully"));
+        } catch (EntityNotFoundException e) {
+            log.warn("Product or video not found: {}", e.getMessage());
+            return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                    .body(createErrorResponse("NOT_FOUND", e.getMessage()));
+        } catch (Exception e) {
+            log.error("Error deleting product video {} for product ID {}: {}", videoId, productId, e.getMessage(), e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(createErrorResponse("INTERNAL_ERROR", "Failed to delete product video"));
+        }
+    }
+
+    @PutMapping("/{productId}/media/images/{imageId}/primary")
+    @PreAuthorize("hasAnyRole('ADMIN', 'EMPLOYEE')")
+    @Operation(summary = "Set primary image", description = "Set a specific image as the primary image for the product", responses = {
+            @ApiResponse(responseCode = "200", description = "Primary image set successfully"),
+            @ApiResponse(responseCode = "404", description = "Product or image not found"),
+            @ApiResponse(responseCode = "500", description = "Internal server error")
+    })
+    public ResponseEntity<?> setPrimaryImage(@PathVariable UUID productId, @PathVariable Long imageId) {
+        try {
+            log.debug("Setting image {} as primary for product ID: {}", imageId, productId);
+            productService.setPrimaryImage(productId, imageId);
+            return ResponseEntity.ok(Map.of("message", "Primary image set successfully"));
+        } catch (EntityNotFoundException e) {
+            log.warn("Product or image not found: {}", e.getMessage());
+            return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                    .body(createErrorResponse("NOT_FOUND", e.getMessage()));
+        } catch (Exception e) {
+            log.error("Error setting primary image {} for product ID {}: {}", imageId, productId, e.getMessage(), e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(createErrorResponse("INTERNAL_ERROR", "Failed to set primary image"));
+        }
+    }
+
+    @PostMapping(value = "/{productId}/media/images", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    @PreAuthorize("hasAnyRole('ADMIN', 'EMPLOYEE')")
+    @Operation(summary = "Upload product images", description = "Upload new images for a product", responses = {
+            @ApiResponse(responseCode = "200", description = "Images uploaded successfully", content = @Content(schema = @Schema(implementation = ProductMediaDTO.class))),
+            @ApiResponse(responseCode = "400", description = "Invalid input data"),
+            @ApiResponse(responseCode = "404", description = "Product not found"),
+            @ApiResponse(responseCode = "500", description = "Internal server error")
+    })
+    public ResponseEntity<?> uploadProductImages(
+            @PathVariable UUID productId,
+            @RequestParam("images") List<MultipartFile> images) {
+        try {
+            log.debug("Uploading {} images for product ID: {}", images.size(), productId);
+            List<ProductMediaDTO> uploadedImages = productService.uploadProductImages(productId, images);
+            return ResponseEntity.ok(uploadedImages);
+        } catch (EntityNotFoundException e) {
+            log.warn("Product not found with ID: {}", productId);
+            return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                    .body(createErrorResponse("PRODUCT_NOT_FOUND", e.getMessage()));
+        } catch (IllegalArgumentException e) {
+            log.warn("Invalid input for product ID {}: {}", productId, e.getMessage());
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                    .body(createErrorResponse("INVALID_INPUT", e.getMessage()));
+        } catch (Exception e) {
+            log.error("Error uploading images for product ID {}: {}", productId, e.getMessage(), e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(createErrorResponse("INTERNAL_ERROR", "Failed to upload images"));
+        }
+    }
+
+    @PostMapping(value = "/{productId}/media/videos", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    @PreAuthorize("hasAnyRole('ADMIN', 'EMPLOYEE')")
+    @Operation(summary = "Upload product videos", description = "Upload new videos for a product", responses = {
+            @ApiResponse(responseCode = "200", description = "Videos uploaded successfully", content = @Content(schema = @Schema(implementation = ProductVideoDTO.class))),
+            @ApiResponse(responseCode = "400", description = "Invalid input data"),
+            @ApiResponse(responseCode = "404", description = "Product not found"),
+            @ApiResponse(responseCode = "500", description = "Internal server error")
+    })
+    public ResponseEntity<?> uploadProductVideos(
+            @PathVariable UUID productId,
+            @RequestParam("videos") List<MultipartFile> videos) {
+        try {
+            log.debug("Uploading {} videos for product ID: {}", videos.size(), productId);
+            List<ProductVideoDTO> uploadedVideos = productService.uploadProductVideos(productId, videos);
+            return ResponseEntity.ok(uploadedVideos);
+        } catch (EntityNotFoundException e) {
+            log.warn("Product not found with ID: {}", productId);
+            return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                    .body(createErrorResponse("PRODUCT_NOT_FOUND", e.getMessage()));
+        } catch (IllegalArgumentException e) {
+            log.warn("Invalid input for product ID {}: {}", productId, e.getMessage());
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                    .body(createErrorResponse("INVALID_INPUT", e.getMessage()));
+        } catch (Exception e) {
+            log.error("Error uploading videos for product ID {}: {}", productId, e.getMessage(), e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(createErrorResponse("INTERNAL_ERROR", "Failed to upload videos"));
+        }
+    }
+
+    @PutMapping("/{productId}/variants/{variantId}")
+    @PreAuthorize("hasAnyRole('ADMIN', 'EMPLOYEE')")
+    @Operation(summary = "Update product variant", description = "Update specific fields of a product variant", responses = {
+            @ApiResponse(responseCode = "200", description = "Variant updated successfully", content = @Content(schema = @Schema(implementation = ProductVariantDTO.class))),
+            @ApiResponse(responseCode = "404", description = "Product or variant not found"),
+            @ApiResponse(responseCode = "400", description = "Invalid input"),
+            @ApiResponse(responseCode = "500", description = "Internal server error")
+    })
+    public ResponseEntity<?> updateProductVariant(
+            @PathVariable UUID productId,
+            @PathVariable Long variantId,
+            @RequestBody Map<String, Object> updates) {
+        try {
+            log.debug("Updating variant {} for product {}", variantId, productId);
+            ProductVariantDTO updatedVariant = productService.updateProductVariant(productId, variantId, updates);
+            return ResponseEntity.ok(updatedVariant);
+        } catch (EntityNotFoundException e) {
+            log.warn("Product or variant not found: {}", e.getMessage());
+            return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                    .body(createErrorResponse("NOT_FOUND", e.getMessage()));
+        } catch (IllegalArgumentException e) {
+            log.warn("Invalid input for variant {} of product {}: {}", variantId, productId, e.getMessage());
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                    .body(createErrorResponse("INVALID_INPUT", e.getMessage()));
+        } catch (Exception e) {
+            log.error("Error updating variant {} of product {}: {}", variantId, productId, e.getMessage(), e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(createErrorResponse("INTERNAL_ERROR", "Failed to update variant"));
+        }
+    }
+
+    @DeleteMapping("/{productId}/variants/{variantId}/images/{imageId}")
+    @PreAuthorize("hasAnyRole('ADMIN', 'EMPLOYEE')")
+    @Operation(summary = "Delete variant image", description = "Delete an image from a product variant", responses = {
+            @ApiResponse(responseCode = "200", description = "Image deleted successfully"),
+            @ApiResponse(responseCode = "404", description = "Product, variant, or image not found"),
+            @ApiResponse(responseCode = "500", description = "Internal server error")
+    })
+    public ResponseEntity<?> deleteVariantImage(
+            @PathVariable UUID productId,
+            @PathVariable Long variantId,
+            @PathVariable Long imageId) {
+        try {
+            log.debug("Deleting image {} from variant {} of product {}", imageId, variantId, productId);
+            productService.deleteVariantImage(productId, variantId, imageId);
+            return ResponseEntity.ok().body(Map.of("message", "Image deleted successfully"));
+        } catch (EntityNotFoundException e) {
+            log.warn("Product, variant, or image not found: {}", e.getMessage());
+            return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                    .body(createErrorResponse("NOT_FOUND", e.getMessage()));
+        } catch (Exception e) {
+            log.error("Error deleting image {} from variant {} of product {}: {}", imageId, variantId, productId,
+                    e.getMessage(), e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(createErrorResponse("INTERNAL_ERROR", "Failed to delete image"));
+        }
+    }
+
+    @PutMapping("/{productId}/variants/{variantId}/images/{imageId}/primary")
+    @PreAuthorize("hasAnyRole('ADMIN', 'EMPLOYEE')")
+    @Operation(summary = "Set primary variant image", description = "Set an image as primary for a product variant", responses = {
+            @ApiResponse(responseCode = "200", description = "Primary image set successfully"),
+            @ApiResponse(responseCode = "404", description = "Product, variant, or image not found"),
+            @ApiResponse(responseCode = "500", description = "Internal server error")
+    })
+    public ResponseEntity<?> setPrimaryVariantImage(
+            @PathVariable UUID productId,
+            @PathVariable Long variantId,
+            @PathVariable Long imageId) {
+        try {
+            log.debug("Setting image {} as primary for variant {} of product {}", imageId, variantId, productId);
+            productService.setPrimaryVariantImage(productId, variantId, imageId);
+            return ResponseEntity.ok().body(Map.of("message", "Primary image set successfully"));
+        } catch (EntityNotFoundException e) {
+            log.warn("Product, variant, or image not found: {}", e.getMessage());
+            return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                    .body(createErrorResponse("NOT_FOUND", e.getMessage()));
+        } catch (Exception e) {
+            log.error("Error setting image {} as primary for variant {} of product {}: {}", imageId, variantId,
+                    productId, e.getMessage(), e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(createErrorResponse("INTERNAL_ERROR", "Failed to set primary image"));
+        }
+    }
+
+    @PostMapping(value = "/{productId}/variants/{variantId}/images", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    @PreAuthorize("hasAnyRole('ADMIN', 'EMPLOYEE')")
+    @Operation(summary = "Upload variant images", description = "Upload images for a product variant", responses = {
+            @ApiResponse(responseCode = "200", description = "Images uploaded successfully", content = @Content(schema = @Schema(implementation = ProductVariantImageDTO.class))),
+            @ApiResponse(responseCode = "404", description = "Product or variant not found"),
+            @ApiResponse(responseCode = "400", description = "Invalid input or image limit exceeded"),
+            @ApiResponse(responseCode = "500", description = "Internal server error")
+    })
+    public ResponseEntity<?> uploadVariantImages(
+            @PathVariable UUID productId,
+            @PathVariable Long variantId,
+            @RequestParam("images") List<MultipartFile> images) {
+        try {
+            log.debug("Uploading {} images for variant {} of product {}", images.size(), variantId, productId);
+            List<ProductVariantImageDTO> uploadedImages = productService.uploadVariantImages(productId, variantId,
+                    images);
+            return ResponseEntity.ok(uploadedImages);
+        } catch (EntityNotFoundException e) {
+            log.warn("Product or variant not found: {}", e.getMessage());
+            return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                    .body(createErrorResponse("NOT_FOUND", e.getMessage()));
+        } catch (IllegalArgumentException e) {
+            log.warn("Invalid input for variant {} of product {}: {}", variantId, productId, e.getMessage());
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                    .body(createErrorResponse("INVALID_INPUT", e.getMessage()));
+        } catch (Exception e) {
+            log.error("Error uploading images for variant {} of product {}: {}", variantId, productId, e.getMessage(),
+                    e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(createErrorResponse("INTERNAL_ERROR", "Failed to upload images"));
+        }
+    }
+
+    @DeleteMapping("/{productId}/variants/{variantId}/attributes/{attributeValueId}")
+    @PreAuthorize("hasAnyRole('ADMIN', 'EMPLOYEE')")
+    @Operation(summary = "Remove variant attribute", description = "Remove an attribute from a product variant", responses = {
+            @ApiResponse(responseCode = "200", description = "Attribute removed successfully"),
+            @ApiResponse(responseCode = "404", description = "Product, variant, or attribute not found"),
+            @ApiResponse(responseCode = "400", description = "Cannot remove last attribute"),
+            @ApiResponse(responseCode = "500", description = "Internal server error")
+    })
+    public ResponseEntity<?> removeVariantAttribute(
+            @PathVariable UUID productId,
+            @PathVariable Long variantId,
+            @PathVariable Long attributeValueId) {
+        try {
+            log.debug("Removing attribute {} from variant {} of product {}", attributeValueId, variantId, productId);
+            productService.removeVariantAttribute(productId, variantId, attributeValueId);
+            return ResponseEntity.ok().body(Map.of("message", "Attribute removed successfully"));
+        } catch (EntityNotFoundException e) {
+            log.warn("Product, variant, or attribute not found: {}", e.getMessage());
+            return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                    .body(createErrorResponse("NOT_FOUND", e.getMessage()));
+        } catch (IllegalArgumentException e) {
+            log.warn("Invalid operation for variant {} of product {}: {}", variantId, productId, e.getMessage());
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                    .body(createErrorResponse("INVALID_OPERATION", e.getMessage()));
+        } catch (Exception e) {
+            log.error("Error removing attribute {} from variant {} of product {}: {}", attributeValueId, variantId,
+                    productId, e.getMessage(), e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(createErrorResponse("INTERNAL_ERROR", "Failed to remove attribute"));
+        }
+    }
+
+    @PostMapping("/{productId}/variants/{variantId}/attributes")
+    @PreAuthorize("hasAnyRole('ADMIN', 'EMPLOYEE')")
+    @Operation(summary = "Add variant attributes", description = "Add attributes to a product variant", responses = {
+            @ApiResponse(responseCode = "200", description = "Attributes added successfully", content = @Content(schema = @Schema(implementation = ProductVariantAttributeDTO.class))),
+            @ApiResponse(responseCode = "404", description = "Product or variant not found"),
+            @ApiResponse(responseCode = "400", description = "Invalid input"),
+            @ApiResponse(responseCode = "500", description = "Internal server error")
+    })
+    public ResponseEntity<?> addVariantAttributes(
+            @PathVariable UUID productId,
+            @PathVariable Long variantId,
+            @Valid @RequestBody List<VariantAttributeRequest> attributeRequests) {
+        try {
+            log.debug("Adding {} attributes to variant {} of product {}", attributeRequests.size(), variantId,
+                    productId);
+            List<ProductVariantAttributeDTO> addedAttributes = productService.addVariantAttributes(productId, variantId,
+                    attributeRequests);
+            return ResponseEntity.ok(addedAttributes);
+        } catch (EntityNotFoundException e) {
+            log.warn("Product or variant not found: {}", e.getMessage());
+            return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                    .body(createErrorResponse("NOT_FOUND", e.getMessage()));
+        } catch (Exception e) {
+            log.error("Error adding attributes to variant {} of product {}: {}", variantId, productId, e.getMessage(),
+                    e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(createErrorResponse("INTERNAL_ERROR", "Failed to add attributes"));
+        }
+    }
+
+    @PostMapping("/{productId}/variants")
+    @PreAuthorize("hasAnyRole('ADMIN', 'EMPLOYEE')")
+    @Operation(summary = "Create product variant", description = "Create a new variant for a product", responses = {
+            @ApiResponse(responseCode = "201", description = "Variant created successfully", content = @Content(schema = @Schema(implementation = ProductVariantDTO.class))),
+            @ApiResponse(responseCode = "404", description = "Product not found"),
+            @ApiResponse(responseCode = "400", description = "Invalid input"),
+            @ApiResponse(responseCode = "500", description = "Internal server error")
+    })
+    public ResponseEntity<?> createProductVariant(
+            @PathVariable UUID productId,
+            @RequestParam("variantName") String variantName,
+            @RequestParam("variantSku") String variantSku,
+            @RequestParam(value = "variantBarcode", required = false) String variantBarcode,
+            @RequestParam("price") BigDecimal price,
+            @RequestParam(value = "salePrice", required = false) BigDecimal salePrice,
+            @RequestParam(value = "costPrice", required = false) BigDecimal costPrice,
+            @RequestParam("isActive") Boolean isActive,
+            @RequestParam("attributes") String attributesJson,
+            @RequestParam(value = "warehouseStocks", required = false) String warehouseStocksJson,
+            @RequestParam(value = "images", required = false) List<MultipartFile> images) {
+        try {
+            log.debug("Creating new variant for product {}", productId);
+
+            CreateVariantRequest request = CreateVariantRequest.builder()
+                    .variantName(variantName)
+                    .variantSku(variantSku)
+                    .variantBarcode(variantBarcode)
+                    .price(price)
+                    .salePrice(salePrice)
+                    .costPrice(costPrice)
+                    .isActive(isActive)
+                    .images(images)
+                    .build();
+
+            ObjectMapper objectMapper = new ObjectMapper();
+            List<VariantAttributeRequest> attributes = objectMapper.readValue(attributesJson,
+                    objectMapper.getTypeFactory().constructCollectionType(List.class, VariantAttributeRequest.class));
+            request.setAttributes(attributes);
+
+            if (warehouseStocksJson != null && !warehouseStocksJson.isEmpty()) {
+                List<WarehouseStockRequest> warehouseStocks = objectMapper.readValue(warehouseStocksJson,
+                        objectMapper.getTypeFactory().constructCollectionType(List.class, WarehouseStockRequest.class));
+                request.setWarehouseStocks(warehouseStocks);
+            }
+
+            ProductVariantDTO createdVariant = productService.createProductVariant(productId, request);
+            return ResponseEntity.status(HttpStatus.CREATED).body(createdVariant);
+        } catch (EntityNotFoundException e) {
+            log.warn("Product not found: {}", e.getMessage());
+            return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                    .body(createErrorResponse("NOT_FOUND", e.getMessage()));
+        } catch (IllegalArgumentException e) {
+            log.warn("Invalid input for product {}: {}", productId, e.getMessage());
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                    .body(createErrorResponse("VALIDATION_ERROR", e.getMessage()));
+        } catch (Exception e) {
+            log.error("Error creating variant for product {}: {}", productId, e.getMessage(), e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(createErrorResponse("INTERNAL_ERROR", "Failed to create variant"));
+        }
+    }
+
+    @GetMapping("/{productId}/details")
+    @PreAuthorize("hasAnyRole('ADMIN', 'EMPLOYEE')")
+    @Operation(summary = "Get product details", description = "Get SEO and detailed information for a product", responses = {
+            @ApiResponse(responseCode = "200", description = "Product details retrieved successfully", content = @Content(schema = @Schema(implementation = ProductDetailsDTO.class))),
+            @ApiResponse(responseCode = "404", description = "Product not found"),
+            @ApiResponse(responseCode = "500", description = "Internal server error")
+    })
+    public ResponseEntity<?> getProductDetails(@PathVariable UUID productId) {
+        try {
+            log.info("Getting product details for product ID: {}", productId);
+            ProductDetailsDTO productDetails = productService.getProductDetails(productId);
+            return ResponseEntity.ok(productDetails);
+        } catch (EntityNotFoundException e) {
+            log.warn("Product not found: {}", e.getMessage());
+            return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                    .body(createErrorResponse("NOT_FOUND", e.getMessage()));
+        } catch (Exception e) {
+            log.error("Error getting product details for product {}: {}", productId, e.getMessage(), e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(createErrorResponse("INTERNAL_ERROR", "Failed to get product details"));
+        }
+    }
+
+    @PutMapping("/{productId}/details")
+    @PreAuthorize("hasAnyRole('ADMIN', 'EMPLOYEE')")
+    @Operation(summary = "Update product details", description = "Update SEO and detailed information for a product", responses = {
+            @ApiResponse(responseCode = "200", description = "Product details updated successfully", content = @Content(schema = @Schema(implementation = ProductDetailsDTO.class))),
+            @ApiResponse(responseCode = "400", description = "Invalid input or no fields provided"),
+            @ApiResponse(responseCode = "404", description = "Product not found"),
+            @ApiResponse(responseCode = "500", description = "Internal server error")
+    })
+    public ResponseEntity<?> updateProductDetails(
+            @PathVariable UUID productId,
+            @RequestBody ProductDetailsUpdateDTO updateDTO) {
+        try {
+            log.info("Updating product details for product ID: {}", productId);
+            ProductDetailsDTO updatedDetails = productService.updateProductDetails(productId, updateDTO);
+            return ResponseEntity.ok(updatedDetails);
+        } catch (EntityNotFoundException e) {
+            log.warn("Product not found: {}", e.getMessage());
+            return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                    .body(createErrorResponse("NOT_FOUND", e.getMessage()));
+        } catch (IllegalArgumentException e) {
+            log.warn("Invalid input for product {}: {}", productId, e.getMessage());
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                    .body(createErrorResponse("VALIDATION_ERROR", e.getMessage()));
+        } catch (Exception e) {
+            log.error("Error updating product details for product {}: {}", productId, e.getMessage(), e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(createErrorResponse("INTERNAL_ERROR", "Failed to update product details"));
         }
     }
 }

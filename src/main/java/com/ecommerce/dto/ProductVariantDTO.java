@@ -21,7 +21,6 @@ public class ProductVariantDTO {
     private BigDecimal price;
     private BigDecimal salePrice;
     private BigDecimal costPrice;
-    private Integer stockQuantity;
     private Boolean isActive;
     private Boolean isInStock;
     private Boolean isLowStock;
@@ -38,6 +37,8 @@ public class ProductVariantDTO {
 
     // Variant attributes
     private List<VariantAttributeDTO> attributes;
+
+    private List<VariantWarehouseStockDTO> warehouseStocks;
 
     @Data
     @Builder
@@ -60,5 +61,19 @@ public class ProductVariantDTO {
         private String attributeValue;
         private Long attributeTypeId;
         private String attributeType;
+    }
+
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class VariantWarehouseStockDTO {
+        private Long warehouseId;
+        private String warehouseName;
+        private String warehouseLocation;
+        private Integer stockQuantity;
+        private Integer lowStockThreshold;
+        private Boolean isLowStock;
+        private LocalDateTime lastUpdated;
     }
 }

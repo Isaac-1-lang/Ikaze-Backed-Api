@@ -11,6 +11,7 @@ import lombok.EqualsAndHashCode;
 import lombok.NoArgsConstructor;
 import com.fasterxml.jackson.annotation.JsonManagedReference;
 import com.fasterxml.jackson.annotation.JsonBackReference;
+import com.ecommerce.enums.ProductStatus;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -90,6 +91,19 @@ public class Product {
     @Column(name = "sale_percentage")
     private Integer salePercentage;
 
+    @Column(name = "maximum_days_for_return")
+    private Integer maximumDaysForReturn;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "status")
+    private ProductStatus status = ProductStatus.DRAFT;
+
+    @Column(name = "completion_percentage")
+    private Integer completionPercentage = 0;
+
+    @Column(name = "display_to_customers")
+    private Boolean displayToCustomers = false;
+
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "discount_id")
     @JsonBackReference
@@ -163,10 +177,13 @@ public class Product {
 
     public Integer getTotalStockQuantity() {
         if (variants != null && !variants.isEmpty()) {
+            // For products with variants, sum up all variant batch quantities
             return variants.stream()
                     .mapToInt(ProductVariant::getTotalStockQuantity)
                     .sum();
         }
+        // For products without variants, use traditional stock quantity
+        // (not batch-based since variants handle batch management)
         return stocks != null ? stocks.stream()
                 .mapToInt(Stock::getQuantity)
                 .sum() : 0;

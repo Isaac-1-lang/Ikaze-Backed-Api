@@ -98,24 +98,36 @@ public class ProductVariant {
     }
 
     public boolean isInStock() {
-        return stocks != null && stocks.stream()
-                .anyMatch(stock -> stock.getQuantity() > 0);
+        return getTotalStockQuantity() > 0;
     }
 
     public boolean isLowStock() {
-        return stocks != null && stocks.stream()
-                .anyMatch(stock -> stock.getQuantity() <= stock.getLowStockThreshold() && stock.getQuantity() > 0);
+        if (stocks == null || stocks.isEmpty()) {
+            return false;
+        }
+        
+        int totalQuantity = getTotalStockQuantity();
+        int totalThreshold = stocks.stream()
+                .mapToInt(Stock::getLowStockThreshold)
+                .sum();
+        
+        return totalQuantity <= totalThreshold && totalQuantity > 0;
     }
 
     public boolean isOutOfStock() {
-        return stocks == null || stocks.stream()
-                .allMatch(stock -> stock.getQuantity() <= 0);
+        return getTotalStockQuantity() <= 0;
     }
 
     public Integer getTotalStockQuantity() {
-        return stocks != null ? stocks.stream()
+        if (stocks == null || stocks.isEmpty()) {
+            return 0;
+        }
+        
+        // For variants, use stock quantities which are automatically updated 
+        // from active batch totals by the StockBatchService
+        return stocks.stream()
                 .mapToInt(Stock::getQuantity)
-                .sum() : 0;
+                .sum();
     }
 
     public String getVariantName() {
