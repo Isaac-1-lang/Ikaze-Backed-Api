@@ -57,10 +57,11 @@ import com.ecommerce.service.CloudinaryService;
 
 import com.ecommerce.service.ProductService;
 
+import com.ecommerce.service.ProductAvailabilityService;
+
 import jakarta.persistence.EntityNotFoundException;
 
 import jakarta.persistence.criteria.*;
-
 import jakarta.transaction.Transactional;
 
 import lombok.RequiredArgsConstructor;
@@ -145,6 +146,8 @@ public class ProductServiceImpl implements ProductService {
     private final CloudinaryService cloudinaryService;
 
     private final ElasticsearchClient elasticsearchClient;
+
+    private final ProductAvailabilityService productAvailabilityService;
 
     @Override
     @Transactional
@@ -1101,7 +1104,10 @@ public class ProductServiceImpl implements ProductService {
     private Page<ManyProductsDto> searchProductsWithElasticsearch(ProductSearchDTO searchDTO, int page, int size,
             String sortBy, String sortDirection) {
         try {
-            ensureProductsIndexExists();
+            if (!ensureProductsIndexExists()) {
+                log.warn("Elasticsearch not available, falling back to database search");
+                return searchProductsWithJPA(searchDTO, page, size, sortBy, sortDirection);
+            }
 
             String searchTerm = searchDTO.getName() != null ? searchDTO.getName() : searchDTO.getSearchKeyword();
 
@@ -3316,7 +3322,10 @@ public class ProductServiceImpl implements ProductService {
             List<Map<String, Object>> suggestions = new ArrayList<>();
 
             // Ensure products index exists
-            ensureProductsIndexExists();
+            if (!ensureProductsIndexExists()) {
+                log.warn("Elasticsearch not available, falling back to database search");
+                return getFallbackSearchSuggestions(query);
+            }
 
             // Get search term suggestions with typo tolerance
             suggestions.addAll(getSearchTermSuggestions(query));
@@ -3494,8 +3503,13 @@ public class ProductServiceImpl implements ProductService {
         return suggestions;
     }
 
-    private void ensureProductsIndexExists() {
+    private boolean ensureProductsIndexExists() {
         try {
+            if (elasticsearchClient == null) {
+                log.warn("Elasticsearch client is not available");
+                return false;
+            }
+            
             ExistsRequest existsRequest = ExistsRequest.of(e -> e.index("products"));
             boolean exists = elasticsearchClient.indices().exists(existsRequest).value();
 
@@ -3514,8 +3528,10 @@ public class ProductServiceImpl implements ProductService {
                 elasticsearchClient.indices().create(createRequest);
                 log.info("Created Elasticsearch products index");
             }
+            return true;
         } catch (Exception e) {
-            log.error("Error ensuring products index exists", e);
+            log.warn("Elasticsearch is not available: {}. Search functionality will be limited.", e.getMessage());
+            return false;
         }
     }
 
@@ -3656,7 +3672,10 @@ public class ProductServiceImpl implements ProductService {
     private void indexProductInElasticsearch(Product product) {
         try {
             // Ensure products index exists
-            ensureProductsIndexExists();
+            if (!ensureProductsIndexExists()) {
+                log.warn("Elasticsearch not available, skipping product indexing for product: {}", product.getProductId());
+                return;
+            }
 
             // Create product document for Elasticsearch
             Map<String, Object> productDoc = new HashMap<>();
@@ -4943,6 +4962,7 @@ public class ProductServiceImpl implements ProductService {
                     .shippingInfo(productDetail.getShippingInfo())
                     .returnPolicy(productDetail.getReturnPolicy())
                     .maximumDaysForReturn(product.getMaximumDaysForReturn())
+                    .displayToCustomers(product.getDisplayToCustomers())
                     .build();
 
         } catch (Exception e) {
@@ -5018,6 +5038,11 @@ public class ProductServiceImpl implements ProductService {
                 hasChanges = true;
             }
 
+            if(updateDTO.getDisplayToCustomers() != null){
+                product.setDisplayToCustomers(updateDTO.getDisplayToCustomers());
+                log.info("Display to customers: {}", updateDTO.getDisplayToCustomers());
+                hasChanges = true;
+            }
             if (updateDTO.getShippingInfo() != null) {
                 productDetail.setShippingInfo(updateDTO.getShippingInfo());
                 hasChanges = true;
@@ -5061,6 +5086,368 @@ public class ProductServiceImpl implements ProductService {
         } catch (Exception e) {
             log.error("Error updating product details for product ID {}: {}", productId, e.getMessage(), e);
             throw new RuntimeException("Failed to update product details: " + e.getMessage(), e);
+        }
+    }
+
+    @Override
+    public Page<ManyProductsDto> getAllProductsForCustomers(Pageable pageable) {
+        try {
+            Page<Product> products = productRepository.findAvailableForCustomersWithStock(pageable);
+            return products.map(this::convertToManyProductsDto);
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to get products for customers: " + e.getMessage(), e);
+        }
+    }
+
+    @Override
+    public Page<ManyProductsDto> getAllProductsForAdmins(Pageable pageable) {
+        try {
+            log.info("Getting all products for admins with pagination: {}", pageable);
+            Page<Product> products = productRepository.findAvailableForAdmins(pageable);
+            return products.map(this::convertToManyProductsDto);
+        } catch (Exception e) {
+            log.error("Error getting products for admins: {}", e.getMessage(), e);
+            throw new RuntimeException("Failed to get products for admins: " + e.getMessage(), e);
+        }
+    }
+
+    @Override
+    public Page<ManyProductsDto> searchProductsForCustomers(ProductSearchDTO searchDTO) {
+        try {
+            log.info("Searching products for customers with criteria: {}", searchDTO);
+            
+            // Use the comprehensive search logic from the main searchProducts method
+            // but filter results for customer availability
+            Page<ManyProductsDto> searchResults = searchProducts(searchDTO);
+            
+            // Filter the results to only include products available for customers
+            List<ManyProductsDto> availableProducts = searchResults.getContent().stream()
+                .filter(product -> {
+                    try {
+                        UUID productUuid = product.getProductId();
+                        Product productEntity = productRepository.findById(productUuid).orElse(null);
+                        if (productEntity == null) {
+                            return false;
+                        }
+                        return productAvailabilityService.isProductAvailableForCustomers(productEntity);
+                    } catch (Exception e) {
+                        log.warn("Error checking availability for product {}: {}", product.getProductId(), e.getMessage());
+                        return false;
+                    }
+                })
+                .collect(Collectors.toList());
+            
+            // Create new page with filtered results
+            Page<ManyProductsDto> filteredResults = new PageImpl<>(
+                availableProducts,
+                searchResults.getPageable(),
+                availableProducts.size()
+            );
+            
+            log.info("Filtered {} search results to {} available products for customers", 
+                    searchResults.getContent().size(), availableProducts.size());
+            
+            return filteredResults;
+        } catch (Exception e) {
+            log.error("Error searching products for customers: {}", e.getMessage(), e);
+            throw new RuntimeException("Failed to search products for customers: " + e.getMessage(), e);
+        }
+    }
+
+    @Override
+    public Page<ManyProductsDto> searchProductsForAdmins(ProductSearchDTO searchDTO) {
+        try {
+            log.info("Searching products for admins with criteria: {}", searchDTO);
+            return searchProducts(searchDTO);
+        } catch (Exception e) {
+            log.error("Error searching products for admins: {}", e.getMessage(), e);
+            throw new RuntimeException("Failed to search products for admins: " + e.getMessage(), e);
+        }
+    }
+
+    @Override
+    public Page<ManyProductsDto> getFeaturedProductsForCustomers(Pageable pageable) {
+        try {
+            log.info("Getting featured products for customers with pagination: {}", pageable);
+            Page<Product> products = productRepository.findFeaturedForCustomersWithStock(pageable);
+            return products.map(this::convertToManyProductsDto);
+        } catch (Exception e) {
+            log.error("Error getting featured products for customers: {}", e.getMessage(), e);
+            throw new RuntimeException("Failed to get featured products for customers: " + e.getMessage(), e);
+        }
+    }
+
+    @Override
+    public Page<ManyProductsDto> getBestsellerProductsForCustomers(Pageable pageable) {
+        try {
+            log.info("Getting bestseller products for customers with pagination: {}", pageable);
+            Page<Product> products = productRepository.findBestsellersForCustomersWithStock(pageable);
+            return products.map(this::convertToManyProductsDto);
+        } catch (Exception e) {
+            log.error("Error getting bestseller products for customers: {}", e.getMessage(), e);
+            throw new RuntimeException("Failed to get bestseller products for customers: " + e.getMessage(), e);
+        }
+    }
+
+    @Override
+    public Page<ManyProductsDto> getNewArrivalProductsForCustomers(Pageable pageable) {
+        try {
+            log.info("Getting new arrival products for customers with pagination: {}", pageable);
+            Page<Product> products = productRepository.findNewArrivalsForCustomersWithStock(pageable);
+            return products.map(this::convertToManyProductsDto);
+        } catch (Exception e) {
+            log.error("Error getting new arrival products for customers: {}", e.getMessage(), e);
+            throw new RuntimeException("Failed to get new arrival products for customers: " + e.getMessage(), e);
+        }
+    }
+
+    @Override
+    public Page<ManyProductsDto> getProductsByCategoryForCustomers(Long categoryId, Pageable pageable) {
+        try {
+            log.info("Getting products by category {} for customers with pagination: {}", categoryId, pageable);
+            Category category = categoryRepository.findById(categoryId)
+                .orElseThrow(() -> new EntityNotFoundException("Category not found with ID: " + categoryId));
+            
+            Page<Product> products = productRepository.findByCategoryForCustomersWithStock(category, pageable);
+            return products.map(this::convertToManyProductsDto);
+        } catch (Exception e) {
+            log.error("Error getting products by category for customers: {}", e.getMessage(), e);
+            throw new RuntimeException("Failed to get products by category for customers: " + e.getMessage(), e);
+        }
+    }
+
+    @Override
+    public Page<ManyProductsDto> getProductsByBrandForCustomers(UUID brandId, Pageable pageable) {
+        try {
+            log.info("Getting products by brand {} for customers with pagination: {}", brandId, pageable);
+            Brand brand = brandRepository.findById(brandId)
+                .orElseThrow(() -> new EntityNotFoundException("Brand not found with ID: " + brandId));
+            
+            Page<Product> products = productRepository.findByBrandForCustomersWithStock(brand, pageable);
+            return products.map(this::convertToManyProductsDto);
+        } catch (Exception e) {
+            log.error("Error getting products by brand for customers: {}", e.getMessage(), e);
+            throw new RuntimeException("Failed to get products by brand for customers: " + e.getMessage(), e);
+        }
+    }
+
+    @Override
+    public boolean isProductAvailableForCustomers(UUID productId) {
+        try {
+            log.info("Checking if product {} is available for customers", productId);
+            Product product = productRepository.findById(productId)
+                .orElseThrow(() -> new EntityNotFoundException("Product not found with ID: " + productId));
+            
+            return productAvailabilityService.isProductAvailableForCustomers(product);
+        } catch (Exception e) {
+            log.error("Error checking product availability for customers: {}", e.getMessage(), e);
+            throw new RuntimeException("Failed to check product availability for customers: " + e.getMessage(), e);
+        }
+    }
+
+    @Override
+    public List<ProductVariantDTO> getAvailableVariantsForCustomers(UUID productId) {
+        try {
+            log.info("Getting available variants for product {} for customers", productId);
+            Product product = productRepository.findById(productId)
+                .orElseThrow(() -> new EntityNotFoundException("Product not found with ID: " + productId));
+            
+            List<ProductVariant> availableVariants = productAvailabilityService.getAvailableVariants(product);
+            return availableVariants.stream()
+                .map(this::convertToProductVariantDTO)
+                .collect(Collectors.toList());
+        } catch (Exception e) {
+            log.error("Error getting available variants for customers: {}", e.getMessage(), e);
+            throw new RuntimeException("Failed to get available variants for customers: " + e.getMessage(), e);
+        }
+    }
+
+    private ManyProductsDto convertToManyProductsDto(Product product) {
+        try {
+            ManyProductsDto.SimpleCategoryDto categoryDto = null;
+            if (product.getCategory() != null) {
+                categoryDto = ManyProductsDto.SimpleCategoryDto.builder()
+                    .id(product.getCategory().getId())
+                    .name(product.getCategory().getName())
+                    .description(product.getCategory().getDescription())
+                    .slug(product.getCategory().getSlug())
+                    .build();
+            }
+
+            ManyProductsDto.SimpleBrandDto brandDto = null;
+            if (product.getBrand() != null) {
+                brandDto = ManyProductsDto.SimpleBrandDto.builder()
+                    .brandId(product.getBrand().getBrandId())
+                    .brandName(product.getBrand().getBrandName())
+                    .description(product.getBrand().getDescription())
+                    .logoUrl(product.getBrand().getLogoUrl())
+                    .build();
+            }
+
+            ManyProductsDto.SimpleProductImageDto primaryImageDto = null;
+            if (product.getImages() != null && !product.getImages().isEmpty()) {
+                ProductImage primaryImage = product.getImages().stream()
+                    .filter(ProductImage::isPrimary)
+                    .findFirst()
+                    .orElse(product.getImages().get(0));
+                
+                primaryImageDto = ManyProductsDto.SimpleProductImageDto.builder()
+                    .id(primaryImage.getId())
+                    .imageUrl(primaryImage.getImageUrl())
+                    .altText(primaryImage.getAltText())
+                    .isPrimary(primaryImage.isPrimary())
+                    .sortOrder(primaryImage.getSortOrder())
+                    .build();
+            }
+
+            ManyProductsDto.SimpleDiscountDto discountDto = null;
+            boolean hasActiveDiscount = false;
+            if (product.getDiscount() != null) {
+                Discount discount = product.getDiscount();
+                LocalDateTime now = LocalDateTime.now();
+                boolean isActive = discount.isActive() && 
+                    (discount.getStartDate() == null || !discount.getStartDate().isAfter(now)) &&
+                    (discount.getEndDate() == null || !discount.getEndDate().isBefore(now));
+                
+                if (isActive) {
+                    hasActiveDiscount = true;
+                    discountDto = ManyProductsDto.SimpleDiscountDto.builder()
+                        .discountId(discount.getDiscountId())
+                        .name(discount.getName())
+                        .percentage(discount.getPercentage())
+                        .startDate(discount.getStartDate() != null ? discount.getStartDate().toString() : null)
+                        .endDate(discount.getEndDate() != null ? discount.getEndDate().toString() : null)
+                        .active(discount.isActive())
+                        .isValid(isActive)
+                        .discountCode(discount.getDiscountCode())
+                        .build();
+                }
+            }
+
+            BigDecimal discountedPrice = null;
+            if (hasActiveDiscount && product.getDiscount() != null) {
+                BigDecimal discountAmount = product.getPrice()
+                    .multiply(product.getDiscount().getPercentage())
+                    .divide(new BigDecimal("100"), 2, RoundingMode.HALF_UP);
+                discountedPrice = product.getPrice().subtract(discountAmount);
+            }
+
+            int totalStock = productAvailabilityService.getTotalAvailableStock(product);
+
+            return ManyProductsDto.builder()
+                .productId(product.getProductId())
+                .productName(product.getProductName())
+                .shortDescription(product.getShortDescription())
+                .price(product.getPrice())
+                .compareAtPrice(product.getCompareAtPrice())
+                .discountedPrice(discountedPrice)
+                .stockQuantity(totalStock)
+                .category(categoryDto)
+                .brand(brandDto)
+                .isBestSeller(product.isBestseller())
+                .isNew(product.isNewArrival())
+                .isFeatured(product.isFeatured())
+                .discountInfo(discountDto)
+                .primaryImage(primaryImageDto)
+                .averageRating(calculateAverageRating(product))
+                .reviewCount(product.getReviews() != null ? product.getReviews().size() : 0)
+                .hasActiveDiscount(hasActiveDiscount)
+                .build();
+        } catch (Exception e) {
+            log.error("Error converting product to ManyProductsDto: {}", e.getMessage(), e);
+            throw new RuntimeException("Failed to convert product to DTO: " + e.getMessage(), e);
+        }
+    }
+
+    private Double calculateAverageRating(Product product) {
+        if (product.getReviews() == null || product.getReviews().isEmpty()) {
+            return 0.0;
+        }
+        
+        double sum = product.getReviews().stream()
+            .mapToDouble(Review::getRating)
+            .sum();
+        
+        return sum / product.getReviews().size();
+    }
+
+    private ProductVariantDTO convertToProductVariantDTO(ProductVariant variant) {
+        try {
+            List<ProductVariantDTO.VariantWarehouseStockDTO> warehouseStocks = new ArrayList<>();
+            List<Stock> stocks = stockRepository.findByProductVariant(variant);
+            
+            for (Stock stock : stocks) {
+                Integer totalQuantity = stockBatchRepository.getTotalActiveQuantityByStock(stock);
+                if (totalQuantity == null) totalQuantity = 0;
+                
+                ProductVariantDTO.VariantWarehouseStockDTO stockDTO = ProductVariantDTO.VariantWarehouseStockDTO.builder()
+                    .warehouseId(stock.getWarehouse().getId())
+                    .warehouseName(stock.getWarehouse().getName())
+                    .warehouseLocation(stock.getWarehouse().getAddress())
+                    .stockQuantity(totalQuantity)
+                    .lowStockThreshold(stock.getLowStockThreshold())
+                    .isLowStock(totalQuantity <= stock.getLowStockThreshold())
+                    .lastUpdated(stock.getUpdatedAt())
+                    .build();
+                
+                warehouseStocks.add(stockDTO);
+            }
+
+            DiscountDTO discountDTO = null;
+            boolean hasActiveDiscount = false;
+            BigDecimal discountedPrice = null;
+            
+            if (variant.getDiscount() != null) {
+                Discount discount = variant.getDiscount();
+                LocalDateTime now = LocalDateTime.now();
+                boolean isActive = discount.isActive() && 
+                    (discount.getStartDate() == null || !discount.getStartDate().isAfter(now)) &&
+                    (discount.getEndDate() == null || !discount.getEndDate().isBefore(now));
+                
+                if (isActive) {
+                    hasActiveDiscount = true;
+                    discountDTO = DiscountDTO.builder()
+                        .discountId(discount.getDiscountId())
+                        .name(discount.getName())
+                        .description(discount.getDescription())
+                        .percentage(discount.getPercentage())
+                        .discountCode(discount.getDiscountCode())
+                        .startDate(discount.getStartDate())
+                        .endDate(discount.getEndDate())
+                        .active(discount.isActive())
+                        .valid(isActive)
+                        .createdAt(discount.getCreatedAt())
+                        .updatedAt(discount.getUpdatedAt())
+                        .build();
+                    
+                    BigDecimal discountAmount = variant.getPrice()
+                        .multiply(discount.getPercentage())
+                        .divide(new BigDecimal("100"), 2, RoundingMode.HALF_UP);
+                    discountedPrice = variant.getPrice().subtract(discountAmount);
+                }
+            }
+
+            return ProductVariantDTO.builder()
+                .variantId(variant.getId())
+                .variantSku(variant.getVariantSku())
+                .variantName(variant.getVariantName())
+                .variantBarcode(variant.getVariantBarcode())
+                .price(variant.getPrice())
+                .salePrice(variant.getCompareAtPrice())
+                .costPrice(variant.getCostPrice())
+                .isActive(variant.isActive())
+                .isInStock(productAvailabilityService.isVariantAvailableForCustomers(variant))
+                .isLowStock(productAvailabilityService.isVariantLowStock(variant))
+                .createdAt(variant.getCreatedAt())
+                .updatedAt(variant.getUpdatedAt())
+                .warehouseStocks(warehouseStocks)
+                .discount(discountDTO)
+                .discountedPrice(discountedPrice)
+                .hasActiveDiscount(hasActiveDiscount)
+                .build();
+        } catch (Exception e) {
+            log.error("Error converting variant to ProductVariantDTO: {}", e.getMessage(), e);
+            throw new RuntimeException("Failed to convert variant to DTO: " + e.getMessage(), e);
         }
     }
 }

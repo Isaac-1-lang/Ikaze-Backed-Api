@@ -117,6 +117,22 @@ public interface ProductService {
         Page<ManyProductsDto> getAllProducts(Pageable pageable);
 
         /**
+         * Get all products available for customers (active, displayToCustomers=true, with stock)
+         * 
+         * @param pageable Pagination information
+         * @return Page of ManyProductsDto for customer display
+         */
+        Page<ManyProductsDto> getAllProductsForCustomers(Pageable pageable);
+
+        /**
+         * Get all products available for admins (all products regardless of stock or display status)
+         * 
+         * @param pageable Pagination information
+         * @return Page of ManyProductsDto for admin display
+         */
+        Page<ManyProductsDto> getAllProductsForAdmins(Pageable pageable);
+
+        /**
          * Update an existing product
          * 
          * @param productId        The product ID
@@ -152,6 +168,22 @@ public interface ProductService {
          * @return Page of ManyProductsDto for found products
          */
         Page<ManyProductsDto> searchProducts(ProductSearchDTO searchDTO);
+
+        /**
+         * Search products for customers (active, displayToCustomers=true, with stock)
+         * 
+         * @param searchDTO The search criteria DTO
+         * @return Page of ManyProductsDto for customer search results
+         */
+        Page<ManyProductsDto> searchProductsForCustomers(ProductSearchDTO searchDTO);
+
+        /**
+         * Search products for admins (all products regardless of stock or display status)
+         * 
+         * @param searchDTO The search criteria DTO
+         * @return Page of ManyProductsDto for admin search results
+         */
+        Page<ManyProductsDto> searchProductsForAdmins(ProductSearchDTO searchDTO);
 
         List<Map<String, Object>> getSearchSuggestions(String query);
 
@@ -236,4 +268,62 @@ public interface ProductService {
         ProductDetailsDTO getProductDetails(UUID productId);
 
         ProductDetailsDTO updateProductDetails(UUID productId, ProductDetailsUpdateDTO updateDTO);
+
+        /**
+         * Get featured products for customers
+         * 
+         * @param pageable Pagination information
+         * @return Page of featured products available to customers
+         */
+        Page<ManyProductsDto> getFeaturedProductsForCustomers(Pageable pageable);
+
+        /**
+         * Get bestseller products for customers
+         * 
+         * @param pageable Pagination information
+         * @return Page of bestseller products available to customers
+         */
+        Page<ManyProductsDto> getBestsellerProductsForCustomers(Pageable pageable);
+
+        /**
+         * Get new arrival products for customers
+         * 
+         * @param pageable Pagination information
+         * @return Page of new arrival products available to customers
+         */
+        Page<ManyProductsDto> getNewArrivalProductsForCustomers(Pageable pageable);
+
+        /**
+         * Get products by category for customers
+         * 
+         * @param categoryId The category ID
+         * @param pageable Pagination information
+         * @return Page of products in the category available to customers
+         */
+        Page<ManyProductsDto> getProductsByCategoryForCustomers(Long categoryId, Pageable pageable);
+
+        /**
+         * Get products by brand for customers
+         * 
+         * @param brandId The brand ID
+         * @param pageable Pagination information
+         * @return Page of products by the brand available to customers
+         */
+        Page<ManyProductsDto> getProductsByBrandForCustomers(UUID brandId, Pageable pageable);
+
+        /**
+         * Check if a product is available for customers
+         * 
+         * @param productId The product ID
+         * @return true if product is available for customers
+         */
+        boolean isProductAvailableForCustomers(UUID productId);
+
+        /**
+         * Get available variants for a product (for customers)
+         * 
+         * @param productId The product ID
+         * @return List of available variants
+         */
+        List<ProductVariantDTO> getAvailableVariantsForCustomers(UUID productId);
 }

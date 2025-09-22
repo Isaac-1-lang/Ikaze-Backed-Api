@@ -109,7 +109,6 @@ public class LandingPageServiceImpl implements LandingPageService {
     private List<LandingPageProductDTO> getTopSellingProductsList(int limit) {
         log.info("Fetching top-selling products with limit: {}", limit);
 
-        // Get products sorted by bestseller status and creation date
         Pageable pageable = PageRequest.of(0, limit,
                 Sort.by(Sort.Direction.DESC, "isBestseller")
                         .and(Sort.by(Sort.Direction.DESC, "createdAt")));

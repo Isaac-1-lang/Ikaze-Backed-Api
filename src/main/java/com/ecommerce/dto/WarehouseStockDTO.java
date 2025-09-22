@@ -17,16 +17,19 @@ public class WarehouseStockDTO {
     private Long warehouseId;
     private String warehouseName;
     private String warehouseAddress;
+    private String warehouseLocation;
     private String warehouseCity;
     private String warehouseState;
     private String warehouseCountry;
     private String warehouseContactNumber;
     private String warehouseEmail;
     private Integer quantity;
+    private Integer stockQuantity;
     private Integer lowStockThreshold;
     private Boolean isInStock;
     private Boolean isLowStock;
     private Boolean isOutOfStock;
+    private String lastUpdated;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 
