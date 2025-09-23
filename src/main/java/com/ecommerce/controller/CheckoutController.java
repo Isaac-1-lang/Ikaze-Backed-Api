@@ -254,6 +254,27 @@ public class CheckoutController {
         }
     }
 
+    @PostMapping("/cleanup-expired-locks")
+    @Operation(summary = "Cleanup expired batch locks", description = "Manually trigger cleanup of expired batch locks")
+    public ResponseEntity<?> cleanupExpiredLocks() {
+        try {
+            checkoutService.cleanupExpiredBatchLocks();
+            
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", true);
+            response.put("message", "Expired batch locks cleaned up successfully");
+            
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            log.error("Error cleaning up expired locks: {}", e.getMessage(), e);
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", false);
+            response.put("message", "Error cleaning up expired locks");
+            response.put("error", e.getMessage());
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(response);
+        }
+    }
+
     @GetMapping("/stock-locks/{sessionId}")
     @Operation(summary = "Get locked stock information", description = "Get information about locked stock for a session", responses = {
             @ApiResponse(responseCode = "200", description = "Locked stock information retrieved successfully"),

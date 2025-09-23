@@ -72,8 +72,8 @@ public class ProductAvailabilityService {
     }
 
     private boolean hasStockAvailable(Stock stock) {
-        Integer totalActiveQuantity = stockBatchRepository.getTotalActiveQuantityByStock(stock);
-        return totalActiveQuantity != null && totalActiveQuantity > 0;
+        Integer totalAvailableQuantity = stockBatchRepository.getTotalAvailableQuantityByStock(stock);
+        return totalAvailableQuantity != null && totalAvailableQuantity > 0;
     }
 
     public boolean isVariantAvailableForCustomers(ProductVariant variant) {
@@ -105,7 +105,7 @@ public class ProductAvailabilityService {
         
         return productStocks.stream()
                 .mapToInt(stock -> {
-                    Integer quantity = stockBatchRepository.getTotalActiveQuantityByStock(stock);
+                    Integer quantity = stockBatchRepository.getTotalAvailableQuantityByStock(stock);
                     return quantity != null ? quantity : 0;
                 })
                 .sum();
@@ -123,7 +123,7 @@ public class ProductAvailabilityService {
         
         return variantStocks.stream()
                 .mapToInt(stock -> {
-                    Integer quantity = stockBatchRepository.getTotalActiveQuantityByStock(stock);
+                    Integer quantity = stockBatchRepository.getTotalAvailableQuantityByStock(stock);
                     return quantity != null ? quantity : 0;
                 })
                 .sum();
@@ -143,7 +143,7 @@ public class ProductAvailabilityService {
         List<Stock> productStocks = stockRepository.findByProduct(product);
         
         for (Stock stock : productStocks) {
-            Integer totalQuantity = stockBatchRepository.getTotalActiveQuantityByStock(stock);
+            Integer totalQuantity = stockBatchRepository.getTotalAvailableQuantityByStock(stock);
             if (totalQuantity != null && totalQuantity > 0 && totalQuantity <= stock.getLowStockThreshold()) {
                 return true;
             }
@@ -164,7 +164,7 @@ public class ProductAvailabilityService {
         List<Stock> variantStocks = stockRepository.findByProductVariant(variant);
         
         for (Stock stock : variantStocks) {
-            Integer totalQuantity = stockBatchRepository.getTotalActiveQuantityByStock(stock);
+            Integer totalQuantity = stockBatchRepository.getTotalAvailableQuantityByStock(stock);
             if (totalQuantity != null && totalQuantity > 0 && totalQuantity <= stock.getLowStockThreshold()) {
                 return true;
             }

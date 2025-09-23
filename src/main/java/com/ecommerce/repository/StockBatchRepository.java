@@ -26,6 +26,9 @@ public interface StockBatchRepository extends JpaRepository<StockBatch, Long> {
         @Query("SELECT COALESCE(SUM(sb.quantity), 0) FROM StockBatch sb WHERE sb.stock = :stock AND sb.status = 'ACTIVE'")
         Integer getTotalActiveQuantityByStock(@Param("stock") Stock stock);
 
+        @Query("SELECT COALESCE(SUM(sb.quantity), 0) FROM StockBatch sb WHERE sb.stock = :stock AND sb.status NOT IN ('RECALLED', 'EXPIRED')")
+        Integer getTotalAvailableQuantityByStock(@Param("stock") Stock stock);
+
         @Query("SELECT sb FROM StockBatch sb WHERE sb.stock = :stock AND sb.batchNumber = :batchNumber")
         Optional<StockBatch> findByStockAndBatchNumber(@Param("stock") Stock stock,
                         @Param("batchNumber") String batchNumber);
@@ -39,6 +42,9 @@ public interface StockBatchRepository extends JpaRepository<StockBatch, Long> {
                         @Param("variantId") Long variantId);
 
         List<StockBatch> findByStockInOrderByCreatedAtDesc(List<Stock> stocks);
+
+        @Query("SELECT sb FROM StockBatch sb WHERE sb.stock.id = :stockId AND sb.status = 'ACTIVE' AND sb.quantity > 0 ORDER BY sb.expiryDate ASC NULLS LAST")
+        List<StockBatch> findActiveByStockIdOrderByExpiryDateAsc(@Param("stockId") Long stockId);
 
         void deleteByStock(Stock stock);
 }

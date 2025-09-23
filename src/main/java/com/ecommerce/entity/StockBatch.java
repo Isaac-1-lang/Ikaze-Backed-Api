@@ -48,18 +48,20 @@ public class StockBatch {
     private String batchNumber;
 
     /**
-     * Date when the batch was manufactured
+     * Date and time when the batch was manufactured
      * Optional field - may not be available for all products
+     * Uses LocalDateTime for precise tracking of perishable goods
      */
     @Column(name = "manufacture_date")
-    private LocalDate manufactureDate;
+    private LocalDateTime manufactureDate;
 
     /**
-     * Date when the batch expires
+     * Date and time when the batch expires
      * Required for products with expiry dates (food, medicine, etc.)
+     * Uses LocalDateTime for hour-level precision for perishable products
      */
     @Column(name = "expiry_date")
-    private LocalDate expiryDate;
+    private LocalDateTime expiryDate;
 
     /**
      * Current quantity of items in this batch
@@ -120,7 +122,7 @@ public class StockBatch {
     /**
      * Automatically updates the batch status based on current conditions
      */
-    private void updateStatus() {
+    public void updateStatus() {
         // Don't override manually set statuses like RECALLED
         if (status == BatchStatus.RECALLED) {
             return;
@@ -133,7 +135,7 @@ public class StockBatch {
         }
 
         // Check if batch has expired
-        if (expiryDate != null && expiryDate.isBefore(LocalDate.now())) {
+        if (expiryDate != null && expiryDate.isBefore(LocalDateTime.now())) {
             status = BatchStatus.EXPIRED;
             return;
         }
@@ -159,7 +161,7 @@ public class StockBatch {
      * @return true if expiry date has passed
      */
     public boolean isExpired() {
-        return expiryDate != null && expiryDate.isBefore(LocalDate.now());
+        return expiryDate != null && expiryDate.isBefore(LocalDateTime.now());
     }
 
     /**
@@ -172,8 +174,8 @@ public class StockBatch {
         if (expiryDate == null) {
             return false;
         }
-        LocalDate thresholdDate = LocalDate.now().plusDays(daysThreshold);
-        return expiryDate.isBefore(thresholdDate) && !isExpired();
+        LocalDateTime thresholdDateTime = LocalDateTime.now().plusDays(daysThreshold);
+        return expiryDate.isBefore(thresholdDateTime) && !isExpired();
     }
 
     /**

@@ -42,9 +42,9 @@ public class WarehouseStockWithBatchesRequest {
         @Size(max = 100, message = "Batch number must not exceed 100 characters")
         private String batchNumber;
 
-        private java.time.LocalDate manufactureDate;
+        private java.time.LocalDateTime manufactureDate;
 
-        private java.time.LocalDate expiryDate;
+        private java.time.LocalDateTime expiryDate;
 
         @NotNull(message = "Quantity is required")
         @Min(value = 0, message = "Quantity must be non-negative")

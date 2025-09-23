@@ -62,11 +62,6 @@ public class Address {
     @Column(name = "state_province", nullable = false)
     private String stateProvince;
 
-    @NotBlank(message = "Postal code is required")
-    @Size(max = 20, message = "Postal code must not exceed 20 characters")
-    @Column(name = "postal_code", nullable = false)
-    private String postalCode;
-
     @NotBlank(message = "Country is required")
     @Size(max = 100, message = "Country must not exceed 100 characters")
     @Column(nullable = false)
@@ -107,7 +102,6 @@ public class Address {
         }
         address.append(", ").append(city)
                 .append(", ").append(stateProvince)
-                .append(" ").append(postalCode)
                 .append(", ").append(country);
         return address.toString();
     }

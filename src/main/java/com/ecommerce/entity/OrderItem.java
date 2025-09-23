@@ -10,13 +10,15 @@ import lombok.NoArgsConstructor;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.List;
 
 @Entity
 @Table(name = "order_items")
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
-@EqualsAndHashCode(exclude = { "order", "product", "productVariant" })
+@EqualsAndHashCode(exclude = { "order", "product", "productVariant", "orderItemBatches" })
 public class OrderItem {
 
     @Id
@@ -50,6 +52,9 @@ public class OrderItem {
 
     @Column(name = "updated_at")
     private LocalDateTime updatedAt;
+
+    @OneToMany(mappedBy = "orderItem", cascade = CascadeType.ALL, fetch = FetchType.LAZY, orphanRemoval = true)
+    private List<OrderItemBatch> orderItemBatches = new ArrayList<>();
 
     @PrePersist
     protected void onCreate() {
@@ -225,4 +230,14 @@ public class OrderItem {
         }
         return 0;
     }
+
+public void addOrderItemBatch(OrderItemBatch orderItemBatch) {
+    orderItemBatches.add(orderItemBatch);
+    orderItemBatch.setOrderItem(this);
+}
+
+public void removeOrderItemBatch(OrderItemBatch orderItemBatch) {
+    orderItemBatches.remove(orderItemBatch);
+    orderItemBatch.setOrderItem(null);
+}
 }

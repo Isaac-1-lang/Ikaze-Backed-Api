@@ -2,6 +2,7 @@ package com.ecommerce.service;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -13,19 +14,29 @@ import com.ecommerce.dto.CartItemDTO;
 import com.ecommerce.dto.CheckoutRequest;
 import com.ecommerce.dto.CheckoutVerificationResult;
 import com.ecommerce.dto.GuestCheckoutRequest;
+import com.ecommerce.dto.OrderResponseDTO;
+import com.ecommerce.dto.OrderAddressDTO;
+import com.ecommerce.dto.OrderCustomerInfoDTO;
+import com.ecommerce.dto.OrderItemDTO;
+import com.ecommerce.dto.SimpleProductDTO;
 import com.ecommerce.entity.Discount;
 import com.ecommerce.entity.Order;
+import com.ecommerce.entity.OrderAddress;
 import com.ecommerce.entity.OrderCustomerInfo;
 import com.ecommerce.entity.OrderInfo;
 import com.ecommerce.entity.OrderItem;
+import com.ecommerce.entity.OrderItemBatch;
 import com.ecommerce.entity.OrderTransaction;
 import com.ecommerce.entity.Product;
 import com.ecommerce.entity.ProductVariant;
+import com.ecommerce.entity.StockBatch;
 import com.ecommerce.entity.User;
 import com.ecommerce.repository.OrderRepository;
+import com.ecommerce.repository.OrderItemBatchRepository;
 import com.ecommerce.repository.OrderTransactionRepository;
 import com.ecommerce.repository.ProductRepository;
 import com.ecommerce.repository.ProductVariantRepository;
+import com.ecommerce.repository.StockBatchRepository;
 import com.ecommerce.repository.UserRepository;
 import com.ecommerce.repository.DiscountRepository;
 import com.stripe.model.PaymentIntent;
@@ -53,8 +64,12 @@ public class CheckoutService {
     private final StripeService stripeService;
     private final StockLockService stockLockService;
     private final MultiWarehouseStockAllocator multiWarehouseStockAllocator;
-    private final com.ecommerce.service.ShippingCostService shippingCostService;
-    private final com.ecommerce.service.RewardService rewardService;
+    private final ShippingCostService shippingCostService;
+    private final RewardService rewardService;
+    private final ProductAvailabilityService productAvailabilityService;
+    private final EnhancedMultiWarehouseAllocator enhancedWarehouseAllocator;
+    private final OrderItemBatchRepository orderItemBatchRepository;
+    private final StockBatchRepository stockBatchRepository;
 
     public String createCheckoutSession(CheckoutRequest req) throws Exception {
         log.info("Creating checkout session for user");
@@ -62,14 +77,13 @@ public class CheckoutService {
         User user = userRepository.findById(getCurrentUserId())
                 .orElseThrow(() -> new EntityNotFoundException("User not found with ID: " + getCurrentUserId()));
 
-        String sessionId = java.util.UUID.randomUUID().toString();
+        validateCartItems(req.getItems());
 
-        if (req.getShippingAddress() != null) {
-            boolean stockLocked = lockStockForItems(sessionId, req.getItems(), req.getShippingAddress());
-            if (!stockLocked) {
-                throw new IllegalStateException("Unable to lock stock for all items");
-            }
-        }
+        Map<CartItemDTO, List<FEFOStockAllocationService.BatchAllocation>> fefoAllocations = enhancedWarehouseAllocator
+                .allocateStockWithFEFO(req.getItems(), req.getShippingAddress());
+        
+        Map<Long, List<MultiWarehouseStockAllocator.StockAllocation>> stockAllocations = multiWarehouseStockAllocator
+                .allocateStockAcrossWarehouses(req.getItems(), req.getShippingAddress());
 
         Order order = new Order();
         order.setOrderStatus(Order.OrderStatus.PENDING);
@@ -84,7 +98,6 @@ public class CheckoutService {
             customerInfo.setStreetAddress(req.getShippingAddress().getStreetAddress());
             customerInfo.setCity(req.getShippingAddress().getCity());
             customerInfo.setState(req.getShippingAddress().getState());
-            customerInfo.setPostalCode(req.getShippingAddress().getPostalCode());
             customerInfo.setCountry(req.getShippingAddress().getCountry());
         }
         order.setOrderCustomerInfo(customerInfo);
@@ -131,6 +144,18 @@ public class CheckoutService {
         orderInfo.setDiscountAmount(paymentSummary.getDiscountAmount());
         order.setOrderInfo(orderInfo);
 
+        if (req.getShippingAddress() != null) {
+            OrderAddress orderAddress = new OrderAddress();
+            orderAddress.setOrder(order);
+            orderAddress.setStreet(req.getShippingAddress().getStreetAddress());
+            orderAddress.setCountry(req.getShippingAddress().getCountry());
+            orderAddress.setRegions(req.getShippingAddress().getCity() + "," + req.getShippingAddress().getState());
+            orderAddress.setLatitude(req.getShippingAddress().getLatitude());
+            orderAddress.setLongitude(req.getShippingAddress().getLongitude());
+            orderAddress.setRoadName(req.getShippingAddress().getStreetAddress());
+            order.setOrderAddress(orderAddress);
+        }
+
         OrderTransaction tx = new OrderTransaction();
         tx.setOrderAmount(paymentSummary.getTotalAmount());
         tx.setPaymentMethod(OrderTransaction.PaymentMethod.CREDIT_CARD);
@@ -141,6 +166,10 @@ public class CheckoutService {
         Order saved = orderRepository.save(order);
         log.info("Order created with ID: {}", saved.getOrderId());
 
+        for (Map.Entry<CartItemDTO, List<FEFOStockAllocationService.BatchAllocation>> entry : fefoAllocations.entrySet()) {
+            createOrderItemBatches(saved, entry.getKey(), entry.getValue());
+        }
+
         String sessionUrl = stripeService.createCheckoutSessionForOrder(saved, req.getCurrency(), req.getPlatform());
         log.info("Stripe session created successfully");
 
@@ -150,14 +179,15 @@ public class CheckoutService {
     public String createGuestCheckoutSession(GuestCheckoutRequest req) throws Exception {
         log.info("Creating guest checkout session");
 
-        String sessionId = java.util.UUID.randomUUID().toString();
+        validateCartItems(req.getItems());
 
-        if (req.getAddress() != null) {
-            boolean stockLocked = lockStockForItems(sessionId, req.getItems(), req.getAddress());
-            if (!stockLocked) {
-                throw new IllegalStateException("Unable to lock stock for all items");
-            }
-        }
+        // FEFO allocation for batch tracking
+        Map<CartItemDTO, List<FEFOStockAllocationService.BatchAllocation>> fefoAllocations = enhancedWarehouseAllocator
+                .allocateStockWithFEFO(req.getItems(), req.getAddress());
+        
+        // Regular allocation for stock locking
+        Map<Long, List<MultiWarehouseStockAllocator.StockAllocation>> stockAllocations = multiWarehouseStockAllocator
+                .allocateStockAcrossWarehouses(req.getItems(), req.getAddress());
 
         Order order = new Order();
         order.setOrderStatus(Order.OrderStatus.PENDING);
@@ -170,7 +200,6 @@ public class CheckoutService {
             customerInfo.setStreetAddress(req.getAddress().getStreetAddress());
             customerInfo.setCity(req.getAddress().getCity());
             customerInfo.setState(req.getAddress().getState());
-            customerInfo.setPostalCode(req.getAddress().getPostalCode());
             customerInfo.setCountry(req.getAddress().getCountry());
         }
         order.setOrderCustomerInfo(customerInfo);
@@ -223,6 +252,18 @@ public class CheckoutService {
         orderInfo.setDiscountAmount(paymentSummary.getDiscountAmount());
         order.setOrderInfo(orderInfo);
 
+        if (req.getAddress() != null) {
+            OrderAddress orderAddress = new OrderAddress();
+            orderAddress.setOrder(order);
+            orderAddress.setStreet(req.getAddress().getStreetAddress());
+            orderAddress.setCountry(req.getAddress().getCountry());
+            orderAddress.setRegions(req.getAddress().getCity() + "," + req.getAddress().getState());
+            orderAddress.setLatitude(req.getAddress().getLatitude());
+            orderAddress.setLongitude(req.getAddress().getLongitude());
+            orderAddress.setRoadName(req.getAddress().getStreetAddress());
+            order.setOrderAddress(orderAddress);
+        }
+
         OrderTransaction tx = new OrderTransaction();
         tx.setOrderAmount(paymentSummary.getTotalAmount());
         tx.setPaymentMethod(OrderTransaction.PaymentMethod.CREDIT_CARD);
@@ -232,6 +273,10 @@ public class CheckoutService {
 
         Order saved = orderRepository.save(order);
         log.info("Guest order created with ID: {}", saved.getOrderId());
+
+        for (Map.Entry<CartItemDTO, List<FEFOStockAllocationService.BatchAllocation>> entry : fefoAllocations.entrySet()) {
+            createOrderItemBatches(saved, entry.getKey(), entry.getValue());
+        }
 
         String sessionUrl = stripeService.createCheckoutSessionForOrder(saved, "usd", req.getPlatform());
         log.info("Guest Stripe session created successfully");
@@ -296,6 +341,7 @@ public class CheckoutService {
             }
         }
         orderRepository.save(order);
+        stockLockService.confirmBatchLocks(sessionId);
         stockLockService.confirmStock(sessionId);
 
         updateDiscountUsage(order);
@@ -310,6 +356,9 @@ public class CheckoutService {
 
         log.info("Order status updated to processing");
 
+        // Convert order to OrderResponseDTO
+        OrderResponseDTO orderResponse = convertOrderToResponseDTO(order);
+
         return new CheckoutVerificationResult(
                 session.getPaymentStatus(),
                 session.getAmountTotal(),
@@ -317,22 +366,96 @@ public class CheckoutService {
                 session.getCustomerDetails() != null ? session.getCustomerDetails().getEmail() : null,
                 receiptUrl,
                 intent != null ? intent.getId() : null,
-                session.getId(),
-                true);
+                true,
+                orderResponse);
     }
 
     @Transactional
     public void cleanupFailedOrder(String sessionId) {
         try {
+            log.info("Starting cleanup for failed order session: {}", sessionId);
+            
             OrderTransaction tx = transactionRepository.findByStripeSessionId(sessionId).orElse(null);
             if (tx != null && tx.getStatus() == OrderTransaction.TransactionStatus.PENDING) {
                 Order order = tx.getOrder();
+                log.info("Deleting pending order: {} for session: {}", order.getOrderId(), sessionId);
+                
+                // Restore batch quantities before deleting the order
+                restoreBatchQuantitiesFromOrder(order);
+                
                 orderRepository.delete(order);
-                log.info("Cleaned up failed order: {}", order.getOrderId());
             }
+            
+            // Also try to unlock any legacy locks (for backward compatibility)
+            stockLockService.unlockAllBatches(sessionId);
             stockLockService.releaseStock(sessionId);
+            
+            log.info("Successfully cleaned up failed order for session: {}", sessionId);
         } catch (Exception e) {
-            log.error("Error cleaning up failed order for session {}: {}", sessionId, e.getMessage());
+            log.error("Error cleaning up failed order for session {}: {}", sessionId, e.getMessage(), e);
+        }
+    }
+
+    /**
+     * Restores batch quantities that were allocated during order creation.
+     * This method finds all OrderItemBatch records for the order and adds back
+     * the quantities that were taken from each batch, also updating batch status if needed.
+     */
+    @Transactional
+    private void restoreBatchQuantitiesFromOrder(Order order) {
+        try {
+            log.info("Restoring batch quantities for cancelled order: {}", order.getOrderId());
+            
+            int totalRestoredQuantity = 0;
+            Map<String, Integer> restorationSummary = new HashMap<>();
+            
+            // Process each order item
+            for (OrderItem orderItem : order.getOrderItems()) {
+                log.debug("Processing order item: productId={}, variantId={}, quantity={}", 
+                         orderItem.getProduct() != null ? orderItem.getProduct().getProductId() : null,
+                         orderItem.getProductVariant() != null ? orderItem.getProductVariant().getId() : null,
+                         orderItem.getQuantity());
+                
+                // Process each batch allocation for this order item
+                for (OrderItemBatch orderItemBatch : orderItem.getOrderItemBatches()) {
+                    StockBatch batch = orderItemBatch.getStockBatch();
+                    int quantityToRestore = orderItemBatch.getQuantityUsed();
+                    
+                    log.info("Restoring {} units to batch {} (current quantity: {})", 
+                            quantityToRestore, batch.getBatchNumber(), batch.getQuantity());
+                    
+                    // Restore the quantity to the batch
+                    int newQuantity = batch.getQuantity() + quantityToRestore;
+                    batch.setQuantity(newQuantity);
+                    
+                    // Update batch status if it was marked as EMPTY and now has quantity
+                    if (batch.getStatus() == com.ecommerce.enums.BatchStatus.EMPTY && newQuantity > 0) {
+                        batch.setStatus(com.ecommerce.enums.BatchStatus.ACTIVE);
+                        log.info("Updated batch {} status from EMPTY to ACTIVE", batch.getBatchNumber());
+                    }
+                    
+                    // Save the updated batch
+                    stockBatchRepository.save(batch);
+                    
+                    // Update summary for logging
+                    String key = String.format("Batch %s (%s)", 
+                                              batch.getBatchNumber(), 
+                                              orderItemBatch.getWarehouse().getName());
+                    restorationSummary.merge(key, quantityToRestore, Integer::sum);
+                    totalRestoredQuantity += quantityToRestore;
+                    
+                    log.debug("Restored {} units to batch {} in warehouse {} (new quantity: {})", 
+                             quantityToRestore, batch.getBatchNumber(), 
+                             orderItemBatch.getWarehouse().getName(), newQuantity);
+                }
+            }
+            
+            log.info("Successfully restored {} total units across {} batches for order {}: {}", 
+                    totalRestoredQuantity, restorationSummary.size(), order.getOrderId(), restorationSummary);
+            
+        } catch (Exception e) {
+            log.error("Error restoring batch quantities for order {}: {}", order.getOrderId(), e.getMessage(), e);
+            throw new RuntimeException("Failed to restore batch quantities: " + e.getMessage(), e);
         }
     }
 
@@ -363,9 +486,13 @@ public class CheckoutService {
                 return false;
             }
 
-            boolean locked = stockLockService.lockStockFromMultipleWarehouses(sessionId, allocations);
-            if (!locked) {
-                log.error("Failed to lock stock from multiple warehouses");
+            boolean batchLocked = stockLockService.lockStockFromBatches(sessionId, allocations);
+            boolean generalLocked = stockLockService.lockStockFromMultipleWarehouses(sessionId, allocations);
+            
+            if (!batchLocked || !generalLocked) {
+                log.error("Failed to lock stock - batch locked: {}, general locked: {}", batchLocked, generalLocked);
+                stockLockService.unlockAllBatches(sessionId);
+                stockLockService.releaseStock(sessionId);
                 return false;
             }
 
@@ -374,6 +501,7 @@ public class CheckoutService {
             return true;
         } catch (Exception e) {
             log.error("Error locking stock: {}", e.getMessage(), e);
+            stockLockService.unlockAllBatches(sessionId);
             stockLockService.releaseStock(sessionId);
             return false;
         }
@@ -489,14 +617,28 @@ public class CheckoutService {
     }
 
     public Map<String, Object> getLockedStockInfo(String sessionId) {
-        return stockLockService.getLockedStockInfo(sessionId);
+        Map<String, Object> generalLocks = stockLockService.getLockedStockInfo(sessionId);
+        Map<String, Object> batchLocks = stockLockService.getBatchLockInfo(sessionId);
+        
+        Map<String, Object> combinedInfo = new HashMap<>();
+        combinedInfo.put("sessionId", sessionId);
+        combinedInfo.put("generalLocks", generalLocks);
+        combinedInfo.put("batchLocks", batchLocks);
+        combinedInfo.put("hasAnyLocks", 
+                        (Boolean) generalLocks.get("hasLocks") || (Boolean) batchLocks.get("hasLocks"));
+        
+        return combinedInfo;
+    }
+
+    public void cleanupExpiredBatchLocks() {
+        stockLockService.cleanupExpiredLocks();
     }
 
     private UUID getCurrentUserId() {
         try {
             Authentication auth = SecurityContextHolder.getContext().getAuthentication();
             if (auth == null || !auth.isAuthenticated()) {
-                return null;
+                throw new IllegalStateException("User not authenticated");
             }
 
             Object principal = auth.getPrincipal();
@@ -504,7 +646,9 @@ public class CheckoutService {
             // If principal is CustomUserDetails, extract email and find user
             if (principal instanceof com.ecommerce.ServiceImpl.CustomUserDetails customUserDetails) {
                 String email = customUserDetails.getUsername();
-                return userRepository.findByUserEmail(email).map(com.ecommerce.entity.User::getId).orElse(null);
+                return userRepository.findByUserEmail(email)
+                        .map(com.ecommerce.entity.User::getId)
+                        .orElseThrow(() -> new IllegalStateException("User not found: " + email));
             }
 
             // If principal is User entity
@@ -515,18 +659,24 @@ public class CheckoutService {
             // If principal is UserDetails
             if (principal instanceof UserDetails userDetails) {
                 String email = userDetails.getUsername();
-                return userRepository.findByUserEmail(email).map(com.ecommerce.entity.User::getId).orElse(null);
+                return userRepository.findByUserEmail(email)
+                        .map(com.ecommerce.entity.User::getId)
+                        .orElseThrow(() -> new IllegalStateException("User not found: " + email));
             }
 
             // Fallback to auth name
             String name = auth.getName();
             if (name != null && !name.isBlank()) {
-                return userRepository.findByUserEmail(name).map(com.ecommerce.entity.User::getId).orElse(null);
+                return userRepository.findByUserEmail(name)
+                        .map(com.ecommerce.entity.User::getId)
+                        .orElseThrow(() -> new IllegalStateException("User not found: " + name));
             }
+
+            throw new IllegalStateException("Unable to determine current user");
         } catch (Exception e) {
             log.error("Error getting current user ID: {}", e.getMessage(), e);
+            throw new IllegalStateException("Authentication error: " + e.getMessage());
         }
-        return null;
     }
 
     private void updateDiscountUsage(Order order) {
@@ -631,5 +781,277 @@ public class CheckoutService {
         }
 
         log.info("Discount validation passed for: {}", discount.getDiscountId());
+    }
+
+    private void createOrderItemBatches(Order order, CartItemDTO cartItem,
+            List<FEFOStockAllocationService.BatchAllocation> allocations) {
+
+        OrderItem orderItem = order.getOrderItems().stream()
+                .filter(oi -> matchesCartItem(oi, cartItem))
+                .findFirst()
+                .orElseThrow(() -> new IllegalStateException("OrderItem not found for cart item"));
+
+        for (FEFOStockAllocationService.BatchAllocation allocation : allocations) {
+            OrderItemBatch orderItemBatch = new OrderItemBatch();
+            orderItemBatch.setOrderItem(orderItem);
+            orderItemBatch.setStockBatch(allocation.getStockBatch());
+            orderItemBatch.setWarehouse(allocation.getWarehouse());
+            orderItemBatch.setQuantityUsed(allocation.getQuantityAllocated());
+
+            orderItem.addOrderItemBatch(orderItemBatch);
+            orderItemBatchRepository.save(orderItemBatch);
+        }
+    }
+
+    private boolean matchesCartItem(OrderItem orderItem, CartItemDTO cartItem) {
+        if (cartItem.getVariantId() != null) {
+            return orderItem.getProductVariant() != null &&
+                    orderItem.getProductVariant().getId().equals(cartItem.getVariantId());
+        } else {
+            return orderItem.getProduct() != null &&
+                    orderItem.getProduct().getProductId().equals(cartItem.getProductId());
+        }
+    }
+
+    private OrderResponseDTO convertOrderToResponseDTO(Order order) {
+        OrderInfo info = order.getOrderInfo();
+        OrderAddress addr = order.getOrderAddress();
+        OrderTransaction tx = order.getOrderTransaction();
+
+        OrderResponseDTO dto = new OrderResponseDTO();
+        dto.setId(order.getOrderId() != null ? order.getOrderId().toString() : null);
+        dto.setUserId(
+                order.getUser() != null && order.getUser().getId() != null ? order.getUser().getId().toString() : null);
+        dto.setOrderNumber(order.getOrderCode());
+        dto.setPickupToken(order.getPickupToken());
+        dto.setPickupTokenUsed(order.getPickupTokenUsed());
+        dto.setStatus(order.getOrderStatus() != null ? order.getOrderStatus().name() : null);
+        dto.setCreatedAt(order.getCreatedAt());
+        dto.setUpdatedAt(order.getUpdatedAt());
+
+        // Set order info
+        if (info != null) {
+            dto.setSubtotal(info.getTotalAmount());
+            dto.setTax(info.getTaxAmount());
+            dto.setShipping(info.getShippingCost());
+            dto.setDiscount(info.getDiscountAmount());
+            dto.setTotal(info.getFinalAmount());
+            dto.setNotes(info.getNotes());
+        }
+
+        // Set shipping address
+        if (addr != null) {
+            OrderAddressDTO ad = new OrderAddressDTO();
+            ad.setId(addr.getOrderAddressId() != null ? addr.getOrderAddressId().toString() : null);
+            ad.setStreet(addr.getStreet());
+            ad.setCountry(addr.getCountry());
+            ad.setLatitude(addr.getLatitude());
+            ad.setLongitude(addr.getLongitude());
+            ad.setRoadName(addr.getRoadName());
+
+            if (addr.getRegions() != null && !addr.getRegions().isEmpty()) {
+                String[] regions = addr.getRegions().split(",");
+                if (regions.length >= 2) {
+                    ad.setCity(regions[0].trim());
+                    ad.setState(regions[1].trim());
+                } else if (regions.length == 1) {
+                    ad.setCity(regions[0].trim());
+                    ad.setState("");
+                }
+            }
+            dto.setShippingAddress(ad);
+        }
+
+        // Set customer information
+        if (order.getOrderCustomerInfo() != null) {
+            OrderCustomerInfoDTO customerDto = new OrderCustomerInfoDTO();
+            customerDto.setFirstName(order.getOrderCustomerInfo().getFirstName());
+            customerDto.setLastName(order.getOrderCustomerInfo().getLastName());
+            customerDto.setEmail(order.getOrderCustomerInfo().getEmail());
+            customerDto.setPhoneNumber(order.getOrderCustomerInfo().getPhoneNumber());
+            customerDto.setStreetAddress(order.getOrderCustomerInfo().getStreetAddress());
+            customerDto.setCity(order.getOrderCustomerInfo().getCity());
+            customerDto.setState(order.getOrderCustomerInfo().getState());
+            customerDto.setCountry(order.getOrderCustomerInfo().getCountry());
+            dto.setCustomerInfo(customerDto);
+        }
+
+        // Set payment information
+        if (tx != null) {
+            dto.setPaymentMethod(tx.getPaymentMethod() != null ? tx.getPaymentMethod().name() : null);
+            dto.setPaymentStatus(tx.getStatus() != null ? tx.getStatus().name() : null);
+        }
+
+        // Set order items with product/variant information
+        if (order.getOrderItems() != null && !order.getOrderItems().isEmpty()) {
+            List<OrderItemDTO> itemDTOs = order.getOrderItems().stream().map(this::mapOrderItemToDTO).toList();
+            dto.setItems(itemDTOs);
+        }
+
+        return dto;
+    }
+
+    private OrderItemDTO mapOrderItemToDTO(OrderItem item) {
+        OrderItemDTO dto = new OrderItemDTO();
+        dto.setId(item.getOrderItemId() != null ? item.getOrderItemId().toString() : null);
+        dto.setProductId(item.getProduct() != null ? item.getProduct().getProductId().toString() : null);
+        dto.setVariantId(item.getProductVariant() != null ? item.getProductVariant().getId().toString() : null);
+        dto.setQuantity(item.getQuantity());
+        dto.setPrice(item.getPrice());
+        dto.setTotalPrice(item.getSubtotal());
+
+        // Set product information
+        if (item.getProduct() != null) {
+            SimpleProductDTO productDto = new SimpleProductDTO();
+            productDto.setProductId(item.getProduct().getProductId().toString());
+            productDto.setName(item.getProduct().getProductName());
+            productDto.setDescription(item.getProduct().getDescription());
+            productDto.setPrice(item.getProduct().getDiscountedPrice().doubleValue());
+
+            // Get product images
+            if (item.getProduct().getImages() != null && !item.getProduct().getImages().isEmpty()) {
+                String[] imageUrls = item.getProduct().getImages().stream()
+                        .sorted((img1, img2) -> {
+                            if (img1.isPrimary() && !img2.isPrimary())
+                                return -1;
+                            if (!img1.isPrimary() && img2.isPrimary())
+                                return 1;
+                            int sortOrder1 = img1.getSortOrder() != null ? img1.getSortOrder() : 0;
+                            int sortOrder2 = img2.getSortOrder() != null ? img2.getSortOrder() : 0;
+                            return Integer.compare(sortOrder1, sortOrder2);
+                        })
+                        .map(img -> img.getImageUrl())
+                        .filter(url -> url != null && !url.trim().isEmpty())
+                        .toArray(String[]::new);
+                productDto.setImages(imageUrls);
+            }
+
+            dto.setProduct(productDto);
+        }
+
+        // Set variant information if this is a variant-based item
+        if (item.getProductVariant() != null) {
+            SimpleProductDTO variantDto = new SimpleProductDTO();
+            variantDto.setProductId(item.getProductVariant().getId().toString());
+            variantDto.setName(item.getProductVariant().getVariantName());
+            variantDto.setDescription(item.getProductVariant().getVariantSku());
+            variantDto.setPrice(item.getProductVariant().getDiscountedPrice() != null ? 
+                               item.getProductVariant().getDiscountedPrice().doubleValue() : 
+                               item.getProductVariant().getPrice().doubleValue());
+
+            // Get variant images - if variant has images, use them; otherwise use product images
+            if (item.getProductVariant().getImages() != null && !item.getProductVariant().getImages().isEmpty()) {
+                String[] imageUrls = item.getProductVariant().getImages().stream()
+                        .sorted((img1, img2) -> {
+                            if (img1.isPrimary() && !img2.isPrimary())
+                                return -1;
+                            if (!img1.isPrimary() && img2.isPrimary())
+                                return 1;
+                            int sortOrder1 = img1.getSortOrder() != null ? img1.getSortOrder() : 0;
+                            int sortOrder2 = img2.getSortOrder() != null ? img2.getSortOrder() : 0;
+                            return Integer.compare(sortOrder1, sortOrder2);
+                        })
+                        .map(img -> img.getImageUrl())
+                        .filter(url -> url != null && !url.trim().isEmpty())
+                        .toArray(String[]::new);
+                variantDto.setImages(imageUrls);
+            } else if (item.getProduct() != null && item.getProduct().getImages() != null && !item.getProduct().getImages().isEmpty()) {
+                // Fallback to product images if variant has no images
+                String[] imageUrls = item.getProduct().getImages().stream()
+                        .sorted((img1, img2) -> {
+                            if (img1.isPrimary() && !img2.isPrimary())
+                                return -1;
+                            if (!img1.isPrimary() && img2.isPrimary())
+                                return 1;
+                            int sortOrder1 = img1.getSortOrder() != null ? img1.getSortOrder() : 0;
+                            int sortOrder2 = img2.getSortOrder() != null ? img2.getSortOrder() : 0;
+                            return Integer.compare(sortOrder1, sortOrder2);
+                        })
+                        .map(img -> img.getImageUrl())
+                        .filter(url -> url != null && !url.trim().isEmpty())
+                        .toArray(String[]::new);
+                variantDto.setImages(imageUrls);
+            }
+
+            dto.setVariant(variantDto);
+        }
+
+        return dto;
+    }
+
+    // ===== STOCK VALIDATION METHODS =====
+
+    private void validateCartItems(List<CartItemDTO> items) {
+        for (CartItemDTO item : items) {
+            validateCartItem(item);
+        }
+    }
+
+    private void validateCartItem(CartItemDTO item) {
+        if (item.getVariantId() != null) {
+            validateVariantItem(item);
+        } else if (item.getProductId() != null) {
+            validateProductItem(item);
+        } else {
+            throw new com.ecommerce.Exception.CheckoutValidationException("INVALID_ITEM", "Cart item must have either productId or variantId");
+        }
+    }
+
+    private void validateVariantItem(CartItemDTO item) {
+        ProductVariant variant = variantRepository.findById(item.getVariantId())
+            .orElseThrow(() -> new com.ecommerce.Exception.CheckoutValidationException("VARIANT_NOT_FOUND", "Product variant not found with ID: " + item.getVariantId()));
+
+        Product product = variant.getProduct();
+        if (product == null) {
+            throw new com.ecommerce.Exception.CheckoutValidationException("PRODUCT_NOT_FOUND", "Product not found for variant ID: " + item.getVariantId());
+        }
+
+        if (!product.isActive()) {
+            throw new com.ecommerce.Exception.CheckoutValidationException("PRODUCT_INACTIVE", "Product is not active: " + product.getProductName());
+        }
+
+        if (!Boolean.TRUE.equals(product.getDisplayToCustomers())) {
+            throw new com.ecommerce.Exception.CheckoutValidationException("PRODUCT_NOT_AVAILABLE", "Product is not available for customers: " + product.getProductName());
+        }
+
+        if (!variant.isActive()) {
+            throw new com.ecommerce.Exception.CheckoutValidationException("VARIANT_INACTIVE", "Product variant is not active: " + variant.getVariantSku());
+        }
+
+        if (!productAvailabilityService.isVariantAvailableForCustomers(variant)) {
+            int totalStock = productAvailabilityService.getVariantTotalStock(variant);
+            String reason = totalStock <= 0 ? "out of stock" : "not available for customers";
+            throw new com.ecommerce.Exception.CheckoutValidationException("VARIANT_NOT_AVAILABLE", 
+                "Product variant is not available: " + variant.getVariantSku() + " (" + reason + ", stock: " + totalStock + ")");
+        }
+
+        int availableStock = productAvailabilityService.getVariantTotalStock(variant);
+        if (availableStock < item.getQuantity()) {
+            throw new com.ecommerce.Exception.CheckoutValidationException("INSUFFICIENT_STOCK", "Insufficient stock for variant " + variant.getVariantSku() + 
+                ". Available: " + availableStock + ", Requested: " + item.getQuantity());
+        }
+    }
+
+    private void validateProductItem(CartItemDTO item) {
+        Product product = productRepository.findById(item.getProductId())
+            .orElseThrow(() -> new com.ecommerce.Exception.CheckoutValidationException("PRODUCT_NOT_FOUND", "Product not found with ID: " + item.getProductId()));
+
+        if (!product.isActive()) {
+            throw new com.ecommerce.Exception.CheckoutValidationException("PRODUCT_INACTIVE", "Product is not active: " + product.getProductName());
+        }
+
+        if (!Boolean.TRUE.equals(product.getDisplayToCustomers())) {
+            throw new com.ecommerce.Exception.CheckoutValidationException("PRODUCT_NOT_AVAILABLE", "Product is not available for customers: " + product.getProductName());
+        }
+
+        if (!productAvailabilityService.isProductAvailableForCustomers(product)) {
+            throw new com.ecommerce.Exception.CheckoutValidationException("PRODUCT_NOT_AVAILABLE", "Product is not available: " + product.getProductName());
+        }
+
+        int availableStock = productAvailabilityService.getTotalAvailableStock(product);
+        if (availableStock < item.getQuantity()) {
+            throw new com.ecommerce.Exception.CheckoutValidationException("INSUFFICIENT_STOCK", "Insufficient stock for product " + product.getProductName() + 
+                ". Available: " + availableStock + ", Requested: " + item.getQuantity());
+        }
     }
 }

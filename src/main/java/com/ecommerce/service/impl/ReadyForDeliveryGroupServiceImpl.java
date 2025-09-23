@@ -576,13 +576,11 @@ public class ReadyForDeliveryGroupServiceImpl implements ReadyForDeliveryGroupSe
             shippingAddress.setStreetAddress(order.getOrderAddress().getStreet());
             shippingAddress.setCity(order.getOrderAddress().getRegions());
             shippingAddress.setState(order.getOrderAddress().getRegions());
-            shippingAddress.setPostalCode(order.getOrderAddress().getZipcode());
             shippingAddress.setCountry(order.getOrderAddress().getCountry());
         } else {
             shippingAddress.setStreetAddress("N/A");
             shippingAddress.setCity("N/A");
             shippingAddress.setState("N/A");
-            shippingAddress.setPostalCode("N/A");
             shippingAddress.setCountry("N/A");
         }
 
@@ -794,7 +792,6 @@ public class ReadyForDeliveryGroupServiceImpl implements ReadyForDeliveryGroupSe
             content.append("<p><strong>Delivery Address:</strong><br>");
             content.append(order.getOrderAddress().getStreet()).append("<br>");
             content.append(order.getOrderAddress().getRegions()).append(" ");
-            content.append(order.getOrderAddress().getZipcode()).append("<br>");
             content.append(order.getOrderAddress().getCountry()).append("</p>");
         }
 

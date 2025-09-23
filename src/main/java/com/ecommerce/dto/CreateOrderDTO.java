@@ -66,10 +66,7 @@ public class CreateOrderDTO {
 
         @NotNull(message = "State is required")
         private String state;
-
-        @NotNull(message = "Zip code is required")
-        private String zipCode;
-
+        
         @NotNull(message = "Country is required")
         private String country;
 

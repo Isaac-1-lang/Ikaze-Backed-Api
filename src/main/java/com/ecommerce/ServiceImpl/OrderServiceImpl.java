@@ -174,7 +174,6 @@ public class OrderServiceImpl implements OrderService {
         OrderAddress orderAddress = new OrderAddress();
         orderAddress.setOrder(order);
         orderAddress.setStreet(createOrderDTO.getShippingAddress().getStreet());
-        orderAddress.setZipcode(createOrderDTO.getShippingAddress().getZipCode());
         orderAddress.setCountry(createOrderDTO.getShippingAddress().getCountry());
 
         // Store city and state in regions field (comma-separated)
@@ -541,7 +540,6 @@ public class OrderServiceImpl implements OrderService {
                 .street(addr.getStreet())
                 .city(city)
                 .state(state)
-                .zipCode(addr.getZipcode())
                 .country(addr.getCountry())
                 .phone("") // Will be set from customer info
                 .build();
@@ -608,7 +606,6 @@ public class OrderServiceImpl implements OrderService {
                         .street(customerInfo.getStreetAddress())
                         .city(customerInfo.getCity())
                         .state(customerInfo.getState())
-                        .zipCode(customerInfo.getPostalCode())
                         .country(customerInfo.getCountry())
                         .phone(customerInfo.getPhoneNumber())
                         .build();
@@ -635,7 +632,6 @@ public class OrderServiceImpl implements OrderService {
                 .street(addr.getStreet())
                 .city(city)
                 .state(state)
-                .zipCode(addr.getZipcode())
                 .country(addr.getCountry())
                 .phone(phone)
                 .build();
@@ -731,7 +727,6 @@ public class OrderServiceImpl implements OrderService {
                 .street(addr.getStreet())
                 .city(city)
                 .state(state)
-                .zipCode(addr.getZipcode())
                 .country(addr.getCountry())
                 .build();
     }

@@ -504,7 +504,6 @@ public class OrderController {
             OrderAddressDTO ad = new OrderAddressDTO();
             ad.setId(addr.getOrderAddressId() != null ? addr.getOrderAddressId().toString() : null);
             ad.setStreet(addr.getStreet());
-            ad.setZipCode(addr.getZipcode());
             ad.setCountry(addr.getCountry());
 
             if (addr.getRegions() != null && !addr.getRegions().isEmpty()) {

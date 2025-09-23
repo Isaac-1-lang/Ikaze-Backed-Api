@@ -30,10 +30,15 @@ public class OrderAddress {
     private String country;
 
     @Column(name = "regions", nullable = false)
-    private String regions; // Comma-separated list of regions (regionA-regionB)
+    private String regions; 
+    @Column(name = "latitude")
+    private Double latitude;
 
-    @Column(name = "zipcode", nullable = false)
-    private String zipcode;
+    @Column(name = "longitude")
+    private Double longitude;
+
+    @Column(name = "road_name")
+    private String roadName;
 
     @Column(name = "created_at")
     private LocalDateTime createdAt;

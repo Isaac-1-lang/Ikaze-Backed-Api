@@ -12,6 +12,6 @@ public class CheckoutVerificationResult {
     private String customerEmail;
     private String receiptUrl;
     private String paymentIntentId;
-    private String sessionId;
     private boolean updated;
+    private OrderResponseDTO order;
 }
