@@ -16,6 +16,12 @@ import java.util.UUID;
 public interface OrderRepository extends JpaRepository<Order, Long> {
 
         /**
+         * Calculate total quantity of items in an order without loading collections
+         */
+        @Query("SELECT COALESCE(SUM(oi.quantity), 0) FROM OrderItem oi WHERE oi.order.orderId = :orderId")
+        int getTotalQuantityByOrderId(@Param("orderId") Long orderId);
+
+        /**
          * Find orders by user ID
          */
         List<Order> findByUser_Id(UUID userId);

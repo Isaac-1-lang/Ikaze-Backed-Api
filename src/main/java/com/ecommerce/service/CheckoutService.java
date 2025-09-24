@@ -347,7 +347,8 @@ public class CheckoutService {
 
     @Transactional
     public CheckoutVerificationResult verifyCheckoutSession(String sessionId) throws Exception {
-        OrderTransaction tx = transactionRepository.findByStripeSessionId(sessionId)
+        // Use the new method that avoids loading collections initially
+        OrderTransaction tx = transactionRepository.findByStripeSessionIdWithOrder(sessionId)
                 .orElseThrow(() -> new EntityNotFoundException("No matching payment record"));
 
         Session session = stripeService.retrieveSession(sessionId);
@@ -359,6 +360,8 @@ public class CheckoutService {
         if (!"paid".equalsIgnoreCase(session.getPaymentStatus())) {
             Order order = tx.getOrder();
             orderRepository.delete(order);
+            // Use enhanced stock locking cleanup
+            enhancedStockLockService.unlockAllBatches(sessionId);
             stockLockService.releaseStock(sessionId);
             log.info("Payment failed, order deleted: {}", order.getOrderId());
             throw new IllegalStateException("Payment not completed or session expired");
@@ -376,68 +379,30 @@ public class CheckoutService {
         transactionRepository.save(tx);
         log.info("Transaction updated to completed status");
 
+        // Confirm the enhanced stock locks (delete lock records, keep quantities reduced)
+        enhancedStockLockService.confirmBatchLocks(sessionId);
+        
         Order order = tx.getOrder();
         order.setOrderStatus(Order.OrderStatus.PROCESSING);
-        for (OrderItem item : order.getOrderItems()) {
-            if (item.isVariantBased()) {
-                ProductVariant variant = variantRepository.findByIdForUpdate(item.getProductVariant().getId())
-                        .orElseThrow(() -> new EntityNotFoundException("Variant not found"));
-                int totalStock = variant.getTotalStockQuantity();
-                if (totalStock < item.getQuantity()) {
-                    throw new IllegalStateException("Insufficient stock for variant " + variant.getId());
-                }
-                log.info("Stock check passed for variant {}: available {}, requested {}",
-                        variant.getId(), totalStock, item.getQuantity());
-            } else {
-                Product product = productRepository.findById(item.getProduct().getProductId())
-                        .orElseThrow(() -> new EntityNotFoundException("Product not found"));
-                int totalStock = product.getTotalStockQuantity();
-                if (totalStock < item.getQuantity()) {
-                    throw new IllegalStateException("Insufficient stock for product " + product.getProductId());
-                }
-                log.info("Stock check passed for product {}: available {}, requested {}",
-                        product.getProductId(), totalStock, item.getQuantity());
-            }
-        }
         orderRepository.save(order);
         
-        // Step 5: Confirm batch locks and commit FEFO allocation (reduce actual batch quantities)
-        stockLockService.confirmBatchLocks(sessionId);
+        log.info("Payment verification completed successfully for order: {}", order.getOrderId());
+        
+        // Also confirm legacy stock locks for backward compatibility
         stockLockService.confirmStock(sessionId);
         
-        // Also check for temporary session IDs that might have been used for locking
         String tempSessionId = "temp_" + order.getOrderId().toString();
         String tempGuestSessionId = "temp_guest_" + order.getOrderId().toString();
         
-        // Confirm any temporary locks as well
         stockLockService.confirmBatchLocks(tempSessionId);
         stockLockService.confirmStock(tempSessionId);
         stockLockService.confirmBatchLocks(tempGuestSessionId);
         stockLockService.confirmStock(tempGuestSessionId);
-        
-        // Step 6: Commit FEFO allocation - this actually reduces the batch quantities
-        for (OrderItem orderItem : order.getOrderItems()) {
-            List<FEFOStockAllocationService.BatchAllocation> itemAllocations = new ArrayList<>();
-            for (OrderItemBatch orderItemBatch : orderItem.getOrderItemBatches()) {
-                FEFOStockAllocationService.BatchAllocation allocation = new FEFOStockAllocationService.BatchAllocation(
-                    orderItemBatch.getStockBatch(),
-                    orderItemBatch.getWarehouse(),
-                    orderItemBatch.getQuantityUsed()
-                );
-                itemAllocations.add(allocation);
-            }
-            if (!itemAllocations.isEmpty()) {
-                fefoService.commitAllocation(itemAllocations);
-                log.info("Committed FEFO allocation for order item: {} batches", itemAllocations.size());
-            }
-        }
 
         updateDiscountUsage(order);
 
         if (order.getUser() != null) {
-            int totalProductCount = order.getOrderItems().stream()
-                    .mapToInt(OrderItem::getQuantity)
-                    .sum();
+            int totalProductCount = orderRepository.getTotalQuantityByOrderId(order.getOrderId());
             rewardService.checkRewardableOnOrderAndReward(order.getUser().getId(), order.getOrderId(),
                     totalProductCount, order.getOrderInfo().getTotalAmount());
         }
