@@ -1,6 +1,7 @@
 package com.ecommerce.repository;
 
 import com.ecommerce.entity.Order;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -171,5 +172,38 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
                         "LEFT JOIN FETCH o.orderTransaction tx " +
                         "WHERE o.orderStatus = :status")
         List<Order> findByOrderStatusWithDetailsForAdmin(@Param("status") Order.OrderStatus status);
+
+        /**
+         * Find abandoned pending orders older than the specified cutoff time
+         * These are orders with PENDING status that were created before the cutoff time
+         */
+        @Query("SELECT o FROM Order o " +
+               "LEFT JOIN FETCH o.orderTransaction tx " +
+               "LEFT JOIN FETCH o.orderItems oi " +
+               "LEFT JOIN FETCH oi.orderItemBatches oib " +
+               "LEFT JOIN FETCH oib.stockBatch sb " +
+               "LEFT JOIN FETCH oib.warehouse w " +
+               "WHERE o.orderStatus = 'PENDING' " +
+               "AND o.createdAt < :cutoffTime " +
+               "ORDER BY o.createdAt ASC")
+        List<Order> findAbandonedPendingOrders(@Param("cutoffTime") LocalDateTime cutoffTime, 
+                                             Pageable pageable);
+
+        /**
+         * Count abandoned pending orders older than the specified cutoff time
+         */
+        @Query("SELECT COUNT(o) FROM Order o " +
+               "WHERE o.orderStatus = 'PENDING' " +
+               "AND o.createdAt < :cutoffTime")
+        long countAbandonedPendingOrders(@Param("cutoffTime") LocalDateTime cutoffTime);
+
+        /**
+         * Check if a specific order is considered abandoned
+         */
+        @Query("SELECT COUNT(o) > 0 FROM Order o " +
+               "WHERE o.orderId = :orderId " +
+               "AND o.orderStatus = 'PENDING' " +
+               "AND o.createdAt < :cutoffTime")
+        boolean isOrderAbandoned(@Param("orderId") Long orderId, @Param("cutoffTime") LocalDateTime cutoffTime);
 
 }

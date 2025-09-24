@@ -37,4 +37,7 @@ public interface StockBatchLockRepository extends JpaRepository<StockBatchLock, 
 
     @Query("SELECT COALESCE(SUM(sbl.lockedQuantity), 0) FROM StockBatchLock sbl WHERE sbl.stockBatch.id = :batchId")
     Integer getTotalLockedQuantityForBatch(@Param("batchId") Long batchId);
+
+    @Query("SELECT sbl FROM StockBatchLock sbl WHERE sbl.expiresAt < :cutoffTime")
+    List<StockBatchLock> findExpiredLocks(@Param("cutoffTime") LocalDateTime cutoffTime);
 }

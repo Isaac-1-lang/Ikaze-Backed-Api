@@ -1,0 +1,29 @@
+# Abandoned Order Cleanup Configuration
+app:
+  abandoned-order-cleanup:
+    # Enable/disable the cleanup system
+    enabled: true
+    
+    # Minutes after which a pending order is considered abandoned
+    expiry-minutes: 30
+    
+    # Maximum orders to process in one batch
+    batch-size: 50
+    
+    # Cron expression for cleanup schedule (every 10 minutes)
+    cleanup-schedule: "0 0/10 * * * *"
+    
+    # Enable detailed logging
+    detailed-logging: true
+    
+    # Maximum retry attempts for failed cleanups
+    max-retry-attempts: 3
+    
+    # Send notifications on cleanup failures
+    notify-on-failure: false
+    
+    # Email for failure notifications (if enabled)
+    failure-notification-email: admin@shopsphere.com
+    
+    # Dry run mode (log what would be cleaned without actually doing it)
+    dry-run: false

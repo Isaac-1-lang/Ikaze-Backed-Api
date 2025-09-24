@@ -1,0 +1,674 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Order Confirmation - ShopSphere</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+        
+        body {
+            font-family: 'Inter', 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            line-height: 1.6;
+            color: #1f2937;
+            max-width: 650px;
+            margin: 0 auto;
+            padding: 20px;
+            background: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%);
+        }
+        
+        .email-container {
+            background-color: #ffffff;
+            border-radius: 16px;
+            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+            overflow: hidden;
+            border: 1px solid #e5e7eb;
+        }
+        
+        .header {
+            background: linear-gradient(135deg, #232f3e 0%, #37475a 50%, #ff9900 100%);
+            color: white;
+            padding: 40px 30px;
+            text-align: center;
+            position: relative;
+        }
+        
+        .header::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><defs><pattern id="grain" width="100" height="100" patternUnits="userSpaceOnUse"><circle cx="25" cy="25" r="1" fill="rgba(255,255,255,0.03)"/><circle cx="75" cy="75" r="1" fill="rgba(255,255,255,0.03)"/><circle cx="75" cy="25" r="1" fill="rgba(255,255,255,0.03)"/><circle cx="25" cy="75" r="1" fill="rgba(255,255,255,0.03)"/></pattern></defs><rect width="100" height="100" fill="url(%23grain)"/></svg>');
+            opacity: 0.5;
+        }
+        
+        .header-content {
+            position: relative;
+            z-index: 1;
+        }
+        
+        .header h1 {
+            margin: 0;
+            font-size: 32px;
+            font-weight: 700;
+            letter-spacing: -0.02em;
+        }
+        
+        .header .brand {
+            color: #ff9900;
+            font-weight: 700;
+        }
+        
+        .header p {
+            margin: 15px 0 0 0;
+            font-size: 18px;
+            opacity: 0.9;
+            font-weight: 300;
+        }
+        
+        .success-badge {
+            display: inline-block;
+            background: rgba(16, 185, 129, 0.1);
+            color: #10b981;
+            padding: 8px 16px;
+            border-radius: 50px;
+            font-size: 14px;
+            font-weight: 600;
+            margin-top: 15px;
+            border: 2px solid rgba(16, 185, 129, 0.2);
+        }
+        
+        .content {
+            padding: 40px 30px;
+        }
+        
+        .greeting {
+            font-size: 18px;
+            margin-bottom: 30px;
+            color: #374151;
+            font-weight: 400;
+        }
+        
+        .greeting strong {
+            color: #111827;
+            font-weight: 600;
+        }
+        
+        .order-details {
+            background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
+            border: 2px solid #e2e8f0;
+            border-radius: 12px;
+            padding: 25px;
+            margin: 25px 0;
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .order-details::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 4px;
+            height: 100%;
+            background: linear-gradient(135deg, #3b82f6, #8b5cf6);
+        }
+        
+        .section-title {
+            margin: 0 0 20px 0;
+            color: #1e293b;
+            font-size: 20px;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .section-icon {
+            width: 24px;
+            height: 24px;
+            background: linear-gradient(135deg, #3b82f6, #8b5cf6);
+            border-radius: 6px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+        }
+        
+        .section-icon::before {
+            content: '';
+            width: 12px;
+            height: 12px;
+            background: white;
+            border-radius: 2px;
+        }
+        
+        .detail-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 12px;
+            padding: 12px 0;
+            border-bottom: 1px solid #e5e7eb;
+        }
+        
+        .detail-row:last-child {
+            border-bottom: none;
+            margin-bottom: 0;
+        }
+        
+        .detail-label {
+            font-weight: 500;
+            color: #6b7280;
+            font-size: 15px;
+        }
+        
+        .detail-value {
+            color: #111827;
+            font-weight: 600;
+            font-size: 15px;
+        }
+        
+        .status-badge {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 50px;
+            font-size: 12px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+        
+        .status-confirmed {
+            background: rgba(16, 185, 129, 0.1);
+            color: #065f46;
+            border: 1px solid rgba(16, 185, 129, 0.3);
+        }
+        
+        .order-items {
+            margin: 30px 0;
+        }
+        
+        .item {
+            background: white;
+            border: 1px solid #e5e7eb;
+            border-radius: 10px;
+            padding: 20px;
+            margin-bottom: 15px;
+            transition: all 0.2s ease;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+        }
+        
+        .item:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+        }
+        
+        .item:last-child {
+            margin-bottom: 0;
+        }
+        
+        .item-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: start;
+            margin-bottom: 10px;
+        }
+        
+        .item-name {
+            font-weight: 600;
+            color: #111827;
+            font-size: 16px;
+            flex: 1;
+            margin-right: 15px;
+        }
+        
+        .item-price {
+            font-weight: 700;
+            color: #059669;
+            font-size: 16px;
+            white-space: nowrap;
+        }
+        
+        .item-details {
+            font-size: 14px;
+            color: #6b7280;
+            margin-bottom: 8px;
+        }
+        
+        .variant-tag {
+            display: inline-block;
+            background: #f3f4f6;
+            color: #374151;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: 500;
+        }
+        
+        .quantity-price {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-size: 14px;
+            color: #6b7280;
+        }
+        
+        .totals {
+            background: linear-gradient(135deg, #fefefe 0%, #f8fafc 100%);
+            border: 2px solid #e5e7eb;
+            border-radius: 12px;
+            padding: 25px;
+            margin: 30px 0;
+            position: relative;
+        }
+        
+        .totals::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            right: 0;
+            width: 4px;
+            height: 100%;
+            background: linear-gradient(135deg, #10b981, #059669);
+        }
+        
+        .total-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 12px;
+            padding: 8px 0;
+            font-size: 15px;
+        }
+        
+        .total-row:last-child {
+            margin-bottom: 0;
+        }
+        
+        .total-row.final {
+            border-top: 2px solid #e5e7eb;
+            padding-top: 20px;
+            margin-top: 20px;
+            font-weight: 700;
+            font-size: 20px;
+            color: #059669;
+        }
+        
+        .pickup-section {
+            background: linear-gradient(135deg, #059669 0%, #047857 100%);
+            color: white;
+            border-radius: 12px;
+            padding: 30px;
+            text-align: center;
+            margin: 30px 0;
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .pickup-section::before {
+            content: '';
+            position: absolute;
+            top: -50%;
+            left: -50%;
+            width: 200%;
+            height: 200%;
+            background: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 60 60"><defs><pattern id="pickup-pattern" width="60" height="60" patternUnits="userSpaceOnUse"><circle cx="30" cy="30" r="1.5" fill="rgba(255,255,255,0.1)"/></pattern></defs><rect width="60" height="60" fill="url(%23pickup-pattern)"/></svg>');
+            animation: float 20s linear infinite;
+        }
+        
+        @keyframes float {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        .pickup-content {
+            position: relative;
+            z-index: 1;
+        }
+        
+        .pickup-section h3 {
+            margin: 0 0 15px 0;
+            font-size: 22px;
+            font-weight: 600;
+        }
+        
+        .pickup-timeline {
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 8px;
+            padding: 15px;
+            margin: 20px 0;
+            backdrop-filter: blur(10px);
+        }
+        
+        .pickup-token {
+            background: rgba(255, 255, 255, 0.15);
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            border-radius: 8px;
+            padding: 15px;
+            font-family: 'Courier New', monospace;
+            font-size: 16px;
+            font-weight: 700;
+            margin: 20px 0;
+            letter-spacing: 1px;
+            backdrop-filter: blur(10px);
+        }
+        
+        .cta-section {
+            text-align: center;
+            margin: 40px 0;
+        }
+        
+        .cta-button {
+            display: inline-block;
+            background: linear-gradient(135deg, #3b82f6 0%, #8b5cf6 100%);
+            color: white;
+            text-decoration: none;
+            padding: 15px 35px;
+            border-radius: 8px;
+            font-weight: 600;
+            font-size: 16px;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 15px rgba(59, 130, 246, 0.4);
+        }
+        
+        .cta-button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 25px rgba(59, 130, 246, 0.6);
+        }
+        
+        .important-notice {
+            margin: 30px 0;
+            padding: 20px;
+            background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);
+            border-radius: 10px;
+            border-left: 4px solid #f59e0b;
+            position: relative;
+        }
+        
+        .notice-icon {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            width: 20px;
+            height: 20px;
+            background: #f59e0b;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: bold;
+            font-size: 12px;
+        }
+        
+        .notice-content {
+            margin-left: 35px;
+        }
+        
+        .notice-title {
+            color: #92400e;
+            margin: 0 0 10px 0;
+            font-weight: 600;
+            font-size: 16px;
+        }
+        
+        .notice-text {
+            color: #92400e;
+            margin: 0;
+            font-size: 14px;
+            line-height: 1.5;
+        }
+        
+        .footer {
+            background: linear-gradient(135deg, #1f2937 0%, #374151 100%);
+            padding: 40px 30px;
+            text-align: center;
+            color: #d1d5db;
+        }
+        
+        .footer h4 {
+            color: #ffffff;
+            margin: 0 0 20px 0;
+            font-size: 20px;
+            font-weight: 600;
+        }
+        
+        .footer p {
+            margin: 8px 0;
+            font-size: 15px;
+        }
+        
+        .footer strong {
+            color: #ffffff;
+        }
+        
+        .contact-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+            margin: 25px 0;
+        }
+        
+        .contact-item {
+            background: rgba(255, 255, 255, 0.05);
+            padding: 15px;
+            border-radius: 8px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        
+        .social-links {
+            margin: 25px 0;
+            padding: 20px 0;
+            border-top: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        
+        .social-links a {
+            color: #60a5fa;
+            text-decoration: none;
+            margin: 0 15px;
+            font-weight: 500;
+            transition: color 0.2s ease;
+        }
+        
+        .social-links a:hover {
+            color: #93c5fd;
+        }
+        
+        .footer-brand {
+            margin-top: 25px;
+            padding-top: 20px;
+            border-top: 1px solid rgba(255, 255, 255, 0.1);
+            font-size: 13px;
+            color: #9ca3af;
+            font-weight: 300;
+        }
+        
+        @media (max-width: 600px) {
+            body {
+                padding: 15px;
+            }
+            .header, .content, .footer {
+                padding: 25px 20px;
+            }
+            .detail-row, .total-row, .item-header {
+                flex-direction: column;
+                gap: 8px;
+                align-items: flex-start;
+            }
+            .detail-row {
+                padding: 10px 0;
+            }
+            .contact-grid {
+                grid-template-columns: 1fr;
+                gap: 15px;
+            }
+            .social-links a {
+                display: inline-block;
+                margin: 5px 10px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="email-container">
+        <!-- Header -->
+        <div class="header">
+            <div class="header-content">
+                <h1>Order <span class="brand">Confirmed</span>!</h1>
+                <p>Your purchase is on its way</p>
+                <div class="success-badge">✓ Payment Successful</div>
+            </div>
+        </div>
+
+        <!-- Content -->
+        <div class="content">
+            <div class="greeting">
+                <p>Hello <strong th:text="${customerName}">Customer</strong>,</p>
+                <p>We're thrilled to confirm that your order has been successfully placed and payment processed. Your items are now being prepared for pickup!</p>
+            </div>
+
+            <!-- Order Details -->
+            <div class="order-details">
+                <h3 class="section-title">
+                    <div class="section-icon"></div>
+                    Order Summary
+                </h3>
+                <div class="detail-row">
+                    <span class="detail-label">Order Number</span>
+                    <span class="detail-value" th:text="${orderNumber}">ORD-123456</span>
+                </div>
+                <div class="detail-row">
+                    <span class="detail-label">Order Date</span>
+                    <span class="detail-value" th:text="${orderDate}">January 15, 2025</span>
+                </div>
+                <div class="detail-row">
+                    <span class="detail-label">Status</span>
+                    <span class="detail-value">
+                        <span class="status-badge status-confirmed" th:text="${orderStatus}">CONFIRMED</span>
+                    </span>
+                </div>
+                <div class="detail-row">
+                    <span class="detail-label">Email Address</span>
+                    <span class="detail-value" th:text="${customerEmail}">customer@example.com</span>
+                </div>
+            </div>
+
+            <!-- Order Items -->
+            <div class="order-items">
+                <h3 class="section-title">
+                    <div class="section-icon"></div>
+                    Your Items
+                </h3>
+                <div th:each="item : ${orderItems}" class="item">
+                    <div class="item-header">
+                        <div class="item-name" th:text="${item.productName}">Product Name</div>
+                        <div class="item-price">$<span th:text="${item.totalPrice}">99.99</span></div>
+                    </div>
+                    <div class="item-details" th:if="${item.variantName}">
+                        <span class="variant-tag" th:text="${item.variantName}">Variant</span>
+                    </div>
+                    <div class="quantity-price">
+                        <span>Quantity: <strong th:text="${item.quantity}">1</strong></span>
+                        <span>•</span>
+                        <span>Unit Price: <strong>$<span th:text="${item.unitPrice}">99.99</span></strong></span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Order Totals -->
+            <div class="totals">
+                <h3 class="section-title">
+                    <div class="section-icon"></div>
+                    Order Total
+                </h3>
+                <div class="total-row">
+                    <span>Subtotal</span>
+                    <span th:text="${subtotal}">$99.99</span>
+                </div>
+                <div class="total-row" th:if="${shippingCost != null and shippingCost != '$0.00'}">
+                    <span>Shipping & Handling</span>
+                    <span th:text="${shippingCost}">$9.99</span>
+                </div>
+                <div class="total-row" th:if="${taxAmount != null and taxAmount != '$0.00'}">
+                    <span>Tax</span>
+                    <span th:text="${taxAmount}">$8.00</span>
+                </div>
+                <div class="total-row" th:if="${discountAmount != null and discountAmount != '$0.00'}">
+                    <span>Discount Applied</span>
+                    <span style="color: #059669;" th:text="'-' + ${discountAmount}">-$10.00</span>
+                </div>
+                <div class="total-row final">
+                    <span>Total Paid</span>
+                    <span th:text="${totalAmount}">$107.98</span>
+                </div>
+            </div>
+
+            <!-- Pickup Information -->
+            <div class="pickup-section">
+                <div class="pickup-content">
+                    <h3>Ready for Pickup</h3>
+                    <div class="pickup-timeline">
+                        <p><strong>Estimated Ready Time:</strong> 3-5 business days</p>
+                        <p>We'll notify you when your order is ready for collection</p>
+                    </div>
+                    <p><strong>Your Pickup Reference:</strong></p>
+                    <div class="pickup-token" th:text="${pickupToken}">PICKUP-ORD-123456-1234567890</div>
+                    <p><small>Present this reference code or scan the QR code from your attached PDF invoice when collecting your order.</small></p>
+                </div>
+            </div>
+
+            <!-- Call to Action -->
+            <div class="cta-section">
+                <a th:href="${trackingUrl}" class="cta-button">Track Your Order Status</a>
+            </div>
+
+            <!-- Important Notice -->
+            <div class="important-notice">
+                <div class="notice-icon">!</div>
+                <div class="notice-content">
+                    <h4 class="notice-title">Important Information</h4>
+                    <p class="notice-text">
+                        Your detailed invoice is attached as a PDF document. Please save this for your records and bring it with you during pickup for faster service.
+                    </p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Footer -->
+        <div class="footer">
+            <h4>Customer Support</h4>
+            
+            <div class="contact-grid">
+                <div class="contact-item">
+                    <strong>Email Support</strong><br>
+                    support@shopsphere.com
+                </div>
+                <div class="contact-item">
+                    <strong>Phone</strong><br>
+                    +250 788 123 456
+                </div>
+                <div class="contact-item">
+                    <strong>Business Hours</strong><br>
+                    Monday - Friday, 9AM - 6PM
+                </div>
+            </div>
+            
+            <div class="social-links">
+                <a href="#" th:href="${baseUrl}">Website</a>
+                <a href="#">Return Policy</a>
+                <a href="#">Track Order</a>
+                <a href="#">FAQ</a>
+                <a href="#">Contact Us</a>
+            </div>
+            
+            <div class="footer-brand">
+                <p>Thank you for choosing ShopSphere – Your trusted shopping partner.</p>
+                <p>© 2025 ShopSphere. All rights reserved.</p>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

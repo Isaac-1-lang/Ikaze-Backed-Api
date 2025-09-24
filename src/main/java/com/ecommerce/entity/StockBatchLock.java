@@ -1,17 +1,15 @@
 package com.ecommerce.entity;
 
 import jakarta.persistence.*;
-import lombok.AllArgsConstructor;
-import lombok.Data;
-import lombok.NoArgsConstructor;
+import lombok.Getter;
+import lombok.Setter;
 
 import java.time.LocalDateTime;
 
 @Entity
 @Table(name = "stock_batch_locks")
-@Data
-@NoArgsConstructor
-@AllArgsConstructor
+@Getter
+@Setter
 public class StockBatchLock {
 
     @Id
@@ -51,6 +49,19 @@ public class StockBatchLock {
 
     @Column(name = "expires_at")
     private LocalDateTime expiresAt;
+
+    // Constructors
+    public StockBatchLock() {
+    }
+
+    public StockBatchLock(String sessionId, StockBatch stockBatch, Integer lockedQuantity, 
+                         Long warehouseId, String warehouseName) {
+        this.sessionId = sessionId;
+        this.stockBatch = stockBatch;
+        this.lockedQuantity = lockedQuantity;
+        this.warehouseId = warehouseId;
+        this.warehouseName = warehouseName;
+    }
 
     @PrePersist
     protected void onCreate() {
