@@ -47,8 +47,43 @@ public class AdminOrderDTO {
         private SimpleProductDTO product;
         private Integer quantity;
         private BigDecimal price;
+        private BigDecimal originalPrice; // Price before discount
         private BigDecimal totalPrice;
+        private BigDecimal discountPercentage;
+        private String discountName;
+        private Boolean hasDiscount;
         private Integer availableStock;
+        private List<AdminOrderWarehouseDTO> warehouses; // Warehouses where this item will be sourced from
+    }
+
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class AdminOrderWarehouseDTO {
+        private String warehouseId;
+        private String warehouseName;
+        private String warehouseLocation;
+        private String warehouseAddress;
+        private String warehousePhone;
+        private String warehouseManager;
+        private Integer quantityFromWarehouse;
+        private List<AdminOrderBatchDTO> batches; // Batches from this warehouse
+    }
+
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class AdminOrderBatchDTO {
+        private String batchId;
+        private String batchNumber;
+        private Integer quantityFromBatch;
+        private LocalDateTime manufactureDate;
+        private LocalDateTime expiryDate;
+        private String batchStatus;
+        private String supplierName;
+        private BigDecimal costPrice;
     }
 
     @Data
@@ -62,6 +97,8 @@ public class AdminOrderDTO {
         private String state;
         private String country;
         private String phone;
+        private Double latitude;
+        private Double longitude;
     }
 
     @Data

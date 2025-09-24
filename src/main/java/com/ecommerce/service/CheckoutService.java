@@ -40,6 +40,7 @@ import com.ecommerce.repository.ProductVariantRepository;
 import com.ecommerce.repository.StockBatchRepository;
 import com.ecommerce.repository.UserRepository;
 import com.ecommerce.repository.DiscountRepository;
+import com.ecommerce.service.CartService;
 import com.stripe.model.PaymentIntent;
 import com.stripe.model.checkout.Session;
 import org.springframework.security.core.Authentication;
@@ -74,6 +75,7 @@ public class CheckoutService {
     private final StockBatchRepository stockBatchRepository;
     private final OrderEmailService orderEmailService;
     private final EnhancedStockLockService enhancedStockLockService;
+    private final CartService cartService;
 
     public String createCheckoutSession(CheckoutRequest req) throws Exception {
         log.info("Creating checkout session for authenticated user");
@@ -204,7 +206,6 @@ public class CheckoutService {
         
         tx = saved.getOrderTransaction();
         if (tx.getStripeSessionId() != null && !tx.getStripeSessionId().equals(sessionId)) {
-            // Transfer locks to the actual Stripe session ID
             transferBatchLocks(sessionId, tx.getStripeSessionId());
         }
         
@@ -415,6 +416,15 @@ public class CheckoutService {
 
         OrderResponseDTO orderResponse = convertOrderToResponseDTO(order);
 
+        if (order.getUser() != null) {
+            try {
+                cartService.clearCart(order.getUser().getId());
+                log.info("Successfully cleared cart for user: {}", order.getUser().getId());
+            } catch (Exception e) {
+                log.error("Failed to clear cart for user {}: {}", order.getUser().getId(), e.getMessage());
+            }
+        }
+
         return new CheckoutVerificationResult(
                 session.getPaymentStatus(),
                 session.getAmountTotal(),
@@ -435,19 +445,13 @@ public class CheckoutService {
             if (tx != null && tx.getStatus() == OrderTransaction.TransactionStatus.PENDING) {
                 Order order = tx.getOrder();
                 log.info("Deleting pending order: {} for session: {}", order.getOrderId(), sessionId);
-                
-                // Note: We don't call restoreBatchQuantitiesFromOrder() here because
-                // the Enhanced Stock Locking system will handle quantity restoration
-                // through StockBatchLock records to avoid double restoration
 
                 orderRepository.delete(order);
             }
             
-            // Unlock enhanced batch-level locks (restores exact batch quantities)
             log.info("CLEANUP: Attempting to unlock enhanced batch locks for session: {}", sessionId);
             enhancedStockLockService.unlockAllBatches(sessionId);
             
-            // Also unlock general stock locks (for backward compatibility)
             log.info("CLEANUP: Attempting to unlock general stock locks for session: {}", sessionId);
             stockLockService.releaseStock(sessionId);
             
@@ -1044,11 +1048,6 @@ public class CheckoutService {
         return dto;
     }
 
-    // ===== HELPER METHODS FOR FEFO AND STOCK ALLOCATION =====
-
-    /**
-     * Converts FEFO batch allocations to stock allocations for locking purposes
-     */
     private Map<Long, List<MultiWarehouseStockAllocator.StockAllocation>> convertFEFOToStockAllocations(
             Map<CartItemDTO, List<FEFOStockAllocationService.BatchAllocation>> fefoAllocations) {
         
@@ -1097,8 +1096,6 @@ public class CheckoutService {
         return stockAllocations;
     }
 
-
-    // ===== STOCK VALIDATION METHODS =====
 
     private void validateCartItems(List<CartItemDTO> items) {
         for (CartItemDTO item : items) {
@@ -1174,48 +1171,6 @@ public class CheckoutService {
         }
     }
 
-    /**
-     * Cleanup expired batch locks manually (for debugging)
-     */
-    public void cleanupExpiredBatchLocks() {
-        try {
-            enhancedStockLockService.cleanupExpiredLocks();
-            log.info("Manual cleanup of expired batch locks completed");
-        } catch (Exception e) {
-            log.error("Error during manual cleanup of expired batch locks: {}", e.getMessage(), e);
-            throw e;
-        }
-    }
-
-    /**
-     * Get detailed information about locked stock for debugging
-     */
-    public Map<String, Object> getLockedStockInfo(String sessionId) {
-        try {
-            return enhancedStockLockService.getBatchLockInfo(sessionId);
-        } catch (Exception e) {
-            log.error("Error getting locked stock info for session {}: {}", sessionId, e.getMessage(), e);
-            throw e;
-        }
-    }
-
-    /**
-     * Transfer batch locks from one session ID to another
-     */
-    private void transferBatchLocks(String fromSessionId, String toSessionId) {
-        try {
-            log.info("Transferring batch locks from {} to {}", fromSessionId, toSessionId);
-            enhancedStockLockService.transferBatchLocks(fromSessionId, toSessionId);
-            log.info("Successfully transferred batch locks from {} to {}", fromSessionId, toSessionId);
-        } catch (Exception e) {
-            log.error("Error transferring batch locks from {} to {}: {}", fromSessionId, toSessionId, e.getMessage(), e);
-            // Don't throw here as this is not critical for the checkout process
-        }
-    }
-
-    /**
-     * Locks stock using FEFO allocation and enhanced batch-level locking
-     */
     private boolean lockStockWithFEFOAllocation(String sessionId, List<CartItemDTO> items, AddressDto shippingAddress) {
         try {
             log.info("Starting FEFO allocation and batch locking for session: {}", sessionId);
@@ -1308,5 +1263,43 @@ public class CheckoutService {
             log.warn("Error getting variant name for cart item: {}", e.getMessage());
         }
         return null;
+    }
+
+    /**
+     * Transfer batch locks from temporary session to actual session
+     */
+    private void transferBatchLocks(String fromSessionId, String toSessionId) {
+        try {
+            enhancedStockLockService.transferBatchLocks(fromSessionId, toSessionId);
+            log.info("Successfully transferred batch locks from {} to {}", fromSessionId, toSessionId);
+        } catch (Exception e) {
+            log.error("Failed to transfer batch locks from {} to {}: {}", fromSessionId, toSessionId, e.getMessage());
+            throw new RuntimeException("Failed to transfer batch locks: " + e.getMessage(), e);
+        }
+    }
+
+    /**
+     * Cleanup expired batch locks
+     */
+    public void cleanupExpiredBatchLocks() {
+        try {
+            enhancedStockLockService.cleanupExpiredLocks();
+            log.info("Successfully cleaned up expired batch locks");
+        } catch (Exception e) {
+            log.error("Failed to cleanup expired batch locks: {}", e.getMessage());
+            throw new RuntimeException("Failed to cleanup expired batch locks: " + e.getMessage(), e);
+        }
+    }
+
+    /**
+     * Get locked stock information for a session
+     */
+    public Map<String, Object> getLockedStockInfo(String sessionId) {
+        try {
+            return enhancedStockLockService.getBatchLockInfo(sessionId);
+        } catch (Exception e) {
+            log.error("Failed to get locked stock info for session {}: {}", sessionId, e.getMessage());
+            throw new RuntimeException("Failed to get locked stock info: " + e.getMessage(), e);
+        }
     }
 }

@@ -179,16 +179,8 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
                         "WHERE o.orderStatus = :status")
         List<Order> findByOrderStatusWithDetailsForAdmin(@Param("status") Order.OrderStatus status);
 
-        /**
-         * Find abandoned pending orders older than the specified cutoff time
-         * These are orders with PENDING status that were created before the cutoff time
-         */
         @Query("SELECT o FROM Order o " +
                "LEFT JOIN FETCH o.orderTransaction tx " +
-               "LEFT JOIN FETCH o.orderItems oi " +
-               "LEFT JOIN FETCH oi.orderItemBatches oib " +
-               "LEFT JOIN FETCH oib.stockBatch sb " +
-               "LEFT JOIN FETCH oib.warehouse w " +
                "WHERE o.orderStatus = 'PENDING' " +
                "AND o.createdAt < :cutoffTime " +
                "ORDER BY o.createdAt ASC")

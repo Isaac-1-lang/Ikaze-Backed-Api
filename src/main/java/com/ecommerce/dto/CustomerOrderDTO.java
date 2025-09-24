@@ -43,7 +43,11 @@ public class CustomerOrderDTO {
         private SimpleProductDTO product;
         private Integer quantity;
         private BigDecimal price;
+        private BigDecimal originalPrice; // Price before discount
         private BigDecimal totalPrice;
+        private BigDecimal discountPercentage;
+        private String discountName;
+        private Boolean hasDiscount;
     }
 
     @Data
@@ -57,5 +61,7 @@ public class CustomerOrderDTO {
         private String state;
         private String country;
         private String phone;
+        private Double latitude;
+        private Double longitude;
     }
 }
