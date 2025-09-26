@@ -195,13 +195,32 @@ public class LandingPageServiceImpl implements LandingPageService {
 
         // Calculate discount
         BigDecimal discountPercentage = calculateDiscountPercentage(product);
-        BigDecimal originalPrice = hasDiscount(product) ? product.getPrice() : null;
+        
+        // Determine price and originalPrice based on discount type
+        BigDecimal displayPrice;
+        BigDecimal originalPrice = null;
+        
+        if (product.getDiscountedPrice() != null && 
+            product.getDiscountedPrice().compareTo(product.getPrice()) < 0) {
+            // Product has direct discount
+            displayPrice = product.getDiscountedPrice();
+            originalPrice = product.getPrice();
+        } else {
+            // No product discount (might have variant discounts)
+            displayPrice = product.getPrice();
+            originalPrice = null;
+        }
+
+        // Get variant discount information
+        boolean hasVariantDiscounts = hasVariantDiscounts(product);
+        BigDecimal maxVariantDiscount = getMaxVariantDiscount(product);
+        Integer discountedVariantsCount = getDiscountedVariantsCount(product);
 
         return LandingPageProductDTO.builder()
                 .productId(product.getProductId())
                 .productName(product.getProductName())
                 .shortDescription(product.getShortDescription())
-                .price(product.getDiscountedPrice() != null ? product.getDiscountedPrice() : product.getPrice())
+                .price(displayPrice)
                 .originalPrice(originalPrice)
                 .discountPercentage(discountPercentage)
                 .stockQuantity(product.getTotalStockQuantity())
@@ -220,6 +239,9 @@ public class LandingPageServiceImpl implements LandingPageService {
                 .discountEndDate(product.getDiscount() != null ? product.getDiscount().getEndDate() : null)
                 .discountName(product.getDiscount() != null ? product.getDiscount().getName() : null)
                 .hasActiveDiscount(product.getDiscount() != null && product.getDiscount().isValid())
+                .hasVariantDiscounts(hasVariantDiscounts)
+                .maxVariantDiscount(maxVariantDiscount)
+                .discountedVariantsCount(discountedVariantsCount)
                 .build();
     }
 
@@ -256,8 +278,66 @@ public class LandingPageServiceImpl implements LandingPageService {
     }
 
     private boolean hasDiscount(Product product) {
-        return product.getDiscountedPrice() != null &&
+        // Check for product-level discount
+        boolean hasProductDiscount = product.getDiscountedPrice() != null &&
                 product.getDiscountedPrice().compareTo(product.getPrice()) < 0;
+        
+        // Check for variant-level discounts
+        boolean hasVariantDiscount = hasVariantDiscounts(product);
+        
+        return hasProductDiscount || hasVariantDiscount;
+    }
+
+    private boolean hasVariantDiscounts(Product product) {
+        if (product.getVariants() == null || product.getVariants().isEmpty()) {
+            return false;
+        }
+        
+        return product.getVariants().stream()
+                .anyMatch(variant -> variant != null && 
+                         variant.getDiscountedPrice() != null &&
+                         variant.getDiscountedPrice().compareTo(variant.getPrice()) < 0);
+    }
+
+    private BigDecimal getMaxVariantDiscount(Product product) {
+        if (product.getVariants() == null || product.getVariants().isEmpty()) {
+            return BigDecimal.ZERO;
+        }
+        
+        return product.getVariants().stream()
+                .filter(variant -> variant != null && 
+                               variant.getDiscountedPrice() != null &&
+                               variant.getDiscountedPrice().compareTo(variant.getPrice()) < 0)
+                .map(variant -> {
+                    try {
+                        BigDecimal originalPrice = variant.getPrice();
+                        BigDecimal discountedPrice = variant.getDiscountedPrice();
+                        if (originalPrice != null && discountedPrice != null && 
+                            originalPrice.compareTo(BigDecimal.ZERO) > 0 && 
+                            originalPrice.compareTo(discountedPrice) > 0) {
+                            return originalPrice.subtract(discountedPrice)
+                                    .divide(originalPrice, 4, java.math.RoundingMode.HALF_UP)
+                                    .multiply(new BigDecimal("100"));
+                        }
+                    } catch (Exception e) {
+                        log.warn("Error calculating discount for variant {}: {}", variant.getId(), e.getMessage());
+                    }
+                    return BigDecimal.ZERO;
+                })
+                .max(BigDecimal::compareTo)
+                .orElse(BigDecimal.ZERO);
+    }
+
+    private Integer getDiscountedVariantsCount(Product product) {
+        if (product.getVariants() == null || product.getVariants().isEmpty()) {
+            return 0;
+        }
+        
+        return (int) product.getVariants().stream()
+                .filter(variant -> variant != null && 
+                               variant.getDiscountedPrice() != null &&
+                               variant.getDiscountedPrice().compareTo(variant.getPrice()) < 0)
+                .count();
     }
 
     private BigDecimal calculateDiscountPercentage(Product product) {
@@ -265,8 +345,15 @@ public class LandingPageServiceImpl implements LandingPageService {
             return BigDecimal.ZERO;
         }
 
-        BigDecimal discount = product.getPrice().subtract(product.getDiscountedPrice());
-        return discount.divide(product.getPrice(), 4, java.math.RoundingMode.HALF_UP)
-                .multiply(new BigDecimal("100"));
+        // Check for product-level discount first
+        if (product.getDiscountedPrice() != null && 
+            product.getDiscountedPrice().compareTo(product.getPrice()) < 0) {
+            BigDecimal discount = product.getPrice().subtract(product.getDiscountedPrice());
+            return discount.divide(product.getPrice(), 4, java.math.RoundingMode.HALF_UP)
+                    .multiply(new BigDecimal("100"));
+        }
+        
+        // If no product-level discount, return the max variant discount
+        return getMaxVariantDiscount(product);
     }
 }

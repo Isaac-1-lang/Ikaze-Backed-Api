@@ -37,6 +37,7 @@ public class PointsPaymentServiceImpl implements PointsPaymentService {
     private final FEFOStockAllocationService fefoService;
     private final OrderItemBatchRepository orderItemBatchRepository;
     private final StripeService stripeService;
+    private final EnhancedStockLockService enhancedStockLockService;
 
     @Override
     public PointsPaymentPreviewDTO previewPointsPayment(PointsPaymentRequest request) {
@@ -147,12 +148,24 @@ public class PointsPaymentServiceImpl implements PointsPaymentService {
             Order savedOrder = orderRepository.save(order);
             log.info("Order saved with ID: {}", savedOrder.getOrderId());
 
+            // Step 3: Create OrderItemBatch records for tracking (but don't commit allocation yet)
             for (Map.Entry<CartItemDTO, List<FEFOStockAllocationService.BatchAllocation>> entry : allocations.entrySet()) {
-                log.info("Committing allocation for cart item: {}", entry.getKey().getProductId());
-                fefoService.commitAllocation(entry.getValue());
                 createOrderItemBatches(savedOrder, entry.getKey(), entry.getValue());
             }
-            log.info("All batch allocations committed successfully");
+
+            // Step 4: Lock stock at batch level using session ID
+            String sessionId = savedOrder.getOrderTransaction().getStripeSessionId();
+            if (sessionId == null) {
+                // Generate temporary session ID for locking
+                sessionId = "temp_hybrid_" + savedOrder.getOrderId().toString();
+            }
+
+            if (!lockStockWithFEFOAllocation(sessionId, request.getItems(), request.getShippingAddress())) {
+                log.error("Failed to lock stock for hybrid payment: {}", savedOrder.getOrderId());
+                orderRepository.delete(savedOrder);
+                throw new IllegalStateException("Unable to secure stock for your order. Please try again.");
+            }
+            log.info("Stock batches locked successfully for session: {}", sessionId);
 
             // For hybrid payment, use all available points (up to order total)
             Integer availablePoints = user.getPoints(); // Use User.points directly for performance
@@ -189,8 +202,13 @@ public class PointsPaymentServiceImpl implements PointsPaymentService {
             );
             log.info("Stripe session created: {}", stripeSessionId);
 
-            // Update the existing OrderTransaction with points info (StripeService already set the session ID)
+            // Transfer batch locks from temporary session to actual Stripe session
             OrderTransaction transaction = savedOrder.getOrderTransaction();
+            if (transaction.getStripeSessionId() != null && !transaction.getStripeSessionId().equals(sessionId)) {
+                transferBatchLocks(sessionId, transaction.getStripeSessionId());
+            }
+
+            // Update the existing OrderTransaction with points info (StripeService already set the session ID)
             transaction.setPointsUsed(pointsToUse);
             transaction.setPointsValue(pointsValue);
             // Don't set stripeSessionId here - StripeService already did it
@@ -207,6 +225,10 @@ public class PointsPaymentServiceImpl implements PointsPaymentService {
         try {
             OrderTransaction transaction = transactionRepository.findByStripeSessionId(stripeSessionId)
                     .orElseThrow(() -> new RuntimeException("Transaction not found"));
+
+            // Confirm batch locks (this will reduce actual batch quantities)
+            enhancedStockLockService.confirmBatchLocks(stripeSessionId);
+            log.info("Confirmed batch locks for hybrid payment session: {}", stripeSessionId);
 
             transaction.setStatus(OrderTransaction.TransactionStatus.COMPLETED);
             transaction.setPaymentDate(LocalDateTime.now());
@@ -340,6 +362,110 @@ public class PointsPaymentServiceImpl implements PointsPaymentService {
 
     private String generateOrderNumber() {
         return "ORD-" + System.currentTimeMillis();
+    }
+
+    /**
+     * Lock stock at batch level using FEFO allocation for hybrid payments
+     */
+    private boolean lockStockWithFEFOAllocation(String sessionId, List<CartItemDTO> items, AddressDto shippingAddress) {
+        try {
+            log.info("Starting FEFO allocation and batch locking for hybrid payment session: {}", sessionId);
+
+            // Step 1: Perform FEFO allocation to determine which batches to use
+            Map<CartItemDTO, List<FEFOStockAllocationService.BatchAllocation>> fefoAllocations = warehouseAllocator
+                    .allocateStockWithFEFO(items, shippingAddress);
+
+            if (fefoAllocations.isEmpty()) {
+                log.error("FEFO allocation failed - no stock available for hybrid payment");
+                return false;
+            }
+
+            // Step 2: Convert FEFO allocations to batch lock requests
+            List<EnhancedStockLockService.BatchLockRequest> lockRequests = new ArrayList<>();
+
+            for (Map.Entry<CartItemDTO, List<FEFOStockAllocationService.BatchAllocation>> entry : fefoAllocations
+                    .entrySet()) {
+                CartItemDTO item = entry.getKey();
+                List<FEFOStockAllocationService.BatchAllocation> allocations = entry.getValue();
+
+                for (FEFOStockAllocationService.BatchAllocation allocation : allocations) {
+                    // Get product/variant names for tracking
+                    String productName = getProductName(item);
+                    String variantName = getVariantName(item);
+
+                    EnhancedStockLockService.BatchLockRequest lockRequest = new EnhancedStockLockService.BatchLockRequest(
+                            allocation.getStockBatch().getId(),
+                            allocation.getQuantityAllocated(),
+                            allocation.getWarehouse().getId(),
+                            productName,
+                            variantName);
+
+                    lockRequests.add(lockRequest);
+                }
+            }
+
+            // Step 3: Lock the batches (this will temporarily reduce quantities)
+            boolean lockSuccess = enhancedStockLockService.lockStockBatches(sessionId, lockRequests);
+
+            if (lockSuccess) {
+                log.info("Successfully locked {} batches for hybrid payment session: {}", lockRequests.size(), sessionId);
+            } else {
+                log.error("Failed to lock batches for hybrid payment session: {}", sessionId);
+            }
+
+            return lockSuccess;
+
+        } catch (Exception e) {
+            log.error("Error during FEFO allocation and batch locking for hybrid payment session {}: {}", sessionId, e.getMessage(), e);
+            return false;
+        }
+    }
+
+    /**
+     * Get product name for tracking
+     */
+    private String getProductName(CartItemDTO item) {
+        try {
+            if (item.getProductId() != null) {
+                Product product = productRepository.findById(item.getProductId()).orElse(null);
+                if (product != null) {
+                    return product.getProductName();
+                }
+            }
+        } catch (Exception e) {
+            log.warn("Error getting product name for cart item: {}", e.getMessage());
+        }
+        return null;
+    }
+
+    /**
+     * Get variant name for tracking
+     */
+    private String getVariantName(CartItemDTO item) {
+        try {
+            if (item.getVariantId() != null) {
+                ProductVariant variant = productVariantRepository.findById(item.getVariantId()).orElse(null);
+                if (variant != null) {
+                    return variant.getVariantName();
+                }
+            }
+        } catch (Exception e) {
+            log.warn("Error getting variant name for cart item: {}", e.getMessage());
+        }
+        return null;
+    }
+
+    /**
+     * Transfer batch locks from temporary session to actual session
+     */
+    private void transferBatchLocks(String fromSessionId, String toSessionId) {
+        try {
+            enhancedStockLockService.transferBatchLocks(fromSessionId, toSessionId);
+            log.info("Successfully transferred batch locks from {} to {}", fromSessionId, toSessionId);
+        } catch (Exception e) {
+            log.error("Failed to transfer batch locks from {} to {}: {}", fromSessionId, toSessionId, e.getMessage());
+            throw new RuntimeException("Failed to transfer batch locks: " + e.getMessage(), e);
+        }
     }
 
     private RewardSystem getActiveRewardSystemEntity() {
