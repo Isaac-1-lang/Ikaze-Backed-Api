@@ -2,20 +2,15 @@ package com.ecommerce.service;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Optional;
 
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
-import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import com.ecommerce.config.AbandonedOrderProperties;
 import com.ecommerce.entity.Order;
 import com.ecommerce.repository.OrderRepository;
-import com.ecommerce.service.CheckoutService;
-import com.ecommerce.service.StockLockService;
-import com.ecommerce.service.EnhancedStockLockService;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -23,67 +18,10 @@ import lombok.extern.slf4j.Slf4j;
 @Service
 @RequiredArgsConstructor
 @Slf4j
-@ConditionalOnProperty(prefix = "app.abandoned-order-cleanup", name = "enabled", havingValue = "true", matchIfMissing = true)
 public class AbandonedOrderCleanupService {
 
     private final OrderRepository orderRepository;
-    private final CheckoutService checkoutService;
-    private final StockLockService stockLockService;
-    private final EnhancedStockLockService enhancedStockLockService;
-    private final AbandonedOrderProperties properties;
-
-    /**
-     * Scheduled task that runs every 10 minutes to clean up abandoned orders
-     */
-    @Scheduled(cron = "${app.abandoned-order-cleanup.cleanup-schedule:0 0/10 * * * *}")
-    @Transactional
-    public void cleanupAbandonedOrders() {
-        if (!properties.isEnabled()) {
-            return;
-        }
-
-        try {
-            log.info("Starting scheduled cleanup of abandoned orders");
-            
-            LocalDateTime cutoffTime = LocalDateTime.now().minusMinutes(properties.getExpiryMinutes());
-            
-            // Find pending orders older than cutoff time
-            Pageable pageable = PageRequest.of(0, properties.getBatchSize());
-            List<Order> abandonedOrders = orderRepository.findAbandonedPendingOrders(cutoffTime, pageable);
-            
-            if (abandonedOrders.isEmpty()) {
-                if (properties.isDetailedLogging()) {
-                    log.debug("No abandoned orders found for cleanup");
-                }
-                return;
-            }
-            
-            log.info("Found {} abandoned orders to clean up", abandonedOrders.size());
-            
-            int successCount = 0;
-            int errorCount = 0;
-            
-            for (Order order : abandonedOrders) {
-                try {
-                    if (properties.isDryRun()) {
-                        log.info("DRY RUN: Would cleanup abandoned order: {} (created: {})", 
-                                order.getOrderId(), order.getCreatedAt());
-                    } else {
-                        cleanupSingleAbandonedOrder(order);
-                    }
-                    successCount++;
-                } catch (Exception e) {
-                    log.error("Failed to cleanup abandoned order {}: {}", order.getOrderId(), e.getMessage(), e);
-                    errorCount++;
-                }
-            }
-            
-            log.info("Abandoned order cleanup completed: {} successful, {} errors", successCount, errorCount);
-            
-        } catch (Exception e) {
-            log.error("Error during scheduled abandoned order cleanup: {}", e.getMessage(), e);
-        }
-    }
+    private final RewardService rewardService;
 
     /**
      * Clean up a single abandoned order
@@ -91,44 +29,73 @@ public class AbandonedOrderCleanupService {
     @Transactional
     public void cleanupSingleAbandonedOrder(Order order) {
         try {
-            if (properties.isDetailedLogging()) {
-                log.info("Cleaning up abandoned order: {} (created: {})", 
-                        order.getOrderId(), order.getCreatedAt());
-            }
+            log.info("Cleaning up abandoned order: {} (created: {})", 
+                    order.getOrderId(), order.getCreatedAt());
             
-            String sessionId = null;
-            if (order.getOrderTransaction() != null) {
-                sessionId = order.getOrderTransaction().getStripeSessionId();
-                
-                if (sessionId == null) {
-                    sessionId = "temp_" + order.getOrderId().toString();
-                } else {
-                    String tempSessionId = "temp_" + order.getOrderId().toString();
-                    String tempGuestSessionId = "temp_guest_" + order.getOrderId().toString();
-                    
-                    enhancedStockLockService.unlockAllBatches(tempSessionId);
-                    stockLockService.releaseStock(tempSessionId);
-                    enhancedStockLockService.unlockAllBatches(tempGuestSessionId);
-                    stockLockService.releaseStock(tempGuestSessionId);
-                }
-            }
-            
-            if (sessionId != null) {
-                enhancedStockLockService.unlockAllBatches(sessionId);
-                stockLockService.releaseStock(sessionId);
-            }
+            // Handle points refund for hybrid payments that were cancelled/abandoned
+            refundPointsForAbandonedOrder(order);
             
             // Delete the order (cascades to related entities)
             orderRepository.delete(order);
             
-            if (properties.isDetailedLogging()) {
-                log.info("Successfully cleaned up abandoned order: {}", order.getOrderId());
-            }
+            log.info("Successfully cleaned up abandoned order: {}", order.getOrderId());
             
         } catch (Exception e) {
             log.error("Error cleaning up abandoned order {}: {}", order.getOrderId(), e.getMessage(), e);
             throw e;
         }
+    }
+
+    private void refundPointsForAbandonedOrder(Order order) {
+        try {
+            if (order.getOrderTransaction() == null) {
+                return; // No transaction, no points to refund
+            }
+
+            Integer pointsUsed = order.getOrderTransaction().getPointsUsed();
+            if (pointsUsed == null || pointsUsed <= 0) {
+                return; // No points were used, nothing to refund
+            }
+
+            if (order.getUser() == null) {
+                log.warn("Cannot refund points for order {} - no user associated", order.getOrderId());
+                return;
+            }
+
+            // This was a hybrid payment that was abandoned/cancelled
+            String refundDescription = String.format("Points refunded for cancelled hybrid payment (Order #%s)", 
+                    order.getOrderCode() != null ? order.getOrderCode() : order.getOrderId().toString());
+
+            rewardService.refundPointsForCancelledOrder(
+                    order.getUser().getId(), 
+                    pointsUsed, 
+                    refundDescription
+            );
+
+            log.info("Refunded {} points to user {} for abandoned hybrid payment order {}", 
+                    pointsUsed, order.getUser().getId(), order.getOrderId());
+
+        } catch (Exception e) {
+            log.error("Error refunding points for abandoned order {}: {}", 
+                    order.getOrderId(), e.getMessage(), e);
+            // Don't throw exception here - we still want to clean up the order
+        }
+    }
+
+    /**
+     * Get count of abandoned orders for monitoring
+     */
+    public long getAbandonedOrderCount() {
+        LocalDateTime cutoffTime = LocalDateTime.now().minusMinutes(30); // 30 minutes default
+        return orderRepository.countAbandonedPendingOrders(cutoffTime);
+    }
+
+    /**
+     * Check if a specific order is considered abandoned
+     */
+    public boolean isOrderAbandoned(Long orderId) {
+        LocalDateTime cutoffTime = LocalDateTime.now().minusMinutes(30); // 30 minutes default
+        return orderRepository.isOrderAbandoned(orderId, cutoffTime);
     }
 
     /**
@@ -138,7 +105,7 @@ public class AbandonedOrderCleanupService {
     public CleanupResult manualCleanupAllAbandonedOrders() {
         log.info("Starting manual cleanup of all abandoned orders");
         
-        LocalDateTime cutoffTime = LocalDateTime.now().minusMinutes(properties.getExpiryMinutes());
+        LocalDateTime cutoffTime = LocalDateTime.now().minusMinutes(30); // 30 minutes default
         
         int totalProcessed = 0;
         int totalSuccessful = 0;
@@ -148,17 +115,13 @@ public class AbandonedOrderCleanupService {
         
         // Process in batches to avoid memory issues
         do {
-            Pageable pageable = PageRequest.of(0, properties.getBatchSize());
+            Pageable pageable = PageRequest.of(0, 50); // 50 batch size default
             abandonedOrders = orderRepository.findAbandonedPendingOrders(cutoffTime, pageable);
             
             for (Order order : abandonedOrders) {
                 totalProcessed++;
                 try {
-                    if (properties.isDryRun()) {
-                        log.info("DRY RUN: Would cleanup order: {}", order.getOrderId());
-                    } else {
-                        cleanupSingleAbandonedOrder(order);
-                    }
+                    cleanupSingleAbandonedOrder(order);
                     totalSuccessful++;
                 } catch (Exception e) {
                     totalErrors++;
@@ -167,7 +130,7 @@ public class AbandonedOrderCleanupService {
                 }
             }
             
-        } while (!abandonedOrders.isEmpty() && !properties.isDryRun());
+        } while (!abandonedOrders.isEmpty());
         
         CleanupResult result = new CleanupResult(totalProcessed, totalSuccessful, totalErrors);
         log.info("Manual cleanup completed: {}", result);
@@ -176,19 +139,21 @@ public class AbandonedOrderCleanupService {
     }
 
     /**
-     * Get count of abandoned orders for monitoring
+     * Cleanup specific order by ID
      */
-    public long getAbandonedOrderCount() {
-        LocalDateTime cutoffTime = LocalDateTime.now().minusMinutes(properties.getExpiryMinutes());
-        return orderRepository.countAbandonedPendingOrders(cutoffTime);
-    }
-
-    /**
-     * Check if a specific order is considered abandoned
-     */
-    public boolean isOrderAbandoned(Long orderId) {
-        LocalDateTime cutoffTime = LocalDateTime.now().minusMinutes(properties.getExpiryMinutes());
-        return orderRepository.isOrderAbandoned(orderId, cutoffTime);
+    @Transactional
+    public void cleanupSpecificOrder(Long orderId) {
+        Optional<Order> orderOpt = orderRepository.findById(orderId);
+        if (orderOpt.isPresent()) {
+            Order order = orderOpt.get();
+            if (isOrderAbandoned(orderId)) {
+                cleanupSingleAbandonedOrder(order);
+            } else {
+                throw new IllegalStateException("Order " + orderId + " is not abandoned");
+            }
+        } else {
+            throw new IllegalArgumentException("Order " + orderId + " not found");
+        }
     }
 
     /**

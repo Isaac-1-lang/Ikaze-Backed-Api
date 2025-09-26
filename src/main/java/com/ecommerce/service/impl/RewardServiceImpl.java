@@ -291,13 +291,15 @@ public class RewardServiceImpl implements RewardService {
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new RuntimeException("User not found"));
 
-        Integer currentBalance = getUserCurrentPoints(userId);
+        // Use User.points as single source of truth
+        Integer currentBalance = user.getPoints();
         Integer newBalance = currentBalance + pointsEarned;
 
+        // Create audit trail record
         UserPoints userPoints = new UserPoints();
         userPoints.setUser(user);
-        userPoints.setPoints(pointsEarned);
-        userPoints.setPointsType(PointsType.EARNED_PURCHASE);
+        userPoints.setPoints(pointsEarned); // Positive for earning
+        userPoints.setPointsType(UserPoints.PointsType.EARNED_PURCHASE);
         userPoints.setDescription("Points earned from order #" + orderId);
         userPoints.setOrderId(orderId);
         userPoints.setBalanceAfter(newBalance);
@@ -334,13 +336,15 @@ public class RewardServiceImpl implements RewardService {
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new RuntimeException("User not found"));
 
-        Integer currentBalance = getUserCurrentPoints(userId);
+        // Use User.points as single source of truth
+        Integer currentBalance = user.getPoints();
         Integer newBalance = currentBalance + signupPoints;
 
+        // Create audit trail record
         UserPoints userPoints = new UserPoints();
         userPoints.setUser(user);
-        userPoints.setPoints(signupPoints);
-        userPoints.setPointsType(PointsType.EARNED_SIGNUP);
+        userPoints.setPoints(signupPoints); // Positive for earning
+        userPoints.setPointsType(UserPoints.PointsType.EARNED_SIGNUP);
         userPoints.setDescription("Points earned from user registration");
         userPoints.setBalanceAfter(newBalance);
         userPoints.setCreatedAt(LocalDateTime.now());
@@ -348,8 +352,11 @@ public class RewardServiceImpl implements RewardService {
 
         UserPoints saved = userPointsRepository.save(userPoints);
 
+        // Update User.points (single source of truth)
         user.setPoints(newBalance);
         userRepository.save(user);
+
+        log.info("Awarded {} signup points to user {}. New balance: {}", signupPoints, userId, newBalance);
 
         return convertToDTO(saved);
     }
@@ -369,13 +376,15 @@ public class RewardServiceImpl implements RewardService {
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new RuntimeException("User not found"));
 
-        Integer currentBalance = getUserCurrentPoints(userId);
+        // Use User.points as single source of truth
+        Integer currentBalance = user.getPoints();
         Integer newBalance = currentBalance + reviewPoints;
 
+        // Create audit trail record
         UserPoints userPoints = new UserPoints();
         userPoints.setUser(user);
-        userPoints.setPoints(reviewPoints);
-        userPoints.setPointsType(PointsType.EARNED_REVIEW);
+        userPoints.setPoints(reviewPoints); // Positive for earning
+        userPoints.setPointsType(UserPoints.PointsType.EARNED_REVIEW);
         userPoints.setDescription(description != null ? description : "Points earned from product review");
         userPoints.setBalanceAfter(newBalance);
         userPoints.setCreatedAt(LocalDateTime.now());
@@ -392,20 +401,60 @@ public class RewardServiceImpl implements RewardService {
     @Override
     public UserPointsDTO deductPointsForPurchase(UUID userId, Integer points, String description) {
         if (!hasEnoughPoints(userId, points)) {
+            log.info("Required points are " + points + " but user has " + getUserCurrentPoints(userId));
             throw new RuntimeException("Insufficient points");
         }
 
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new RuntimeException("User not found"));
 
-        Integer currentBalance = getUserCurrentPoints(userId);
+        // Use User.points as single source of truth
+        Integer currentBalance = user.getPoints();
         Integer newBalance = currentBalance - points;
+
+        // Create audit trail record
+        UserPoints userPoints = new UserPoints();
+        userPoints.setUser(user);
+        userPoints.setPoints(-points); // Negative for spending
+        userPoints.setPointsType(UserPoints.PointsType.SPENT_PURCHASE);
+        userPoints.setDescription(description != null ? description : "Points spent on product purchase");
+        userPoints.setBalanceAfter(newBalance);
+        userPoints.setCreatedAt(LocalDateTime.now());
+
+        RewardSystem activeSystem = getActiveRewardSystemEntity();
+        if (activeSystem != null) {
+            userPoints.setPointsValue(activeSystem.calculatePointsValue(points));
+        }
+
+        UserPoints saved = userPointsRepository.save(userPoints);
+
+        // Update User.points (single source of truth)
+        user.setPoints(newBalance);
+        userRepository.save(user);
+
+        log.info("Deducted {} points from user {}. New balance: {}", points, userId, newBalance);
+
+        return convertToDTO(saved);
+    }
+
+    @Override
+    public UserPointsDTO refundPointsForCancelledOrder(UUID userId, Integer points, String description) {
+        if (points == null || points <= 0) {
+            log.warn("Invalid points amount for refund: {}", points);
+            return null;
+        }
+
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new RuntimeException("User not found"));
+
+        Integer currentBalance = user.getPoints();
+        Integer newBalance = currentBalance + points;
 
         UserPoints userPoints = new UserPoints();
         userPoints.setUser(user);
-        userPoints.setPoints(-points);
-        userPoints.setPointsType(PointsType.SPENT_PURCHASE);
-        userPoints.setDescription(description != null ? description : "Points spent on product purchase");
+        userPoints.setPoints(points);
+        userPoints.setPointsType(UserPoints.PointsType.ADJUSTMENT); 
+        userPoints.setDescription(description != null ? description : "Points refunded for cancelled order");
         userPoints.setBalanceAfter(newBalance);
         userPoints.setCreatedAt(LocalDateTime.now());
 
@@ -419,12 +468,17 @@ public class RewardServiceImpl implements RewardService {
         user.setPoints(newBalance);
         userRepository.save(user);
 
+        log.info("Refunded {} points to user {} for cancelled order. New balance: {}",
+                points, userId, newBalance);
+
         return convertToDTO(saved);
     }
 
     @Override
     public Integer getUserCurrentPoints(UUID userId) {
-        return userPointsRepository.calculateCurrentBalance(userId);
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new RuntimeException("User not found"));
+        return user.getPoints(); 
     }
 
     @Override
@@ -480,8 +534,9 @@ public class RewardServiceImpl implements RewardService {
 
     @Override
     public boolean hasEnoughPoints(UUID userId, Integer requiredPoints) {
-        Integer currentPoints = getUserCurrentPoints(userId);
-        return currentPoints >= requiredPoints;
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new RuntimeException("User not found"));
+        return user.getPoints() >= requiredPoints; // Single source of truth
     }
 
     @Override

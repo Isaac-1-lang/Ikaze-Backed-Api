@@ -87,7 +87,7 @@ public class CheckoutService {
         } catch (Exception e) {
             log.error("Failed to get current user ID: {}", e.getMessage());
             throw new IllegalStateException("Authentication required. Please log in to create a checkout session. " +
-                                          "For guest checkout, use the guest checkout endpoint instead.", e);
+                    "For guest checkout, use the guest checkout endpoint instead.", e);
         }
 
         User user = userRepository.findById(userId)
@@ -98,10 +98,10 @@ public class CheckoutService {
         // Step 1: Allocate stock using FEFO across warehouses
         Map<CartItemDTO, List<FEFOStockAllocationService.BatchAllocation>> fefoAllocations = enhancedWarehouseAllocator
                 .allocateStockWithFEFO(req.getItems(), req.getShippingAddress());
-        
+
         // Step 2: Convert FEFO allocations to stock allocations for locking
-        Map<Long, List<MultiWarehouseStockAllocator.StockAllocation>> stockAllocations = 
-                convertFEFOToStockAllocations(fefoAllocations);
+        Map<Long, List<MultiWarehouseStockAllocator.StockAllocation>> stockAllocations = convertFEFOToStockAllocations(
+                fefoAllocations);
 
         Order order = new Order();
         order.setOrderStatus(Order.OrderStatus.PENDING);
@@ -184,8 +184,10 @@ public class CheckoutService {
         Order saved = orderRepository.save(order);
         log.info("Order created with ID: {}", saved.getOrderId());
 
-        // Step 3: Create OrderItemBatch records for tracking (but don't commit allocation yet)
-        for (Map.Entry<CartItemDTO, List<FEFOStockAllocationService.BatchAllocation>> entry : fefoAllocations.entrySet()) {
+        // Step 3: Create OrderItemBatch records for tracking (but don't commit
+        // allocation yet)
+        for (Map.Entry<CartItemDTO, List<FEFOStockAllocationService.BatchAllocation>> entry : fefoAllocations
+                .entrySet()) {
             createOrderItemBatches(saved, entry.getKey(), entry.getValue());
         }
 
@@ -195,7 +197,7 @@ public class CheckoutService {
             // Generate temporary session ID for locking
             sessionId = "temp_" + saved.getOrderId().toString();
         }
-        
+
         if (!lockStockWithFEFOAllocation(sessionId, req.getItems(), req.getShippingAddress())) {
             log.error("Failed to lock stock for checkout: {}", saved.getOrderId());
             orderRepository.delete(saved);
@@ -203,12 +205,12 @@ public class CheckoutService {
         }
 
         String sessionUrl = stripeService.createCheckoutSessionForOrder(saved, req.getCurrency(), req.getPlatform());
-        
+
         tx = saved.getOrderTransaction();
         if (tx.getStripeSessionId() != null && !tx.getStripeSessionId().equals(sessionId)) {
             transferBatchLocks(sessionId, tx.getStripeSessionId());
         }
-        
+
         log.info("Stripe session created successfully with stock locked");
 
         return sessionUrl;
@@ -222,10 +224,10 @@ public class CheckoutService {
         // Step 1: Allocate stock using FEFO across warehouses
         Map<CartItemDTO, List<FEFOStockAllocationService.BatchAllocation>> fefoAllocations = enhancedWarehouseAllocator
                 .allocateStockWithFEFO(req.getItems(), req.getAddress());
-        
+
         // Step 2: Convert FEFO allocations to stock allocations for locking
-        Map<Long, List<MultiWarehouseStockAllocator.StockAllocation>> stockAllocations = 
-                convertFEFOToStockAllocations(fefoAllocations);
+        Map<Long, List<MultiWarehouseStockAllocator.StockAllocation>> stockAllocations = convertFEFOToStockAllocations(
+                fefoAllocations);
 
         Order order = new Order();
         order.setOrderStatus(Order.OrderStatus.PENDING);
@@ -311,8 +313,10 @@ public class CheckoutService {
         Order saved = orderRepository.save(order);
         log.info("Guest order created with ID: {}", saved.getOrderId());
 
-        // Step 3: Create OrderItemBatch records for tracking (but don't commit allocation yet)
-        for (Map.Entry<CartItemDTO, List<FEFOStockAllocationService.BatchAllocation>> entry : fefoAllocations.entrySet()) {
+        // Step 3: Create OrderItemBatch records for tracking (but don't commit
+        // allocation yet)
+        for (Map.Entry<CartItemDTO, List<FEFOStockAllocationService.BatchAllocation>> entry : fefoAllocations
+                .entrySet()) {
             createOrderItemBatches(saved, entry.getKey(), entry.getValue());
         }
 
@@ -322,25 +326,23 @@ public class CheckoutService {
             // Generate temporary session ID for locking
             sessionId = "temp_guest_" + saved.getOrderId().toString();
         }
-        
+
         boolean stockLocked = lockStockWithFEFOAllocation(sessionId, req.getItems(), req.getAddress());
         if (!stockLocked) {
             log.error("Failed to lock stock for guest order: {}", saved.getOrderId());
             orderRepository.delete(saved);
             throw new IllegalStateException("Unable to secure stock for your order. Please try again.");
         }
-        
+
         log.info("Successfully locked stock for guest order: {} with session: {}", saved.getOrderId(), sessionId);
 
         String sessionUrl = stripeService.createCheckoutSessionForOrder(saved, "usd", req.getPlatform());
-        
-        // Update the session ID in transaction after Stripe session creation
+
         tx = saved.getOrderTransaction();
         if (tx.getStripeSessionId() != null && !tx.getStripeSessionId().equals(sessionId)) {
-            // Transfer locks to the actual Stripe session ID
             transferBatchLocks(sessionId, tx.getStripeSessionId());
         }
-        
+
         log.info("Guest Stripe session created successfully with stock locked");
 
         return sessionUrl;
@@ -348,7 +350,6 @@ public class CheckoutService {
 
     @Transactional
     public CheckoutVerificationResult verifyCheckoutSession(String sessionId) throws Exception {
-        // Use the new method that avoids loading collections initially
         OrderTransaction tx = transactionRepository.findByStripeSessionIdWithOrder(sessionId)
                 .orElseThrow(() -> new EntityNotFoundException("No matching payment record"));
 
@@ -360,11 +361,12 @@ public class CheckoutService {
 
         if (!"paid".equalsIgnoreCase(session.getPaymentStatus())) {
             Order order = tx.getOrder();
+
+            refundPointsForFailedPayment(order);
             orderRepository.delete(order);
-            // Use enhanced stock locking cleanup
             enhancedStockLockService.unlockAllBatches(sessionId);
             stockLockService.releaseStock(sessionId);
-            log.info("Payment failed, order deleted: {}", order.getOrderId());
+            log.info("Payment failed, order deleted and points refunded: {}", order.getOrderId());
             throw new IllegalStateException("Payment not completed or session expired");
         }
 
@@ -379,22 +381,18 @@ public class CheckoutService {
         tx.setReceiptUrl(receiptUrl);
         transactionRepository.save(tx);
         log.info("Transaction updated to completed status");
-
-        // Confirm the enhanced stock locks (delete lock records, keep quantities reduced)
         enhancedStockLockService.confirmBatchLocks(sessionId);
-        
+
         Order order = tx.getOrder();
         order.setOrderStatus(Order.OrderStatus.PROCESSING);
         orderRepository.save(order);
-        
+
         log.info("Payment verification completed successfully for order: {}", order.getOrderId());
-        
-        // Also confirm legacy stock locks for backward compatibility
         stockLockService.confirmStock(sessionId);
-        
+
         String tempSessionId = "temp_" + order.getOrderId().toString();
         String tempGuestSessionId = "temp_guest_" + order.getOrderId().toString();
-        
+
         stockLockService.confirmBatchLocks(tempSessionId);
         stockLockService.confirmStock(tempSessionId);
         stockLockService.confirmBatchLocks(tempGuestSessionId);
@@ -436,96 +434,127 @@ public class CheckoutService {
                 orderResponse);
     }
 
-    @Transactional
     public void cleanupFailedOrder(String sessionId) {
         try {
-            log.info("Starting cleanup for failed order session: {}", sessionId);
-            
-            OrderTransaction tx = transactionRepository.findByStripeSessionId(sessionId).orElse(null);
-            if (tx != null && tx.getStatus() == OrderTransaction.TransactionStatus.PENDING) {
-                Order order = tx.getOrder();
-                log.info("Deleting pending order: {} for session: {}", order.getOrderId(), sessionId);
-
-                orderRepository.delete(order);
-            }
-            
-            log.info("CLEANUP: Attempting to unlock enhanced batch locks for session: {}", sessionId);
-            enhancedStockLockService.unlockAllBatches(sessionId);
-            
-            log.info("CLEANUP: Attempting to unlock general stock locks for session: {}", sessionId);
-            stockLockService.releaseStock(sessionId);
-            
-            if (tx != null && tx.getOrder() != null) {
-                String tempSessionId = "temp_" + tx.getOrder().getOrderId().toString();
-                String tempGuestSessionId = "temp_guest_" + tx.getOrder().getOrderId().toString();
-                
-                enhancedStockLockService.unlockAllBatches(tempSessionId);
-                stockLockService.releaseStock(tempSessionId);
-                enhancedStockLockService.unlockAllBatches(tempGuestSessionId);
-                stockLockService.releaseStock(tempGuestSessionId);
-                
-                log.info("Also cleaned up temporary session locks: {} and {}", tempSessionId, tempGuestSessionId);
-            }
-            
-            log.info("Successfully cleaned up failed order for session: {}", sessionId);
+            cleanupFailedOrderTransactional(sessionId);
         } catch (Exception e) {
             log.error("Error cleaning up failed order for session {}: {}", sessionId, e.getMessage(), e);
+            try {
+                enhancedStockLockService.unlockAllBatches(sessionId);
+                stockLockService.releaseStock(sessionId);
+                log.info("Fallback stock unlock completed for session: {}", sessionId);
+            } catch (Exception fallbackEx) {
+                log.error("Fallback stock unlock also failed for session {}: {}", sessionId, fallbackEx.getMessage());
+            }
         }
     }
 
+    @org.springframework.transaction.annotation.Transactional(rollbackFor = Exception.class)
+    private synchronized void cleanupFailedOrderTransactional(String sessionId) {
+        log.info("Starting cleanup for failed order session: {}", sessionId);
+        
+        // Double-check to prevent concurrent cleanup
+        OrderTransaction tx = transactionRepository.findByStripeSessionId(sessionId).orElse(null);
+        if (tx == null) {
+            log.info("No transaction found for session: {} - may have already been cleaned up", sessionId);
+            enhancedStockLockService.unlockAllBatches(sessionId);
+            stockLockService.releaseStock(sessionId);
+            return;
+        }
+        
+        if (tx.getStatus() != OrderTransaction.TransactionStatus.PENDING) {
+            log.info("Transaction for session: {} is not pending (status: {}) - skipping cleanup", 
+                    sessionId, tx.getStatus());
+            return;
+        }
+        
+        // Mark transaction as processing to prevent concurrent cleanup
+        tx.setStatus(OrderTransaction.TransactionStatus.FAILED);
+        transactionRepository.save(tx);
+        
+        log.info("CLEANUP: Unlocking enhanced batch locks for session: {}", sessionId);
+        enhancedStockLockService.unlockAllBatches(sessionId);
+        
+        log.info("CLEANUP: Unlocking general stock locks for session: {}", sessionId);
+        stockLockService.releaseStock(sessionId);
+        
+        Order order = tx.getOrder();
+        Long orderId = order.getOrderId();
+                    
+        refundPointsForFailedPayment(order);
+        
+        transactionRepository.flush();
+        
+        // Delete the order (cascades to related entities)
+        log.info("Deleting order: {} for session: {}", orderId, sessionId);
+        if (orderRepository.existsById(orderId)) {
+            orderRepository.deleteById(orderId);
+            orderRepository.flush(); // Force immediate deletion
+            log.info("Successfully deleted order: {}", orderId);
+        } else {
+            log.info("Order {} was already deleted", orderId);
+        }
+        
+        // Clean up temporary session locks
+        String tempSessionId = "temp_" + orderId.toString();
+        String tempGuestSessionId = "temp_guest_" + orderId.toString();
+        
+        enhancedStockLockService.unlockAllBatches(tempSessionId);
+        stockLockService.releaseStock(tempSessionId);
+        enhancedStockLockService.unlockAllBatches(tempGuestSessionId);
+        stockLockService.releaseStock(tempGuestSessionId);
+        
+        log.info("Cleaned up temporary session locks: {} and {}", tempSessionId, tempGuestSessionId);
+        
+        log.info("Successfully completed cleanup for session: {}", sessionId);
+    }
 
     @Transactional
     public void restoreBatchQuantitiesFromOrder(Order order) {
         try {
             log.info("Restoring batch quantities for cancelled order: {}", order.getOrderId());
-            
+
             int totalRestoredQuantity = 0;
             Map<String, Integer> restorationSummary = new HashMap<>();
-            
-            // Process each order item
+
             for (OrderItem orderItem : order.getOrderItems()) {
-                log.debug("Processing order item: productId={}, variantId={}, quantity={}", 
-                         orderItem.getProduct() != null ? orderItem.getProduct().getProductId() : null,
-                         orderItem.getProductVariant() != null ? orderItem.getProductVariant().getId() : null,
-                         orderItem.getQuantity());
-                
-                // Process each batch allocation for this order item
+                log.debug("Processing order item: productId={}, variantId={}, quantity={}",
+                        orderItem.getProduct() != null ? orderItem.getProduct().getProductId() : null,
+                        orderItem.getProductVariant() != null ? orderItem.getProductVariant().getId() : null,
+                        orderItem.getQuantity());
+
                 for (OrderItemBatch orderItemBatch : orderItem.getOrderItemBatches()) {
                     StockBatch batch = orderItemBatch.getStockBatch();
                     int quantityToRestore = orderItemBatch.getQuantityUsed();
-                    
-                    log.info("Restoring {} units to batch {} (current quantity: {})", 
+
+                    log.info("Restoring {} units to batch {} (current quantity: {})",
                             quantityToRestore, batch.getBatchNumber(), batch.getQuantity());
-                    
-                    // Restore the quantity to the batch
+
                     int newQuantity = batch.getQuantity() + quantityToRestore;
                     batch.setQuantity(newQuantity);
-                    
-                    // Update batch status if it was marked as EMPTY and now has quantity
+
                     if (batch.getStatus() == com.ecommerce.enums.BatchStatus.EMPTY && newQuantity > 0) {
                         batch.setStatus(com.ecommerce.enums.BatchStatus.ACTIVE);
                         log.info("Updated batch {} status from EMPTY to ACTIVE", batch.getBatchNumber());
                     }
-                    
-                    // Save the updated batch
+
                     stockBatchRepository.save(batch);
-                    
-                    // Update summary for logging
-                    String key = String.format("Batch %s (%s)", 
-                                              batch.getBatchNumber(), 
-                                              orderItemBatch.getWarehouse().getName());
+
+                    String key = String.format("Batch %s (%s)",
+                            batch.getBatchNumber(),
+                            orderItemBatch.getWarehouse().getName());
                     restorationSummary.merge(key, quantityToRestore, Integer::sum);
                     totalRestoredQuantity += quantityToRestore;
-                    
-                    log.debug("Restored {} units to batch {} in warehouse {} (new quantity: {})", 
-                             quantityToRestore, batch.getBatchNumber(), 
-                             orderItemBatch.getWarehouse().getName(), newQuantity);
+
+                    log.debug("Restored {} units to batch {} in warehouse {} (new quantity: {})",
+                            quantityToRestore, batch.getBatchNumber(),
+                            orderItemBatch.getWarehouse().getName(), newQuantity);
                 }
             }
-            
-            log.info("Successfully restored {} total units across {} batches for order {}: {}", 
+
+            log.info("Successfully restored {} total units across {} batches for order {}: {}",
                     totalRestoredQuantity, restorationSummary.size(), order.getOrderId(), restorationSummary);
-            
+
         } catch (Exception e) {
             log.error("Error restoring batch quantities for order {}: {}", order.getOrderId(), e.getMessage(), e);
             throw new RuntimeException("Failed to restore batch quantities: " + e.getMessage(), e);
@@ -561,7 +590,7 @@ public class CheckoutService {
 
             boolean batchLocked = stockLockService.lockStockFromBatches(sessionId, allocations);
             boolean generalLocked = stockLockService.lockStockFromMultipleWarehouses(sessionId, allocations);
-            
+
             if (!batchLocked || !generalLocked) {
                 log.error("Failed to lock stock - batch locked: {}, general locked: {}", batchLocked, generalLocked);
                 stockLockService.unlockAllBatches(sessionId);
@@ -599,9 +628,6 @@ public class CheckoutService {
         int totalProductCount = 0;
 
         for (CartItemDTO item : items) {
-            log.info("Processing cart item: productId={}, variantId={}, quantity={}",
-                    item.getProductId(), item.getVariantId(), item.getQuantity());
-
             BigDecimal itemPrice = BigDecimal.ZERO;
             BigDecimal originalPrice = BigDecimal.ZERO;
 
@@ -618,8 +644,6 @@ public class CheckoutService {
                     }
 
                     itemPrice = calculateDiscountedPrice(variant);
-                    log.info("Found variant: {}, originalPrice: {}, discountedPrice: {}",
-                            variant.getId(), originalPrice, itemPrice);
                 } catch (Exception e) {
                     log.error("Error finding variant {}: {}", item.getVariantId(), e.getMessage());
                     throw new EntityNotFoundException("Variant not found with ID: " + item.getVariantId());
@@ -689,25 +713,22 @@ public class CheckoutService {
                 .build();
     }
 
-
-
     private UUID getCurrentUserId() {
         try {
             Authentication auth = SecurityContextHolder.getContext().getAuthentication();
             log.debug("Authentication object: {}", auth);
-            
+
             if (auth == null || !auth.isAuthenticated() || "anonymousUser".equals(auth.getPrincipal())) {
-                log.warn("User not authenticated. Auth: {}, isAuthenticated: {}, principal: {}", 
-                        auth, auth != null ? auth.isAuthenticated() : "null", 
+                log.warn("User not authenticated. Auth: {}, isAuthenticated: {}, principal: {}",
+                        auth, auth != null ? auth.isAuthenticated() : "null",
                         auth != null ? auth.getPrincipal() : "null");
                 throw new IllegalStateException("User not authenticated");
             }
 
             Object principal = auth.getPrincipal();
-            log.debug("Authentication principal type: {}, value: {}", 
-                     principal.getClass().getName(), principal);
+            log.debug("Authentication principal type: {}, value: {}",
+                    principal.getClass().getName(), principal);
 
-            // If principal is CustomUserDetails, extract email and find user
             if (principal instanceof com.ecommerce.ServiceImpl.CustomUserDetails customUserDetails) {
                 String email = customUserDetails.getUsername();
                 log.debug("Found CustomUserDetails with email: {}", email);
@@ -716,13 +737,11 @@ public class CheckoutService {
                         .orElseThrow(() -> new IllegalStateException("User not found: " + email));
             }
 
-            // If principal is User entity
             if (principal instanceof com.ecommerce.entity.User user && user.getId() != null) {
                 log.debug("Found User entity with ID: {}", user.getId());
                 return user.getId();
             }
 
-            // If principal is UserDetails
             if (principal instanceof UserDetails userDetails) {
                 String email = userDetails.getUsername();
                 log.debug("Found UserDetails with email: {}", email);
@@ -731,7 +750,6 @@ public class CheckoutService {
                         .orElseThrow(() -> new IllegalStateException("User not found: " + email));
             }
 
-            // Fallback to auth name
             String name = auth.getName();
             if (name != null && !name.isBlank() && !"anonymousUser".equals(name)) {
                 log.debug("Fallback to auth name: {}", name);
@@ -740,8 +758,8 @@ public class CheckoutService {
                         .orElseThrow(() -> new IllegalStateException("User not found: " + name));
             }
 
-            throw new IllegalStateException("Unable to determine current user. Principal type: " + 
-                                          principal.getClass().getName() + ", value: " + principal);
+            throw new IllegalStateException("Unable to determine current user. Principal type: " +
+                    principal.getClass().getName() + ", value: " + principal);
         } catch (Exception e) {
             log.error("Error getting current user ID: {}", e.getMessage(), e);
             throw new IllegalStateException("Authentication error: " + e.getMessage());
@@ -788,18 +806,20 @@ public class CheckoutService {
 
     private BigDecimal calculateDiscountedPrice(ProductVariant variant) {
         if (variant.getDiscount() != null && variant.getDiscount().isValid() && variant.getDiscount().isActive()) {
-            validateDiscountValidity(variant.getDiscount());
-            BigDecimal discountMultiplier = BigDecimal.ONE.subtract(
-                    variant.getDiscount().getPercentage().divide(BigDecimal.valueOf(100.0)));
-            return variant.getPrice().multiply(discountMultiplier);
+            if (validateDiscountValidity(variant.getDiscount())) {
+                BigDecimal discountMultiplier = BigDecimal.ONE.subtract(
+                        variant.getDiscount().getPercentage().divide(BigDecimal.valueOf(100.0)));
+                return variant.getPrice().multiply(discountMultiplier);
+            }
         }
 
         if (variant.getProduct() != null && variant.getProduct().getDiscount() != null
                 && variant.getProduct().getDiscount().isValid() && variant.getProduct().getDiscount().isActive()) {
-            validateDiscountValidity(variant.getProduct().getDiscount());
-            BigDecimal discountMultiplier = BigDecimal.ONE.subtract(
-                    variant.getProduct().getDiscount().getPercentage().divide(BigDecimal.valueOf(100.0)));
-            return variant.getPrice().multiply(discountMultiplier);
+            if (validateDiscountValidity(variant.getProduct().getDiscount())) {
+                BigDecimal discountMultiplier = BigDecimal.ONE.subtract(
+                        variant.getProduct().getDiscount().getPercentage().divide(BigDecimal.valueOf(100.0)));
+                return variant.getPrice().multiply(discountMultiplier);
+            }
         }
 
         if (variant.getProduct() != null && variant.getProduct().isOnSale()
@@ -814,11 +834,14 @@ public class CheckoutService {
     }
 
     private BigDecimal calculateDiscountedPrice(Product product) {
+        // Check product discount
         if (product.getDiscount() != null && product.getDiscount().isValid() && product.getDiscount().isActive()) {
-            validateDiscountValidity(product.getDiscount());
-            BigDecimal discountMultiplier = BigDecimal.ONE.subtract(
-                    product.getDiscount().getPercentage().divide(BigDecimal.valueOf(100.0)));
-            return product.getPrice().multiply(discountMultiplier);
+            if (validateDiscountValidity(product.getDiscount())) {
+                BigDecimal discountMultiplier = BigDecimal.ONE.subtract(
+                        product.getDiscount().getPercentage().divide(BigDecimal.valueOf(100.0)));
+                return product.getPrice().multiply(discountMultiplier);
+            }
+            // If discount is invalid, continue to check sale price
         }
 
         if (product.isOnSale() && product.getSalePercentage() != null && product.getSalePercentage() > 0) {
@@ -830,26 +853,31 @@ public class CheckoutService {
         return product.getPrice();
     }
 
-    private void validateDiscountValidity(com.ecommerce.entity.Discount discount) {
+    private boolean validateDiscountValidity(com.ecommerce.entity.Discount discount) {
         LocalDateTime now = LocalDateTime.now();
 
         if (!discount.isActive()) {
-            throw new IllegalStateException("Discount is not active: " + discount.getDiscountId());
+            log.warn("Skipping inactive discount: {}", discount.getDiscountId());
+            return false;
         }
 
         if (now.isBefore(discount.getStartDate())) {
-            throw new IllegalStateException("Discount has not started yet: " + discount.getDiscountId());
+            log.warn("Skipping discount that hasn't started yet: {}", discount.getDiscountId());
+            return false;
         }
 
         if (discount.getEndDate() != null && now.isAfter(discount.getEndDate())) {
-            throw new IllegalStateException("Discount has expired: " + discount.getDiscountId());
+            log.warn("Skipping expired discount: {}", discount.getDiscountId());
+            return false;
         }
 
         if (discount.getUsageLimit() != null && discount.getUsedCount() >= discount.getUsageLimit()) {
-            throw new IllegalStateException("Discount usage limit exceeded: " + discount.getDiscountId());
+            log.warn("Skipping discount with exceeded usage limit: {}", discount.getDiscountId());
+            return false;
         }
 
         log.info("Discount validation passed for: {}", discount.getDiscountId());
+        return true;
     }
 
     private void createOrderItemBatches(Order order, CartItemDTO cartItem,
@@ -1004,11 +1032,12 @@ public class CheckoutService {
             variantDto.setProductId(item.getProductVariant().getId().toString());
             variantDto.setName(item.getProductVariant().getVariantName());
             variantDto.setDescription(item.getProductVariant().getVariantSku());
-            variantDto.setPrice(item.getProductVariant().getDiscountedPrice() != null ? 
-                               item.getProductVariant().getDiscountedPrice().doubleValue() : 
-                               item.getProductVariant().getPrice().doubleValue());
+            variantDto.setPrice(item.getProductVariant().getDiscountedPrice() != null
+                    ? item.getProductVariant().getDiscountedPrice().doubleValue()
+                    : item.getProductVariant().getPrice().doubleValue());
 
-            // Get variant images - if variant has images, use them; otherwise use product images
+            // Get variant images - if variant has images, use them; otherwise use product
+            // images
             if (item.getProductVariant().getImages() != null && !item.getProductVariant().getImages().isEmpty()) {
                 String[] imageUrls = item.getProductVariant().getImages().stream()
                         .sorted((img1, img2) -> {
@@ -1024,7 +1053,8 @@ public class CheckoutService {
                         .filter(url -> url != null && !url.trim().isEmpty())
                         .toArray(String[]::new);
                 variantDto.setImages(imageUrls);
-            } else if (item.getProduct() != null && item.getProduct().getImages() != null && !item.getProduct().getImages().isEmpty()) {
+            } else if (item.getProduct() != null && item.getProduct().getImages() != null
+                    && !item.getProduct().getImages().isEmpty()) {
                 // Fallback to product images if variant has no images
                 String[] imageUrls = item.getProduct().getImages().stream()
                         .sorted((img1, img2) -> {
@@ -1050,52 +1080,51 @@ public class CheckoutService {
 
     private Map<Long, List<MultiWarehouseStockAllocator.StockAllocation>> convertFEFOToStockAllocations(
             Map<CartItemDTO, List<FEFOStockAllocationService.BatchAllocation>> fefoAllocations) {
-        
+
         Map<Long, List<MultiWarehouseStockAllocator.StockAllocation>> stockAllocations = new HashMap<>();
-        
-        for (Map.Entry<CartItemDTO, List<FEFOStockAllocationService.BatchAllocation>> entry : fefoAllocations.entrySet()) {
+
+        for (Map.Entry<CartItemDTO, List<FEFOStockAllocationService.BatchAllocation>> entry : fefoAllocations
+                .entrySet()) {
             CartItemDTO cartItem = entry.getKey();
             List<FEFOStockAllocationService.BatchAllocation> batchAllocations = entry.getValue();
-            
+
             // Group by stock ID and sum quantities
             Map<Long, Integer> stockQuantities = new HashMap<>();
             Map<Long, FEFOStockAllocationService.BatchAllocation> stockToAllocation = new HashMap<>();
-            
+
             for (FEFOStockAllocationService.BatchAllocation batchAllocation : batchAllocations) {
                 Long stockId = batchAllocation.getStockBatch().getStock().getId();
                 stockQuantities.merge(stockId, batchAllocation.getQuantityAllocated(), Integer::sum);
                 stockToAllocation.put(stockId, batchAllocation); // Keep reference for warehouse info
             }
-            
+
             // Convert to stock allocations
             List<MultiWarehouseStockAllocator.StockAllocation> allocations = new ArrayList<>();
             for (Map.Entry<Long, Integer> stockEntry : stockQuantities.entrySet()) {
                 Long stockId = stockEntry.getKey();
                 Integer quantity = stockEntry.getValue();
                 FEFOStockAllocationService.BatchAllocation refAllocation = stockToAllocation.get(stockId);
-                
-                MultiWarehouseStockAllocator.StockAllocation stockAllocation = 
-                    new MultiWarehouseStockAllocator.StockAllocation(
+
+                MultiWarehouseStockAllocator.StockAllocation stockAllocation = new MultiWarehouseStockAllocator.StockAllocation(
                         refAllocation.getWarehouse().getId(),
                         refAllocation.getWarehouse().getName(),
                         stockId,
                         quantity,
                         0.0 // Distance not needed for locking
-                    );
+                );
                 allocations.add(stockAllocation);
             }
-            
+
             // Use a unique key for each cart item (could be productId or variantId)
-            Long key = cartItem.getVariantId() != null ? cartItem.getVariantId() : 
-                      (cartItem.getProductId() != null ? cartItem.getProductId().hashCode() : cartItem.hashCode());
+            Long key = cartItem.getVariantId() != null ? cartItem.getVariantId()
+                    : (cartItem.getProductId() != null ? cartItem.getProductId().hashCode() : cartItem.hashCode());
             stockAllocations.put(key, allocations);
         }
-        
-        log.info("Converted {} FEFO allocation groups to {} stock allocation groups", 
+
+        log.info("Converted {} FEFO allocation groups to {} stock allocation groups",
                 fefoAllocations.size(), stockAllocations.size());
         return stockAllocations;
     }
-
 
     private void validateCartItems(List<CartItemDTO> items) {
         for (CartItemDTO item : items) {
@@ -1109,119 +1138,132 @@ public class CheckoutService {
         } else if (item.getProductId() != null) {
             validateProductItem(item);
         } else {
-            throw new com.ecommerce.Exception.CheckoutValidationException("INVALID_ITEM", "Cart item must have either productId or variantId");
+            throw new com.ecommerce.Exception.CheckoutValidationException("INVALID_ITEM",
+                    "Cart item must have either productId or variantId");
         }
     }
 
     private void validateVariantItem(CartItemDTO item) {
         ProductVariant variant = variantRepository.findById(item.getVariantId())
-            .orElseThrow(() -> new com.ecommerce.Exception.CheckoutValidationException("VARIANT_NOT_FOUND", "Product variant not found with ID: " + item.getVariantId()));
+                .orElseThrow(() -> new com.ecommerce.Exception.CheckoutValidationException("VARIANT_NOT_FOUND",
+                        "Product variant not found with ID: " + item.getVariantId()));
 
         Product product = variant.getProduct();
         if (product == null) {
-            throw new com.ecommerce.Exception.CheckoutValidationException("PRODUCT_NOT_FOUND", "Product not found for variant ID: " + item.getVariantId());
+            throw new com.ecommerce.Exception.CheckoutValidationException("PRODUCT_NOT_FOUND",
+                    "Product not found for variant ID: " + item.getVariantId());
         }
 
         if (!product.isActive()) {
-            throw new com.ecommerce.Exception.CheckoutValidationException("PRODUCT_INACTIVE", "Product is not active: " + product.getProductName());
+            throw new com.ecommerce.Exception.CheckoutValidationException("PRODUCT_INACTIVE",
+                    "Product is not active: " + product.getProductName());
         }
 
         if (!Boolean.TRUE.equals(product.getDisplayToCustomers())) {
-            throw new com.ecommerce.Exception.CheckoutValidationException("PRODUCT_NOT_AVAILABLE", "Product is not available for customers: " + product.getProductName());
+            throw new com.ecommerce.Exception.CheckoutValidationException("PRODUCT_NOT_AVAILABLE",
+                    "Product is not available for customers: " + product.getProductName());
         }
 
         if (!variant.isActive()) {
-            throw new com.ecommerce.Exception.CheckoutValidationException("VARIANT_INACTIVE", "Product variant is not active: " + variant.getVariantSku());
+            throw new com.ecommerce.Exception.CheckoutValidationException("VARIANT_INACTIVE",
+                    "Product variant is not active: " + variant.getVariantSku());
         }
 
         if (!productAvailabilityService.isVariantAvailableForCustomers(variant)) {
             int totalStock = productAvailabilityService.getVariantTotalStock(variant);
             String reason = totalStock <= 0 ? "out of stock" : "not available for customers";
-            throw new com.ecommerce.Exception.CheckoutValidationException("VARIANT_NOT_AVAILABLE", 
-                "Product variant is not available: " + variant.getVariantSku() + " (" + reason + ", stock: " + totalStock + ")");
+            throw new com.ecommerce.Exception.CheckoutValidationException("VARIANT_NOT_AVAILABLE",
+                    "Product variant is not available: " + variant.getVariantSku() + " (" + reason + ", stock: "
+                            + totalStock + ")");
         }
 
         int availableStock = productAvailabilityService.getVariantTotalStock(variant);
         if (availableStock < item.getQuantity()) {
-            throw new com.ecommerce.Exception.CheckoutValidationException("INSUFFICIENT_STOCK", "Insufficient stock for variant " + variant.getVariantSku() + 
-                ". Available: " + availableStock + ", Requested: " + item.getQuantity());
+            throw new com.ecommerce.Exception.CheckoutValidationException("INSUFFICIENT_STOCK",
+                    "Insufficient stock for variant " + variant.getVariantSku() +
+                            ". Available: " + availableStock + ", Requested: " + item.getQuantity());
         }
     }
 
     private void validateProductItem(CartItemDTO item) {
         Product product = productRepository.findById(item.getProductId())
-            .orElseThrow(() -> new com.ecommerce.Exception.CheckoutValidationException("PRODUCT_NOT_FOUND", "Product not found with ID: " + item.getProductId()));
+                .orElseThrow(() -> new com.ecommerce.Exception.CheckoutValidationException("PRODUCT_NOT_FOUND",
+                        "Product not found with ID: " + item.getProductId()));
 
         if (!product.isActive()) {
-            throw new com.ecommerce.Exception.CheckoutValidationException("PRODUCT_INACTIVE", "Product is not active: " + product.getProductName());
+            throw new com.ecommerce.Exception.CheckoutValidationException("PRODUCT_INACTIVE",
+                    "Product is not active: " + product.getProductName());
         }
 
         if (!Boolean.TRUE.equals(product.getDisplayToCustomers())) {
-            throw new com.ecommerce.Exception.CheckoutValidationException("PRODUCT_NOT_AVAILABLE", "Product is not available for customers: " + product.getProductName());
+            throw new com.ecommerce.Exception.CheckoutValidationException("PRODUCT_NOT_AVAILABLE",
+                    "Product is not available for customers: " + product.getProductName());
         }
 
         if (!productAvailabilityService.isProductAvailableForCustomers(product)) {
-            throw new com.ecommerce.Exception.CheckoutValidationException("PRODUCT_NOT_AVAILABLE", "Product is not available: " + product.getProductName());
+            throw new com.ecommerce.Exception.CheckoutValidationException("PRODUCT_NOT_AVAILABLE",
+                    "Product is not available: " + product.getProductName());
         }
 
         int availableStock = productAvailabilityService.getTotalAvailableStock(product);
         if (availableStock < item.getQuantity()) {
-            throw new com.ecommerce.Exception.CheckoutValidationException("INSUFFICIENT_STOCK", "Insufficient stock for product " + product.getProductName() + 
-                ". Available: " + availableStock + ", Requested: " + item.getQuantity());
+            throw new com.ecommerce.Exception.CheckoutValidationException("INSUFFICIENT_STOCK",
+                    "Insufficient stock for product " + product.getProductName() +
+                            ". Available: " + availableStock + ", Requested: " + item.getQuantity());
         }
     }
 
     private boolean lockStockWithFEFOAllocation(String sessionId, List<CartItemDTO> items, AddressDto shippingAddress) {
         try {
             log.info("Starting FEFO allocation and batch locking for session: {}", sessionId);
-            
+
             // Step 1: Perform FEFO allocation to determine which batches to use
-            Map<CartItemDTO, List<FEFOStockAllocationService.BatchAllocation>> fefoAllocations = 
-                enhancedWarehouseAllocator.allocateStockWithFEFO(items, shippingAddress);
-            
+            Map<CartItemDTO, List<FEFOStockAllocationService.BatchAllocation>> fefoAllocations = enhancedWarehouseAllocator
+                    .allocateStockWithFEFO(items, shippingAddress);
+
             if (fefoAllocations.isEmpty()) {
                 log.error("FEFO allocation failed - no stock available");
                 return false;
             }
-            
+
             // Step 2: Convert FEFO allocations to batch lock requests
             List<EnhancedStockLockService.BatchLockRequest> lockRequests = new ArrayList<>();
-            
-            for (Map.Entry<CartItemDTO, List<FEFOStockAllocationService.BatchAllocation>> entry : fefoAllocations.entrySet()) {
+
+            for (Map.Entry<CartItemDTO, List<FEFOStockAllocationService.BatchAllocation>> entry : fefoAllocations
+                    .entrySet()) {
                 CartItemDTO item = entry.getKey();
                 List<FEFOStockAllocationService.BatchAllocation> allocations = entry.getValue();
-                
+
                 for (FEFOStockAllocationService.BatchAllocation allocation : allocations) {
                     // Get product/variant names for tracking
                     String productName = getProductName(item);
                     String variantName = getVariantName(item);
-                    
-                    EnhancedStockLockService.BatchLockRequest lockRequest = 
-                        new EnhancedStockLockService.BatchLockRequest(
+
+                    EnhancedStockLockService.BatchLockRequest lockRequest = new EnhancedStockLockService.BatchLockRequest(
                             allocation.getStockBatch().getId(),
                             allocation.getQuantityAllocated(),
                             allocation.getWarehouse().getId(),
                             productName,
-                            variantName
-                        );
-                    
+                            variantName);
+
                     lockRequests.add(lockRequest);
                 }
             }
-            
+
             // Step 3: Lock the batches (this will temporarily reduce quantities)
             boolean lockSuccess = enhancedStockLockService.lockStockBatches(sessionId, lockRequests);
-            
+
             if (lockSuccess) {
                 log.info("Successfully locked {} batches for session: {}", lockRequests.size(), sessionId);
             } else {
                 log.error("Failed to lock batches for session: {}", sessionId);
             }
-            
+
             return lockSuccess;
-            
+
         } catch (Exception e) {
-            log.error("Error during FEFO allocation and batch locking for session {}: {}", sessionId, e.getMessage(), e);
+            log.error("Error during FEFO allocation and batch locking for session {}: {}", sessionId, e.getMessage(),
+                    e);
             return false;
         }
     }
@@ -1300,6 +1342,39 @@ public class CheckoutService {
         } catch (Exception e) {
             log.error("Failed to get locked stock info for session {}: {}", sessionId, e.getMessage());
             throw new RuntimeException("Failed to get locked stock info: " + e.getMessage(), e);
+        }
+    }
+
+    private void refundPointsForFailedPayment(Order order) {
+        try {
+            if (order.getOrderTransaction() == null) {
+                return; 
+            }
+
+            Integer pointsUsed = order.getOrderTransaction().getPointsUsed();
+            if (pointsUsed == null || pointsUsed <= 0) {
+                return; 
+            }
+
+            if (order.getUser() == null) {
+                log.warn("Cannot refund points for order {} - no user associated", order.getOrderId());
+                return;
+            }
+
+            String refundDescription = String.format("Points refunded for failed hybrid payment (Order #%s)",
+                    order.getOrderCode() != null ? order.getOrderCode() : order.getOrderId().toString());
+
+            rewardService.refundPointsForCancelledOrder(
+                    order.getUser().getId(),
+                    pointsUsed,
+                    refundDescription);
+
+            log.info("Refunded {} points to user {} for failed hybrid payment order {}",
+                    pointsUsed, order.getUser().getId(), order.getOrderId());
+
+        } catch (Exception e) {
+            log.error("Error refunding points for failed payment order {}: {}",
+                    order.getOrderId(), e.getMessage(), e);
         }
     }
 }

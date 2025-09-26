@@ -27,7 +27,7 @@ public interface UserPointsRepository extends JpaRepository<UserPoints, Long> {
     Page<UserPoints> findByUserIdOrderByCreatedAtDesc(UUID userId, Pageable pageable);
 
     /**
-     * Find points transactions by type for a user
+     * Find points transactions by points type for a user
      */
     List<UserPoints> findByUserIdAndPointsTypeOrderByCreatedAtDesc(UUID userId, PointsType pointsType);
 
@@ -49,8 +49,10 @@ public interface UserPointsRepository extends JpaRepository<UserPoints, Long> {
     Integer calculateTotalPointsSpent(@Param("userId") UUID userId);
 
     /**
-     * Calculate current point balance for a user
+     * Calculate current point balance for a user - DEPRECATED
+     * Use User.points field instead for better performance
      */
+    @Deprecated
     @Query("SELECT COALESCE(SUM(up.points), 0) FROM UserPoints up WHERE up.user.id = :userId")
     Integer calculateCurrentBalance(@Param("userId") UUID userId);
 

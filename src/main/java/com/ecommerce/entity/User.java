@@ -53,7 +53,6 @@ public class User implements UserDetails {
 
     @Column(name = "phone_number")
     private String phoneNumber;
-
     @NotBlank(message = "Password is required")
     @Size(min = 8, message = "Password must be at least 8 characters long")
     @Column(nullable = false)
@@ -61,31 +60,39 @@ public class User implements UserDetails {
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
+    @Builder.Default
     private UserRole role = UserRole.CUSTOMER;
 
     @Enumerated(EnumType.STRING)
     @Column(name = "auth_provider")
+    @Builder.Default
     private AuthProvider authProvider = AuthProvider.LOCAL;
 
     @Column(name = "provider_id")
     private String providerId;
 
     @Column(name = "email_verified")
+    @Builder.Default
     private boolean emailVerified = false;
 
     @Column(name = "phone_verified")
+    @Builder.Default
     private boolean phoneVerified = false;
 
     @Column(name = "account_enabled")
+    @Builder.Default
     private boolean enabled = true;
 
     @Column(name = "account_locked")
+    @Builder.Default
     private boolean accountNonLocked = true;
 
     @Column(name = "credentials_non_expired")
+    @Builder.Default
     private boolean credentialsNonExpired = true;
 
     @Column(name = "account_non_expired")
+    @Builder.Default
     private boolean accountNonExpired = true;
 
     @Column(name = "last_login")
@@ -116,6 +123,7 @@ public class User implements UserDetails {
     private Set<Wishlist> wishlists;
 
     @Column(name = "points", nullable = false)
+    @Builder.Default
     private Integer points = 0;
 
     @PrePersist

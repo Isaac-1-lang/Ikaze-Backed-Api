@@ -181,6 +181,7 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
 
         @Query("SELECT o FROM Order o " +
                "LEFT JOIN FETCH o.orderTransaction tx " +
+               "LEFT JOIN FETCH o.user u " +
                "WHERE o.orderStatus = 'PENDING' " +
                "AND o.createdAt < :cutoffTime " +
                "ORDER BY o.createdAt ASC")
