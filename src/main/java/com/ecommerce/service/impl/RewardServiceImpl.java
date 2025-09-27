@@ -594,13 +594,16 @@ public class RewardServiceImpl implements RewardService {
 
         if (existing.getRewardRanges() != null) {
             existing.getRewardRanges().clear();
+        } else {
+            existing.setRewardRanges(new java.util.ArrayList<>());
         }
 
         if (dto.getRewardRanges() != null && !dto.getRewardRanges().isEmpty()) {
-            List<RewardRange> ranges = dto.getRewardRanges().stream()
+            List<RewardRange> newRanges = dto.getRewardRanges().stream()
                     .map(rangeDTO -> convertRangeToEntity(rangeDTO, existing))
                     .collect(Collectors.toList());
-            existing.setRewardRanges(ranges);
+            
+            existing.getRewardRanges().addAll(newRanges);
         }
     }
 

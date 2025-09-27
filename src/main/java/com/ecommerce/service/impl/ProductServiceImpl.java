@@ -257,15 +257,12 @@ public class ProductServiceImpl implements ProductService {
             Product product = productRepository.findById(productId)
                     .orElseThrow(() -> new IllegalArgumentException("Product not found"));
 
-            // Check if product has variants - this method is for products without variants
             if (product.getVariants() != null && !product.getVariants().isEmpty()) {
                 throw new IllegalArgumentException("Product has variants. Use assignVariantStockWithBatches instead.");
             }
 
-            // Safely handle existing stock and batches for this product
             List<Stock> existingStocks = stockRepository.findByProduct(product);
             for (Stock existingStock : existingStocks) {
-                // Safely handle existing batches (preserve those referenced by orders)
                 safelyHandleExistingStockBatches(existingStock);
             }
 
@@ -277,7 +274,6 @@ public class ProductServiceImpl implements ProductService {
                         .orElseThrow(() -> new IllegalArgumentException(
                                 "Warehouse not found: " + stockRequest.getWarehouseId()));
 
-                // Find existing stock for this warehouse and product, or create new one
                 Stock stock = existingStocks.stream()
                         .filter(s -> s.getWarehouse().getId().equals(warehouse.getId()))
                         .findFirst()
@@ -429,28 +425,18 @@ public class ProductServiceImpl implements ProductService {
         
         for (StockBatch batch : existingBatches) {
             if (stockBatchRepository.isReferencedByOrders(batch.getId())) {
-                // Preserve batches that are referenced by orders - just deactivate them
                 if (batch.getStatus() == com.ecommerce.enums.BatchStatus.ACTIVE) {
                     batch.setStatus(com.ecommerce.enums.BatchStatus.INACTIVE);
                     stockBatchRepository.save(batch);
                     deactivatedBatches++;
-                    log.info("Deactivated batch {} (ID: {}) as it's referenced by orders", 
-                            batch.getBatchNumber(), batch.getId());
                 } else {
                     preservedBatches++;
-                    log.info("Preserved existing inactive batch {} (ID: {}) as it's referenced by orders", 
-                            batch.getBatchNumber(), batch.getId());
                 }
             } else {
-                // Safe to delete batches that are not referenced by any orders
                 stockBatchRepository.delete(batch);
                 deletedBatches++;
-                log.info("Deleted unreferenced batch {} (ID: {})", batch.getBatchNumber(), batch.getId());
             }
         }
-        
-        log.info("Batch cleanup summary - Preserved: {}, Deactivated: {}, Deleted: {}", 
-                preservedBatches, deactivatedBatches, deletedBatches);
     }
 
     @Override
@@ -468,10 +454,8 @@ public class ProductServiceImpl implements ProductService {
                     .filter(v -> v.getId().equals(variantId))
                     .findFirst()
                     .orElseThrow(() -> new IllegalArgumentException("Variant not found"));
-            // Safely handle existing stock and batches for this variant
             List<Stock> existingStocks = stockRepository.findByProductVariant(variant);
             for (Stock existingStock : existingStocks) {
-                // Safely handle existing batches (preserve those referenced by orders)
                 safelyHandleExistingStockBatches(existingStock);
             }
 
@@ -483,7 +467,6 @@ public class ProductServiceImpl implements ProductService {
                         .orElseThrow(() -> new IllegalArgumentException(
                                 "Warehouse not found: " + stockRequest.getWarehouseId()));
 
-                // Find existing stock for this warehouse and variant, or create new one
                 Stock stock = existingStocks.stream()
                         .filter(s -> s.getWarehouse().getId().equals(warehouse.getId()))
                         .findFirst()
