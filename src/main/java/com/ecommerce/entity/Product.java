@@ -161,22 +161,18 @@ public class Product {
 
     public boolean isInStock() {
         if (variants != null && !variants.isEmpty()) {
-            // For products with variants, check if any variant has stock from batches
             return variants.stream()
                     .anyMatch(ProductVariant::isInStock);
         }
-        // For products without variants, check batch quantities directly
         return stocks != null && stocks.stream()
                 .anyMatch(stock -> stock.getTotalBatchQuantity() > 0);
     }
 
     public boolean isLowStock() {
         if (variants != null && !variants.isEmpty()) {
-            // For products with variants, check if any variant is low stock
             return variants.stream()
                     .anyMatch(ProductVariant::isLowStock);
         }
-        // For products without variants, check batch quantities against thresholds
         return stocks != null && stocks.stream()
                 .anyMatch(stock -> {
                     int batchQuantity = stock.getTotalBatchQuantity();
@@ -186,23 +182,19 @@ public class Product {
 
     public boolean isOutOfStock() {
         if (variants != null && !variants.isEmpty()) {
-            // For products with variants, check if all variants are out of stock
             return variants.stream()
                     .allMatch(ProductVariant::isOutOfStock);
         }
-        // For products without variants, check if all batch quantities are zero
         return stocks == null || stocks.stream()
                 .allMatch(stock -> stock.getTotalBatchQuantity() <= 0);
     }
 
     public Integer getTotalStockQuantity() {
         if (variants != null && !variants.isEmpty()) {
-            // For products with variants, sum up all variant batch quantities
             return variants.stream()
                     .mapToInt(ProductVariant::getTotalStockQuantity)
                     .sum();
         }
-        // For products without variants, use batch quantities directly
         return stocks != null ? stocks.stream()
                 .mapToInt(Stock::getTotalBatchQuantity)
                 .sum() : 0;

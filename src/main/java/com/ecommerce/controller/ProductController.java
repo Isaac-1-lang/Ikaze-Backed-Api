@@ -162,6 +162,35 @@ public class ProductController {
         }
     }
 
+    @PostMapping("/{productId}/variants/{variantId}/assign-stock-with-batches")
+    @PreAuthorize("hasAnyRole('ADMIN', 'EMPLOYEE')")
+    @Operation(summary = "Assign stock with batches to product variant", description = "Assign stock quantities with batch details to warehouses for a specific product variant", responses = {
+            @ApiResponse(responseCode = "200", description = "Variant stock with batches assigned successfully"),
+            @ApiResponse(responseCode = "400", description = "Invalid input data"),
+            @ApiResponse(responseCode = "404", description = "Product or variant not found"),
+            @ApiResponse(responseCode = "401", description = "Unauthorized"),
+            @ApiResponse(responseCode = "500", description = "Internal server error")
+    })
+    public ResponseEntity<?> assignVariantStockWithBatches(
+            @PathVariable UUID productId,
+            @PathVariable Long variantId,
+            @RequestBody List<WarehouseStockWithBatchesRequest> warehouseStocks) {
+        try {
+            log.info("Assigning stock with batches to variant {} of product {} for {} warehouses", 
+                    variantId, productId, warehouseStocks.size());
+            Map<String, Object> response = productService.assignVariantStockWithBatches(productId, variantId, warehouseStocks);
+            return ResponseEntity.ok(response);
+        } catch (IllegalArgumentException e) {
+            log.error("Validation error assigning variant stock with batches: {}", e.getMessage());
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                    .body(createErrorResponse("VALIDATION_ERROR", e.getMessage()));
+        } catch (Exception e) {
+            log.error("Error assigning variant stock with batches: {}", e.getMessage(), e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(createErrorResponse("INTERNAL_ERROR", "Failed to assign variant stock with batches"));
+        }
+    }
+
     @GetMapping("/{productId}/has-stock")
     @PreAuthorize("hasAnyRole('ADMIN', 'EMPLOYEE')")
     @Operation(summary = "Check if product has stock", description = "Check whether a product has stock assigned", responses = {

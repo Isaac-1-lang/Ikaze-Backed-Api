@@ -83,6 +83,17 @@ public interface ProductService {
                         List<WarehouseStockWithBatchesRequest> warehouseStocks);
 
         /**
+         * Assign stock with batches to a specific product variant
+         * 
+         * @param productId       The product ID
+         * @param variantId       The variant ID
+         * @param warehouseStocks List of warehouse stock assignments with batch details
+         * @return Map containing success status and message
+         */
+        Map<String, Object> assignVariantStockWithBatches(UUID productId, Long variantId,
+                        List<WarehouseStockWithBatchesRequest> warehouseStocks);
+
+        /**
          * Get a product by its ID
          * 
          * @param productId The product ID

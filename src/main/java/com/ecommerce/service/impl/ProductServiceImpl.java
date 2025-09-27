@@ -233,7 +233,9 @@ public class ProductServiceImpl implements ProductService {
 
             List<Stock> stocks = stockRepository.findByProduct(product);
             for (Stock stock : stocks) {
-                stockBatchRepository.deleteByStock(stock);
+                // Safely handle existing batches (preserve those referenced by orders)
+                safelyHandleExistingStockBatches(stock);
+                // Delete the stock entry (batches are handled above)
                 stockRepository.delete(stock);
             }
             log.info("Successfully removed all stock for product {}", productId);
@@ -241,6 +243,110 @@ public class ProductServiceImpl implements ProductService {
         } catch (Exception e) {
             log.error("Error removing product stock: {}", e.getMessage(), e);
             throw new RuntimeException("Failed to remove product stock: " + e.getMessage(), e);
+        }
+    }
+
+    @Override
+    @Transactional
+    public Map<String, Object> assignProductStockWithBatches(UUID productId,
+            List<WarehouseStockWithBatchesRequest> warehouseStocks) {
+        try {
+            log.info("Assigning stock with batches to product {} for {} warehouses", 
+                    productId, warehouseStocks.size());
+
+            Product product = productRepository.findById(productId)
+                    .orElseThrow(() -> new IllegalArgumentException("Product not found"));
+
+            // Check if product has variants - this method is for products without variants
+            if (product.getVariants() != null && !product.getVariants().isEmpty()) {
+                throw new IllegalArgumentException("Product has variants. Use assignVariantStockWithBatches instead.");
+            }
+
+            // Safely handle existing stock and batches for this product
+            List<Stock> existingStocks = stockRepository.findByProduct(product);
+            for (Stock existingStock : existingStocks) {
+                // Safely handle existing batches (preserve those referenced by orders)
+                safelyHandleExistingStockBatches(existingStock);
+            }
+
+            List<Stock> processedStocks = new ArrayList<>();
+            int totalBatchesCreated = 0;
+
+            for (WarehouseStockWithBatchesRequest stockRequest : warehouseStocks) {
+                Warehouse warehouse = warehouseRepository.findById(stockRequest.getWarehouseId())
+                        .orElseThrow(() -> new IllegalArgumentException(
+                                "Warehouse not found: " + stockRequest.getWarehouseId()));
+
+                // Find existing stock for this warehouse and product, or create new one
+                Stock stock = existingStocks.stream()
+                        .filter(s -> s.getWarehouse().getId().equals(warehouse.getId()))
+                        .findFirst()
+                        .orElse(null);
+
+                if (stock == null) {
+                    // Create new stock entry for product (without variant)
+                    stock = new Stock();
+                    stock.setProduct(product);
+                    stock.setWarehouse(warehouse);
+                    stock.setQuantity(0); // Will be calculated from batches
+                }
+                
+                // Update stock threshold
+                stock.setLowStockThreshold(stockRequest.getLowStockThreshold());
+                Stock savedStock = stockRepository.save(stock);
+
+                // Create batches for this stock
+                List<StockBatch> batches = new ArrayList<>();
+                for (WarehouseStockWithBatchesRequest.StockBatchRequest batchRequest : stockRequest.getBatches()) {
+                    // Check if batch number already exists for this stock
+                    if (stockBatchRepository.findByStockAndBatchNumber(savedStock, batchRequest.getBatchNumber())
+                            .isPresent()) {
+                        throw new IllegalArgumentException(
+                                "Batch number '" + batchRequest.getBatchNumber() + "' already exists for this product stock");
+                    }
+
+                    StockBatch batch = new StockBatch();
+                    batch.setStock(savedStock);
+                    batch.setBatchNumber(batchRequest.getBatchNumber());
+                    batch.setManufactureDate(batchRequest.getManufactureDate());
+                    batch.setExpiryDate(batchRequest.getExpiryDate());
+                    batch.setQuantity(batchRequest.getQuantity());
+                    batch.setSupplierName(batchRequest.getSupplierName());
+                    batch.setSupplierBatchNumber(batchRequest.getSupplierBatchNumber());
+                    batch.setStatus(com.ecommerce.enums.BatchStatus.ACTIVE);
+
+                    StockBatch savedBatch = stockBatchRepository.save(batch);
+                    batches.add(savedBatch);
+                    totalBatchesCreated++;
+                }
+
+                // Update stock quantity based on active batches
+                Integer totalQuantity = batches.stream()
+                        .filter(batch -> batch.getStatus() == com.ecommerce.enums.BatchStatus.ACTIVE)
+                        .mapToInt(StockBatch::getQuantity)
+                        .sum();
+                savedStock.setQuantity(totalQuantity);
+                stockRepository.save(savedStock);
+
+                processedStocks.add(savedStock);
+            }
+
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", true);
+            response.put("message", "Product stock with batches assigned successfully");
+            response.put("assignedWarehouses", warehouseStocks.size());
+            response.put("totalBatchesCreated", totalBatchesCreated);
+
+            log.info("Successfully assigned stock with {} batches to product {} for {} warehouses",
+                    totalBatchesCreated, productId, warehouseStocks.size());
+            return response;
+
+        } catch (IllegalArgumentException e) {
+            log.error("Validation error assigning product stock with batches: {}", e.getMessage());
+            throw e;
+        } catch (Exception e) {
+            log.error("Error assigning product stock with batches: {}", e.getMessage(), e);
+            throw new RuntimeException("Failed to assign product stock with batches: " + e.getMessage(), e);
         }
     }
 
@@ -260,7 +366,9 @@ public class ProductServiceImpl implements ProductService {
 
             List<Stock> existingStocks = stockRepository.findByProduct(product);
             for (Stock existingStock : existingStocks) {
-                stockBatchRepository.deleteByStock(existingStock);
+                // Safely handle existing batches (preserve those referenced by orders)
+                safelyHandleExistingStockBatches(existingStock);
+                // Delete the stock entry (batches are handled above)
                 stockRepository.delete(existingStock);
             }
 
@@ -308,29 +416,66 @@ public class ProductServiceImpl implements ProductService {
         }
     }
 
+    /**
+     * Safely handle existing stock batches - preserve those referenced by orders, 
+     * deactivate others, and only delete unreferenced ones
+     */
+    private void safelyHandleExistingStockBatches(Stock existingStock) {
+        List<StockBatch> existingBatches = stockBatchRepository.findByStock(existingStock);
+        
+        int preservedBatches = 0;
+        int deactivatedBatches = 0;
+        int deletedBatches = 0;
+        
+        for (StockBatch batch : existingBatches) {
+            if (stockBatchRepository.isReferencedByOrders(batch.getId())) {
+                // Preserve batches that are referenced by orders - just deactivate them
+                if (batch.getStatus() == com.ecommerce.enums.BatchStatus.ACTIVE) {
+                    batch.setStatus(com.ecommerce.enums.BatchStatus.INACTIVE);
+                    stockBatchRepository.save(batch);
+                    deactivatedBatches++;
+                    log.info("Deactivated batch {} (ID: {}) as it's referenced by orders", 
+                            batch.getBatchNumber(), batch.getId());
+                } else {
+                    preservedBatches++;
+                    log.info("Preserved existing inactive batch {} (ID: {}) as it's referenced by orders", 
+                            batch.getBatchNumber(), batch.getId());
+                }
+            } else {
+                // Safe to delete batches that are not referenced by any orders
+                stockBatchRepository.delete(batch);
+                deletedBatches++;
+                log.info("Deleted unreferenced batch {} (ID: {})", batch.getBatchNumber(), batch.getId());
+            }
+        }
+        
+        log.info("Batch cleanup summary - Preserved: {}, Deactivated: {}, Deleted: {}", 
+                preservedBatches, deactivatedBatches, deletedBatches);
+    }
+
     @Override
     @Transactional
-    public Map<String, Object> assignProductStockWithBatches(UUID productId,
+    public Map<String, Object> assignVariantStockWithBatches(UUID productId, Long variantId,
             List<WarehouseStockWithBatchesRequest> warehouseStocks) {
         try {
-            log.info("Assigning stock with batches to product {} for {} warehouses", productId, warehouseStocks.size());
+            log.info("Assigning stock with batches to variant {} of product {} for {} warehouses", 
+                    variantId, productId, warehouseStocks.size());
 
             Product product = productRepository.findById(productId)
                     .orElseThrow(() -> new IllegalArgumentException("Product not found"));
-
-            if (product.getVariants() != null && !product.getVariants().isEmpty()) {
-                throw new IllegalArgumentException(
-                        "Cannot assign stock to product with variants. Stock should be managed at variant level.");
-            }
-
-            // Remove existing stock and batches
-            List<Stock> existingStocks = stockRepository.findByProduct(product);
+    
+            ProductVariant variant = product.getVariants().stream()
+                    .filter(v -> v.getId().equals(variantId))
+                    .findFirst()
+                    .orElseThrow(() -> new IllegalArgumentException("Variant not found"));
+            // Safely handle existing stock and batches for this variant
+            List<Stock> existingStocks = stockRepository.findByProductVariant(variant);
             for (Stock existingStock : existingStocks) {
-                stockBatchRepository.deleteByStock(existingStock);
-                stockRepository.delete(existingStock);
+                // Safely handle existing batches (preserve those referenced by orders)
+                safelyHandleExistingStockBatches(existingStock);
             }
 
-            List<Stock> newStocks = new ArrayList<>();
+            List<Stock> processedStocks = new ArrayList<>();
             int totalBatchesCreated = 0;
 
             for (WarehouseStockWithBatchesRequest stockRequest : warehouseStocks) {
@@ -338,15 +483,24 @@ public class ProductServiceImpl implements ProductService {
                         .orElseThrow(() -> new IllegalArgumentException(
                                 "Warehouse not found: " + stockRequest.getWarehouseId()));
 
-                // Create stock entry
-                Stock stock = new Stock();
-                stock.setProduct(product);
-                stock.setWarehouse(warehouse);
-                stock.setQuantity(0); // Will be calculated from batches
+                // Find existing stock for this warehouse and variant, or create new one
+                Stock stock = existingStocks.stream()
+                        .filter(s -> s.getWarehouse().getId().equals(warehouse.getId()))
+                        .findFirst()
+                        .orElse(null);
+
+                if (stock == null) {
+                    // Create new stock entry for variant
+                    stock = new Stock();
+                    stock.setProductVariant(variant);
+                    stock.setWarehouse(warehouse);
+                    stock.setQuantity(0); // Will be calculated from batches
+                }
+                
+                // Update stock threshold
                 stock.setLowStockThreshold(stockRequest.getLowStockThreshold());
-
                 Stock savedStock = stockRepository.save(stock);
-
+    
                 // Create batches for this stock
                 List<StockBatch> batches = new ArrayList<>();
                 for (WarehouseStockWithBatchesRequest.StockBatchRequest batchRequest : stockRequest.getBatches()) {
@@ -354,9 +508,9 @@ public class ProductServiceImpl implements ProductService {
                     if (stockBatchRepository.findByStockAndBatchNumber(savedStock, batchRequest.getBatchNumber())
                             .isPresent()) {
                         throw new IllegalArgumentException(
-                                "Batch number '" + batchRequest.getBatchNumber() + "' already exists for this stock");
+                                "Batch number '" + batchRequest.getBatchNumber() + "' already exists for this variant stock");
                     }
-
+    
                     StockBatch batch = new StockBatch();
                     batch.setStock(savedStock);
                     batch.setBatchNumber(batchRequest.getBatchNumber());
@@ -366,12 +520,12 @@ public class ProductServiceImpl implements ProductService {
                     batch.setSupplierName(batchRequest.getSupplierName());
                     batch.setSupplierBatchNumber(batchRequest.getSupplierBatchNumber());
                     batch.setStatus(com.ecommerce.enums.BatchStatus.ACTIVE);
-
+    
                     StockBatch savedBatch = stockBatchRepository.save(batch);
                     batches.add(savedBatch);
                     totalBatchesCreated++;
                 }
-
+    
                 // Update stock quantity based on active batches
                 Integer totalQuantity = batches.stream()
                         .filter(batch -> batch.getStatus() == com.ecommerce.enums.BatchStatus.ACTIVE)
@@ -379,26 +533,26 @@ public class ProductServiceImpl implements ProductService {
                         .sum();
                 savedStock.setQuantity(totalQuantity);
                 stockRepository.save(savedStock);
-
-                newStocks.add(savedStock);
+    
+                processedStocks.add(savedStock);
             }
-
+    
             Map<String, Object> response = new HashMap<>();
             response.put("success", true);
-            response.put("message", "Stock with batches assigned successfully");
+            response.put("message", "Variant stock with batches assigned successfully");
             response.put("assignedWarehouses", warehouseStocks.size());
             response.put("totalBatchesCreated", totalBatchesCreated);
-
-            log.info("Successfully assigned stock with {} batches to product {} for {} warehouses",
-                    totalBatchesCreated, productId, warehouseStocks.size());
+    
+            log.info("Successfully assigned stock with {} batches to variant {} of product {} for {} warehouses",
+                    totalBatchesCreated, variantId, productId, warehouseStocks.size());
             return response;
-
+    
         } catch (IllegalArgumentException e) {
-            log.error("Validation error assigning product stock with batches: {}", e.getMessage());
+            log.error("Validation error assigning variant stock with batches: {}", e.getMessage());
             throw e;
         } catch (Exception e) {
-            log.error("Error assigning product stock with batches: {}", e.getMessage(), e);
-            throw new RuntimeException("Failed to assign product stock with batches: " + e.getMessage(), e);
+            log.error("Error assigning variant stock with batches: {}", e.getMessage(), e);
+            throw new RuntimeException("Failed to assign variant stock with batches: " + e.getMessage(), e);
         }
     }
 

@@ -22,5 +22,10 @@ public enum BatchStatus {
     /**
      * Batch has been recalled due to quality issues or safety concerns
      */
-    RECALLED
+    RECALLED,
+
+    /**
+     * Batch has been deactivated (typically when reassigning stock but preserving for order history)
+     */
+    INACTIVE
 }

@@ -40,11 +40,16 @@ public interface StockBatchRepository extends JpaRepository<StockBatch, Long> {
         @Query("SELECT sb FROM StockBatch sb WHERE sb.stock.warehouse.id = :warehouseId AND sb.stock.productVariant.id = :variantId")
         List<StockBatch> findByWarehouseAndVariant(@Param("warehouseId") Long warehouseId,
                         @Param("variantId") Long variantId);
-
         List<StockBatch> findByStockInOrderByCreatedAtDesc(List<Stock> stocks);
 
         @Query("SELECT sb FROM StockBatch sb WHERE sb.stock.id = :stockId AND sb.status = 'ACTIVE' AND sb.quantity > 0 ORDER BY sb.expiryDate ASC NULLS LAST")
         List<StockBatch> findActiveByStockIdOrderByExpiryDateAsc(@Param("stockId") Long stockId);
 
         void deleteByStock(Stock stock);
+
+        @Query("SELECT CASE WHEN COUNT(oib) > 0 THEN true ELSE false END FROM OrderItemBatch oib WHERE oib.stockBatch.id = :batchId")
+        boolean isReferencedByOrders(@Param("batchId") Long batchId);
+
+        @Query("SELECT sb FROM StockBatch sb WHERE sb.stock = :stock AND NOT EXISTS (SELECT 1 FROM OrderItemBatch oib WHERE oib.stockBatch = sb)")
+        List<StockBatch> findUnreferencedBatchesByStock(@Param("stock") Stock stock);
 }
