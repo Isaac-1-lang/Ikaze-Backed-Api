@@ -29,6 +29,8 @@ import com.ecommerce.dto.SimpleProductDTO;
 import jakarta.persistence.EntityNotFoundException;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -396,7 +398,6 @@ public class OrderServiceImpl implements OrderService {
         return toCustomerOrderDTO(order);
     }
 
-    // Admin methods
     @Override
     @Transactional(readOnly = true)
     public List<AdminOrderDTO> getAllAdminOrders() {
@@ -404,6 +405,13 @@ public class OrderServiceImpl implements OrderService {
         return orders.stream()
                 .map(this::toAdminOrderDTO)
                 .collect(Collectors.toList());
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Page<AdminOrderDTO> getAllAdminOrdersPaginated(Pageable pageable) {
+        Page<Order> ordersPage = orderRepository.findAllWithDetailsForAdmin(pageable);
+        return ordersPage.map(this::toAdminOrderDTO);
     }
 
     @Override

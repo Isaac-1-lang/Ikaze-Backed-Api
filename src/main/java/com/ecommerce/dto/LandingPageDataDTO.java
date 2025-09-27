@@ -16,8 +16,8 @@ public class LandingPageDataDTO {
     private List<LandingPageProductDTO> topSellingProducts;
     private List<LandingPageProductDTO> newProducts;
     private List<LandingPageProductDTO> discountedProducts;
-    private List<LandingPageCategoryDTO> popularCategories;
-    private List<LandingPageBrandDTO> popularBrands;
+    private List<CategoryWithProductsDTO> featuredCategories;
+    private List<BrandWithProductsDTO> featuredBrands;
 
     // Statistics for the landing page
     private Long totalProducts;

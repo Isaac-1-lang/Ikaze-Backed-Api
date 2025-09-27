@@ -38,18 +38,20 @@ public interface LandingPageService {
     LandingPageDataDTO getDiscountedProducts(int limit);
 
     /**
-     * Get popular categories with product counts
+     * Get featured categories with their products
      * 
-     * @param limit Maximum number of categories to return
-     * @return List of popular categories
+     * @param categoryLimit Maximum number of categories to return
+     * @param productLimit Maximum number of products per category
+     * @return List of featured categories with products
      */
-    LandingPageDataDTO getPopularCategories(int limit);
+    LandingPageDataDTO getFeaturedCategories(int categoryLimit, int productLimit);
 
     /**
-     * Get popular brands with product counts
+     * Get featured brands with their products
      * 
-     * @param limit Maximum number of brands to return
-     * @return List of popular brands
+     * @param brandLimit Maximum number of brands to return
+     * @param productLimit Maximum number of products per brand
+     * @return List of featured brands with products
      */
-    LandingPageDataDTO getPopularBrands(int limit);
+    LandingPageDataDTO getFeaturedBrands(int brandLimit, int productLimit);
 }

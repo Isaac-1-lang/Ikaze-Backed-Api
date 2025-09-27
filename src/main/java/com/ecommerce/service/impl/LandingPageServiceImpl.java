@@ -1,9 +1,15 @@
 package com.ecommerce.service.impl;
 
 import com.ecommerce.dto.*;
-import com.ecommerce.entity.*;
-import com.ecommerce.repository.*;
+import com.ecommerce.entity.Brand;
+import com.ecommerce.entity.Category;
+import com.ecommerce.entity.Product;
+import com.ecommerce.entity.ProductImage;
+import com.ecommerce.repository.BrandRepository;
+import com.ecommerce.repository.CategoryRepository;
+import com.ecommerce.repository.ProductRepository;
 import com.ecommerce.service.LandingPageService;
+import com.ecommerce.service.ProductAvailabilityService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.PageRequest;
@@ -15,6 +21,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
+import java.util.Collections;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -27,6 +34,7 @@ public class LandingPageServiceImpl implements LandingPageService {
     private final ProductRepository productRepository;
     private final CategoryRepository categoryRepository;
     private final BrandRepository brandRepository;
+    private final ProductAvailabilityService productAvailabilityService;
 
     @Override
     public LandingPageDataDTO getLandingPageData() {
@@ -37,8 +45,8 @@ public class LandingPageServiceImpl implements LandingPageService {
             List<LandingPageProductDTO> topSellingProducts = getTopSellingProductsList(8);
             List<LandingPageProductDTO> newProducts = getNewProductsList(8);
             List<LandingPageProductDTO> discountedProducts = getDiscountedProductsList(8);
-            List<LandingPageCategoryDTO> popularCategories = getPopularCategoriesList(8);
-            List<LandingPageBrandDTO> popularBrands = getPopularBrandsList(6);
+            List<CategoryWithProductsDTO> featuredCategories = getFeaturedCategoriesWithProducts(3, 6);
+            List<BrandWithProductsDTO> featuredBrands = getFeaturedBrandsWithProducts(3, 6);
 
             // Get statistics
             long totalProducts = productRepository.count();
@@ -50,8 +58,8 @@ public class LandingPageServiceImpl implements LandingPageService {
                     .topSellingProducts(topSellingProducts)
                     .newProducts(newProducts)
                     .discountedProducts(discountedProducts)
-                    .popularCategories(popularCategories)
-                    .popularBrands(popularBrands)
+                    .featuredCategories(featuredCategories)
+                    .featuredBrands(featuredBrands)
                     .totalProducts(totalProducts)
                     .totalCategories(totalCategories)
                     .totalBrands(totalBrands)
@@ -91,18 +99,18 @@ public class LandingPageServiceImpl implements LandingPageService {
     }
 
     @Override
-    public LandingPageDataDTO getPopularCategories(int limit) {
-        List<LandingPageCategoryDTO> categories = getPopularCategoriesList(limit);
+    public LandingPageDataDTO getFeaturedCategories(int categoryLimit, int productLimit) {
+        List<CategoryWithProductsDTO> categories = getFeaturedCategoriesWithProducts(categoryLimit, productLimit);
         return LandingPageDataDTO.builder()
-                .popularCategories(categories)
+                .featuredCategories(categories)
                 .build();
     }
 
     @Override
-    public LandingPageDataDTO getPopularBrands(int limit) {
-        List<LandingPageBrandDTO> brands = getPopularBrandsList(limit);
+    public LandingPageDataDTO getFeaturedBrands(int brandLimit, int productLimit) {
+        List<BrandWithProductsDTO> brands = getFeaturedBrandsWithProducts(brandLimit, productLimit);
         return LandingPageDataDTO.builder()
-                .popularBrands(brands)
+                .featuredBrands(brands)
                 .build();
     }
 
@@ -116,7 +124,7 @@ public class LandingPageServiceImpl implements LandingPageService {
         List<Product> products = productRepository.findAll(pageable).getContent();
 
         return products.stream()
-                .filter(Product::isActive)
+                .filter(productAvailabilityService::isProductAvailableForCustomers)
                 .map(this::convertToLandingPageProductDTO)
                 .collect(Collectors.toList());
     }
@@ -131,7 +139,7 @@ public class LandingPageServiceImpl implements LandingPageService {
         List<Product> products = productRepository.findAll(pageable).getContent();
 
         return products.stream()
-                .filter(Product::isActive)
+                .filter(productAvailabilityService::isProductAvailableForCustomers)
                 .filter(p -> p.getCreatedAt().isAfter(LocalDateTime.now().minusDays(30)))
                 .map(this::convertToLandingPageProductDTO)
                 .collect(Collectors.toList());
@@ -144,7 +152,7 @@ public class LandingPageServiceImpl implements LandingPageService {
         List<Product> allProducts = productRepository.findAll();
 
         return allProducts.stream()
-                .filter(Product::isActive)
+                .filter(productAvailabilityService::isProductAvailableForCustomers)
                 .filter(this::hasDiscount)
                 .sorted((p1, p2) -> calculateDiscountPercentage(p2).compareTo(calculateDiscountPercentage(p1)))
                 .limit(limit)
@@ -355,5 +363,104 @@ public class LandingPageServiceImpl implements LandingPageService {
         
         // If no product-level discount, return the max variant discount
         return getMaxVariantDiscount(product);
+    }
+
+    /**
+     * Get random top-performing categories with their products
+     */
+    private List<CategoryWithProductsDTO> getFeaturedCategoriesWithProducts(int categoryLimit, int productLimit) {
+        log.info("Fetching {} featured categories with {} products each", categoryLimit, productLimit);
+
+        // Get top categories by product count (active categories only)
+        List<Category> topCategories = categoryRepository.findByIsActiveTrue(PageRequest.of(0, categoryLimit * 2))
+                .getContent()
+                .stream()
+                .filter(category -> productRepository.countByCategoryAndIsActiveTrue(category) > 0)
+                .sorted((c1, c2) -> Long.compare(
+                        productRepository.countByCategoryAndIsActiveTrue(c2),
+                        productRepository.countByCategoryAndIsActiveTrue(c1)))
+                .limit(categoryLimit * 2) // Get more than needed for randomization
+                .collect(Collectors.toList());
+
+        // Randomize and select final categories
+        Collections.shuffle(topCategories);
+        List<Category> selectedCategories = topCategories.stream()
+                .limit(categoryLimit)
+                .collect(Collectors.toList());
+
+        return selectedCategories.stream()
+                .map(category -> {
+                    // Get products for this category
+                    List<Product> categoryProducts = productRepository
+                            .findByCategoryAndIsActiveTrueOrderByCreatedAtDesc(category, PageRequest.of(0, productLimit))
+                            .getContent();
+
+                    List<LandingPageProductDTO> productDTOs = categoryProducts.stream()
+                            .filter(productAvailabilityService::isProductAvailableForCustomers)
+                            .map(this::convertToLandingPageProductDTO)
+                            .collect(Collectors.toList());
+
+                    return CategoryWithProductsDTO.builder()
+                            .categoryId(category.getId())
+                            .categoryName(category.getName())
+                            .description(category.getDescription())
+                            .imageUrl(category.getImageUrl())
+                            .slug(category.getSlug())
+                            .productCount(productRepository.countByCategoryAndIsActiveTrue(category))
+                            .isActive(category.isActive())
+                            .isFeatured(category.isFeatured())
+                            .products(productDTOs)
+                            .build();
+                })
+                .collect(Collectors.toList());
+    }
+
+    /**
+     * Get random top-performing brands with their products
+     */
+    private List<BrandWithProductsDTO> getFeaturedBrandsWithProducts(int brandLimit, int productLimit) {
+        log.info("Fetching {} featured brands with {} products each", brandLimit, productLimit);
+
+        // Get top brands by product count (active brands only)
+        List<Brand> topBrands = brandRepository.findByIsActiveTrue()
+                .stream()
+                .filter(brand -> productRepository.countByBrandAndIsActiveTrue(brand) > 0)
+                .sorted((b1, b2) -> Long.compare(
+                        productRepository.countByBrandAndIsActiveTrue(b2),
+                        productRepository.countByBrandAndIsActiveTrue(b1)))
+                .limit(brandLimit * 2) // Get more than needed for randomization
+                .collect(Collectors.toList());
+
+        // Randomize and select final brands
+        Collections.shuffle(topBrands);
+        List<Brand> selectedBrands = topBrands.stream()
+                .limit(brandLimit)
+                .collect(Collectors.toList());
+
+        return selectedBrands.stream()
+                .map(brand -> {
+                    // Get products for this brand
+                    List<Product> brandProducts = productRepository
+                            .findByBrandAndIsActiveTrueOrderByCreatedAtDesc(brand, PageRequest.of(0, productLimit))
+                            .getContent();
+
+                    List<LandingPageProductDTO> productDTOs = brandProducts.stream()
+                            .filter(productAvailabilityService::isProductAvailableForCustomers)
+                            .map(this::convertToLandingPageProductDTO)
+                            .collect(Collectors.toList());
+
+                    return BrandWithProductsDTO.builder()
+                            .brandId(brand.getBrandId())
+                            .brandName(brand.getBrandName())
+                            .description(brand.getDescription())
+                            .logoUrl(brand.getLogoUrl())
+                            .slug(brand.getSlug())
+                            .productCount(productRepository.countByBrandAndIsActiveTrue(brand))
+                            .isActive(brand.isActive())
+                            .isFeatured(brand.isFeatured())
+                            .products(productDTOs)
+                            .build();
+                })
+                .collect(Collectors.toList());
     }
 }

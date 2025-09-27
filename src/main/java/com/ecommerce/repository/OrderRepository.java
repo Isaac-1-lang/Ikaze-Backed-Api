@@ -1,6 +1,7 @@
 package com.ecommerce.repository;
 
 import com.ecommerce.entity.Order;
+import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
@@ -132,6 +133,20 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
                         "LEFT JOIN FETCH o.orderCustomerInfo customer " +
                         "LEFT JOIN FETCH o.orderTransaction tx")
         List<Order> findAllWithDetailsForAdmin();
+
+        /**
+         * Find all orders with all details for admin with pagination
+         */
+        @Query("SELECT DISTINCT o FROM Order o " +
+                        "LEFT JOIN FETCH o.user u " +
+                        "LEFT JOIN FETCH o.orderItems oi " +
+                        "LEFT JOIN FETCH oi.productVariant v " +
+                        "LEFT JOIN FETCH v.product p " +
+                        "LEFT JOIN FETCH o.orderInfo info " +
+                        "LEFT JOIN FETCH o.orderAddress addr " +
+                        "LEFT JOIN FETCH o.orderCustomerInfo customer " +
+                        "LEFT JOIN FETCH o.orderTransaction tx")
+        Page<Order> findAllWithDetailsForAdmin(Pageable pageable);
 
         /**
          * Find order by ID with all details for admin (includes all relationships

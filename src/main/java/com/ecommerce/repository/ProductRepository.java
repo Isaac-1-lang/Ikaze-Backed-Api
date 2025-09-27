@@ -246,4 +246,11 @@ public interface ProductRepository extends JpaRepository<Product, UUID>, JpaSpec
                 "AND ((p.variants IS EMPTY AND sb.status = 'ACTIVE' AND sb.quantity > 0) " +
                 "OR (p.variants IS NOT EMPTY AND v.isActive = true AND sb.status = 'ACTIVE' AND sb.quantity > 0))")
         Page<Product> findNewArrivalsForCustomersWithStock(Pageable pageable);
+
+        // Methods for featured categories and brands with products
+        @Query("SELECT p FROM Product p WHERE p.category = :category AND p.isActive = true ORDER BY p.createdAt DESC")
+        Page<Product> findByCategoryAndIsActiveTrueOrderByCreatedAtDesc(@Param("category") Category category, Pageable pageable);
+        
+        @Query("SELECT p FROM Product p WHERE p.brand = :brand AND p.isActive = true ORDER BY p.createdAt DESC")
+        Page<Product> findByBrandAndIsActiveTrueOrderByCreatedAtDesc(@Param("brand") Brand brand, Pageable pageable);
 }

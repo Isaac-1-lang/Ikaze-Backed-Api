@@ -149,7 +149,7 @@ public class LandingPageController {
             @RequestParam(defaultValue = "8") int limit) {
         try {
             log.info("Fetching popular categories with limit: {}", limit);
-            LandingPageDataDTO data = landingPageService.getPopularCategories(limit);
+            LandingPageDataDTO data = landingPageService.getFeaturedCategories(limit, 6);
 
             Map<String, Object> response = new HashMap<>();
             response.put("success", true);
@@ -178,7 +178,7 @@ public class LandingPageController {
             @RequestParam(defaultValue = "6") int limit) {
         try {
             log.info("Fetching popular brands with limit: {}", limit);
-            LandingPageDataDTO data = landingPageService.getPopularBrands(limit);
+            LandingPageDataDTO data = landingPageService.getFeaturedBrands(limit, 6);
 
             Map<String, Object> response = new HashMap<>();
             response.put("success", true);
