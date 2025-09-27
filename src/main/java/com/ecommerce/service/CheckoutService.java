@@ -19,6 +19,7 @@ import com.ecommerce.dto.OrderResponseDTO;
 import com.ecommerce.dto.OrderAddressDTO;
 import com.ecommerce.dto.OrderCustomerInfoDTO;
 import com.ecommerce.dto.OrderItemDTO;
+import com.ecommerce.dto.OrderTransactionDTO;
 import com.ecommerce.dto.SimpleProductDTO;
 import com.ecommerce.entity.Discount;
 import com.ecommerce.entity.Order;
@@ -913,6 +914,7 @@ public class CheckoutService {
     private OrderResponseDTO convertOrderToResponseDTO(Order order) {
         OrderInfo info = order.getOrderInfo();
         OrderAddress addr = order.getOrderAddress();
+        log.info("The order addressses obtained are "  + addr);
         OrderTransaction tx = order.getOrderTransaction();
 
         OrderResponseDTO dto = new OrderResponseDTO();
@@ -926,6 +928,21 @@ public class CheckoutService {
         dto.setCreatedAt(order.getCreatedAt());
         dto.setUpdatedAt(order.getUpdatedAt());
 
+        // Set customer information from OrderCustomerInfo entity
+        if (order.getOrderCustomerInfo() != null) {
+            OrderCustomerInfoDTO customerInfo = new OrderCustomerInfoDTO();
+            customerInfo.setFirstName(order.getOrderCustomerInfo().getFirstName());
+            customerInfo.setLastName(order.getOrderCustomerInfo().getLastName());
+            customerInfo.setEmail(order.getOrderCustomerInfo().getEmail());
+            customerInfo.setPhoneNumber(order.getOrderCustomerInfo().getPhoneNumber());
+            customerInfo.setStreetAddress(order.getOrderCustomerInfo().getStreetAddress());
+            customerInfo.setCity(order.getOrderCustomerInfo().getCity());
+            customerInfo.setState(order.getOrderCustomerInfo().getState());
+            customerInfo.setCountry(order.getOrderCustomerInfo().getCountry());
+            dto.setCustomerInfo(customerInfo);
+            log.info("The customer info are: " + customerInfo);
+        }
+
         // Set order info
         if (info != null) {
             dto.setSubtotal(info.getTotalAmount());
@@ -936,7 +953,6 @@ public class CheckoutService {
             dto.setNotes(info.getNotes());
         }
 
-        // Set shipping address
         if (addr != null) {
             OrderAddressDTO ad = new OrderAddressDTO();
             ad.setId(addr.getOrderAddressId() != null ? addr.getOrderAddressId().toString() : null);
@@ -959,24 +975,28 @@ public class CheckoutService {
             dto.setShippingAddress(ad);
         }
 
-        // Set customer information
-        if (order.getOrderCustomerInfo() != null) {
-            OrderCustomerInfoDTO customerDto = new OrderCustomerInfoDTO();
-            customerDto.setFirstName(order.getOrderCustomerInfo().getFirstName());
-            customerDto.setLastName(order.getOrderCustomerInfo().getLastName());
-            customerDto.setEmail(order.getOrderCustomerInfo().getEmail());
-            customerDto.setPhoneNumber(order.getOrderCustomerInfo().getPhoneNumber());
-            customerDto.setStreetAddress(order.getOrderCustomerInfo().getStreetAddress());
-            customerDto.setCity(order.getOrderCustomerInfo().getCity());
-            customerDto.setState(order.getOrderCustomerInfo().getState());
-            customerDto.setCountry(order.getOrderCustomerInfo().getCountry());
-            dto.setCustomerInfo(customerDto);
-        }
-
         // Set payment information
         if (tx != null) {
             dto.setPaymentMethod(tx.getPaymentMethod() != null ? tx.getPaymentMethod().name() : null);
             dto.setPaymentStatus(tx.getStatus() != null ? tx.getStatus().name() : null);
+        }
+
+        // Set transaction information
+        if (tx != null) {
+            OrderTransactionDTO transactionDTO = new OrderTransactionDTO();
+            transactionDTO.setOrderTransactionId(tx.getOrderTransactionId() != null ? tx.getOrderTransactionId().toString() : null);
+            transactionDTO.setTransactionRef(tx.getTransactionRef());
+            transactionDTO.setPaymentMethod(tx.getPaymentMethod() != null ? tx.getPaymentMethod().name() : null);
+            transactionDTO.setStatus(tx.getStatus() != null ? tx.getStatus().name() : null);
+            transactionDTO.setOrderAmount(tx.getOrderAmount());
+            transactionDTO.setPointsUsed(tx.getPointsUsed());
+            transactionDTO.setPointsValue(tx.getPointsValue());
+            transactionDTO.setStripePaymentIntentId(tx.getStripePaymentIntentId());
+            transactionDTO.setReceiptUrl(tx.getReceiptUrl());
+            transactionDTO.setPaymentDate(tx.getPaymentDate());
+            transactionDTO.setCreatedAt(tx.getCreatedAt());
+            transactionDTO.setUpdatedAt(tx.getUpdatedAt());
+            dto.setTransaction(transactionDTO);
         }
 
         // Set order items with product/variant information

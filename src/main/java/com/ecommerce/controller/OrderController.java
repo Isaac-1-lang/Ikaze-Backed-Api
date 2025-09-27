@@ -9,6 +9,8 @@ import com.ecommerce.entity.ProductImage;
 import com.ecommerce.dto.OrderResponseDTO;
 import com.ecommerce.dto.OrderItemDTO;
 import com.ecommerce.dto.OrderAddressDTO;
+import com.ecommerce.dto.OrderCustomerInfoDTO;
+import com.ecommerce.dto.OrderTransactionDTO;
 import com.ecommerce.dto.SimpleProductDTO;
 import com.ecommerce.dto.CreateOrderDTO;
 import com.ecommerce.service.OrderService;
@@ -106,7 +108,6 @@ public class OrderController {
     })
     public ResponseEntity<?> getOrderById(@PathVariable Long orderId) {
         try {
-            // Get current authenticated user
             UUID userId = getCurrentUserId();
             if (userId == null) {
                 Map<String, Object> res = new HashMap<>();
@@ -116,8 +117,6 @@ public class OrderController {
                 res.put("details", "User ID could not be extracted from token");
                 return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(res);
             }
-
-            // Use the new method with user validation for customers
             Authentication auth = SecurityContextHolder.getContext().getAuthentication();
             boolean isAdminOrEmployee = auth.getAuthorities().stream()
                     .anyMatch(grantedAuthority -> 
@@ -504,7 +503,7 @@ public class OrderController {
         OrderInfo info = order.getOrderInfo();
         OrderAddress addr = order.getOrderAddress();
         OrderTransaction tx = order.getOrderTransaction();
-
+    
         OrderResponseDTO dto = new OrderResponseDTO();
         dto.setId(order.getOrderId() != null ? order.getOrderId().toString() : null);
         dto.setUserId(
@@ -515,7 +514,34 @@ public class OrderController {
         dto.setStatus(order.getOrderStatus() != null ? order.getOrderStatus().name() : null);
         dto.setCreatedAt(order.getCreatedAt());
         dto.setUpdatedAt(order.getUpdatedAt());
-
+    
+        // Set customer information from User entity
+        if (order.getUser() != null) {
+            OrderCustomerInfoDTO customerInfo = new OrderCustomerInfoDTO();
+            customerInfo.setFirstName(order.getUser().getFirstName());
+            customerInfo.setLastName(order.getUser().getLastName());
+            customerInfo.setEmail(order.getUser().getUserEmail());
+            customerInfo.setPhoneNumber(order.getUser().getPhoneNumber());
+            
+            // Add address info to customer info if available
+            if (addr != null) {
+                customerInfo.setStreetAddress(addr.getStreet());
+                customerInfo.setCountry(addr.getCountry());
+                
+                if (addr.getRegions() != null && !addr.getRegions().isEmpty()) {
+                    String[] regions = addr.getRegions().split(",");
+                    if (regions.length >= 2) {
+                        customerInfo.setCity(regions[0].trim());
+                        customerInfo.setState(regions[1].trim());
+                    } else if (regions.length == 1) {
+                        customerInfo.setCity(regions[0].trim());
+                        customerInfo.setState("");
+                    }
+                }
+            }
+            dto.setCustomerInfo(customerInfo);
+        }
+    
         // Set order info
         if (info != null) {
             dto.setSubtotal(info.getTotalAmount());
@@ -525,14 +551,17 @@ public class OrderController {
             dto.setTotal(info.getFinalAmount());
             dto.setNotes(info.getNotes());
         }
-
-        // Set shipping address
+    
+        // Set shipping address with all fields including lat/lng
         if (addr != null) {
             OrderAddressDTO ad = new OrderAddressDTO();
             ad.setId(addr.getOrderAddressId() != null ? addr.getOrderAddressId().toString() : null);
             ad.setStreet(addr.getStreet());
             ad.setCountry(addr.getCountry());
-
+            ad.setLatitude(addr.getLatitude());
+            ad.setLongitude(addr.getLongitude());
+            ad.setRoadName(addr.getRoadName());
+    
             if (addr.getRegions() != null && !addr.getRegions().isEmpty()) {
                 String[] regions = addr.getRegions().split(",");
                 if (regions.length >= 2) {
@@ -545,19 +574,35 @@ public class OrderController {
             }
             dto.setShippingAddress(ad);
         }
-
+    
         // Set payment information
         if (tx != null) {
             dto.setPaymentMethod(tx.getPaymentMethod() != null ? tx.getPaymentMethod().name() : null);
             dto.setPaymentStatus(tx.getStatus() != null ? tx.getStatus().name() : null);
         }
-
-        // Set order items with product/variant information
+    
+        if (tx != null) {
+            OrderTransactionDTO transactionDTO = new OrderTransactionDTO();
+            transactionDTO.setOrderTransactionId(tx.getOrderTransactionId() != null ? tx.getOrderTransactionId().toString() : null);
+            transactionDTO.setTransactionRef(tx.getTransactionRef());
+            transactionDTO.setPaymentMethod(tx.getPaymentMethod() != null ? tx.getPaymentMethod().name() : null);
+            transactionDTO.setStatus(tx.getStatus() != null ? tx.getStatus().name() : null);
+            transactionDTO.setOrderAmount(tx.getOrderAmount());
+            transactionDTO.setPointsUsed(tx.getPointsUsed());
+            transactionDTO.setPointsValue(tx.getPointsValue());
+            transactionDTO.setStripePaymentIntentId(tx.getStripePaymentIntentId());
+            transactionDTO.setReceiptUrl(tx.getReceiptUrl());
+            transactionDTO.setPaymentDate(tx.getPaymentDate());
+            transactionDTO.setCreatedAt(tx.getCreatedAt());
+            transactionDTO.setUpdatedAt(tx.getUpdatedAt());
+            dto.setTransaction(transactionDTO);
+        }
+    
         if (order.getOrderItems() != null && !order.getOrderItems().isEmpty()) {
             List<OrderItemDTO> itemDTOs = order.getOrderItems().stream().map(this::mapOrderItemToDTO).toList();
             dto.setItems(itemDTOs);
         }
-
+    
         return dto;
     }
 
