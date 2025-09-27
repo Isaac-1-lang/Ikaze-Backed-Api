@@ -48,17 +48,7 @@ import java.util.ArrayList;
 @Slf4j
 @Transactional
 public class OrderServiceImpl implements OrderService {
-    @Override
-    public List<Order> getAllOrders() {
-        return orderRepository.findAll();
-    }
-
-    @Override
-    public Order getOrderById(Long orderId) {
-        return orderRepository.findById(orderId)
-                .orElse(null);
-    }
-
+    
     private final OrderRepository orderRepository;
     private final ProductRepository productRepository;
     private final ProductVariantRepository productVariantRepository;
@@ -78,6 +68,22 @@ public class OrderServiceImpl implements OrderService {
         this.userRepository = userRepository;
         this.readyForDeliveryGroupRepository = readyForDeliveryGroupRepository;
         this.rewardService = rewardService;
+    }
+
+    @Override
+    public List<Order> getAllOrders() {
+        return orderRepository.findAll();
+    }
+
+    @Override
+    public Page<Order> getAllOrders(Pageable pageable) {
+        return orderRepository.findAll(pageable);
+    }
+
+    @Override
+    public Order getOrderById(Long orderId) {
+        return orderRepository.findById(orderId)
+                .orElse(null);
     }
 
     @Override

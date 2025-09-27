@@ -19,7 +19,7 @@ public interface OrderService {
     List<Order> getOrdersForUser(UUID userId);
 
     Order getOrderByIdForUser(UUID userId, Long orderId);
-
+    Order getOrderById(Long orderId);
     Order getOrderByNumber(UUID userId, String orderNumber);
 
     Order createOrder(UUID userId, CreateOrderDTO createOrderDTO);
