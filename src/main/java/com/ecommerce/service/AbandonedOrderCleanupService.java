@@ -31,20 +31,20 @@ public class AbandonedOrderCleanupService {
     @Transactional
     public void cleanupSingleAbandonedOrder(Order order) {
         try {
-            log.info("Cleaning up abandoned order: {} (created: {})", 
+            log.info("Cleaning up abandoned order: {} (created: {})",
                     order.getOrderId(), order.getCreatedAt());
-            
+
             // Refund points if any were used
             refundPointsForAbandonedOrder(order);
-            
+
             // Unlock stock batches for this order
             unlockStockBatchesForOrder(order);
-            
+
             // Delete the order
             orderRepository.delete(order);
-            
+
             log.info("Successfully cleaned up abandoned order: {}", order.getOrderId());
-            
+
         } catch (Exception e) {
             log.error("Error cleaning up abandoned order {}: {}", order.getOrderId(), e.getMessage(), e);
             throw e;
@@ -56,40 +56,39 @@ public class AbandonedOrderCleanupService {
      * Only cleans up orders that are older than 10 minutes to avoid deleting orders
      * that are currently being processed
      */
-    @Scheduled(fixedRate = 5000) // 5 minutes = 300,000 milliseconds 
+    @Scheduled(fixedRate = 50000)
     @Transactional
     public void scheduledCleanupAbandonedOrders() {
         try {
             log.info("🔄 SCHEDULED CLEANUP STARTED - Looking for abandoned orders...");
-            
+
             LocalDateTime cutoffTime = LocalDateTime.now().minusMinutes(10);
-            
+
             List<Order> abandonedOrders;
             int totalCleaned = 0;
-            
-            // Process in batches to avoid memory issues
+
             do {
-                Pageable pageable = PageRequest.of(0, 20); // Smaller batch size for scheduled cleanup
+                Pageable pageable = PageRequest.of(0, 20);
                 abandonedOrders = orderRepository.findAbandonedPendingOrders(cutoffTime, pageable);
-                
+
                 for (Order order : abandonedOrders) {
                     try {
                         cleanupSingleAbandonedOrder(order);
                         totalCleaned++;
                     } catch (Exception e) {
-                        log.error("Failed to cleanup abandoned order {} during scheduled cleanup: {}", 
-                                 order.getOrderId(), e.getMessage());
+                        log.error("Failed to cleanup abandoned order {} during scheduled cleanup: {}",
+                                order.getOrderId(), e.getMessage());
                     }
                 }
-                
+
             } while (!abandonedOrders.isEmpty());
-            
+
             if (totalCleaned > 0) {
                 log.info("SCHEDULED CLEANUP COMPLETED: cleaned up {} abandoned orders", totalCleaned);
             } else {
                 log.info(" SCHEDULED CLEANUP COMPLETED: no abandoned orders found (cutoff: {})", cutoffTime);
             }
-            
+
         } catch (Exception e) {
             log.error("Error during scheduled abandoned order cleanup: {}", e.getMessage(), e);
         }
@@ -109,15 +108,15 @@ public class AbandonedOrderCleanupService {
                 String tempSessionId = "temp_" + order.getOrderId().toString();
                 enhancedStockLockService.unlockAllBatches(tempSessionId);
                 log.debug("Unlocked stock batches for temp session: {}", tempSessionId);
-                
+
                 // Also try guest session format
                 String tempGuestSessionId = "temp_guest_" + order.getOrderId().toString();
                 enhancedStockLockService.unlockAllBatches(tempGuestSessionId);
                 log.debug("Unlocked stock batches for temp guest session: {}", tempGuestSessionId);
             }
         } catch (Exception e) {
-            log.error("Error unlocking stock batches for abandoned order {}: {}", 
-                     order.getOrderId(), e.getMessage());
+            log.error("Error unlocking stock batches for abandoned order {}: {}",
+                    order.getOrderId(), e.getMessage());
             // Don't throw exception here - we still want to clean up the order
         }
     }
@@ -139,20 +138,19 @@ public class AbandonedOrderCleanupService {
             }
 
             // This was a hybrid payment that was abandoned/cancelled
-            String refundDescription = String.format("Points refunded for cancelled hybrid payment (Order #%s)", 
+            String refundDescription = String.format("Points refunded for cancelled hybrid payment (Order #%s)",
                     order.getOrderCode() != null ? order.getOrderCode() : order.getOrderId().toString());
 
             rewardService.refundPointsForCancelledOrder(
-                    order.getUser().getId(), 
-                    pointsUsed, 
-                    refundDescription
-            );
+                    order.getUser().getId(),
+                    pointsUsed,
+                    refundDescription);
 
-            log.info("Refunded {} points to user {} for abandoned hybrid payment order {}", 
+            log.info("Refunded {} points to user {} for abandoned hybrid payment order {}",
                     pointsUsed, order.getUser().getId(), order.getOrderId());
 
         } catch (Exception e) {
-            log.error("Error refunding points for abandoned order {}: {}", 
+            log.error("Error refunding points for abandoned order {}: {}",
                     order.getOrderId(), e.getMessage(), e);
             // Don't throw exception here - we still want to clean up the order
         }
@@ -180,20 +178,20 @@ public class AbandonedOrderCleanupService {
     @Transactional
     public CleanupResult manualCleanupAllAbandonedOrders() {
         log.info("Starting manual cleanup of all abandoned orders");
-        
+
         LocalDateTime cutoffTime = LocalDateTime.now().minusMinutes(30);
-        
+
         int totalProcessed = 0;
         int totalSuccessful = 0;
         int totalErrors = 0;
-        
+
         List<Order> abandonedOrders;
-        
+
         // Process in batches to avoid memory issues
         do {
             Pageable pageable = PageRequest.of(0, 50); // 50 batch size default
             abandonedOrders = orderRepository.findAbandonedPendingOrders(cutoffTime, pageable);
-            
+
             for (Order order : abandonedOrders) {
                 totalProcessed++;
                 try {
@@ -201,16 +199,16 @@ public class AbandonedOrderCleanupService {
                     totalSuccessful++;
                 } catch (Exception e) {
                     totalErrors++;
-                    log.error("Failed to cleanup order {} during manual cleanup: {}", 
-                             order.getOrderId(), e.getMessage());
+                    log.error("Failed to cleanup order {} during manual cleanup: {}",
+                            order.getOrderId(), e.getMessage());
                 }
             }
-            
+
         } while (!abandonedOrders.isEmpty());
-        
+
         CleanupResult result = new CleanupResult(totalProcessed, totalSuccessful, totalErrors);
         log.info("Manual cleanup completed: {}", result);
-        
+
         return result;
     }
 
@@ -246,14 +244,22 @@ public class AbandonedOrderCleanupService {
             this.errors = errors;
         }
 
-        public int getTotalProcessed() { return totalProcessed; }
-        public int getSuccessful() { return successful; }
-        public int getErrors() { return errors; }
+        public int getTotalProcessed() {
+            return totalProcessed;
+        }
+
+        public int getSuccessful() {
+            return successful;
+        }
+
+        public int getErrors() {
+            return errors;
+        }
 
         @Override
         public String toString() {
-            return String.format("CleanupResult{processed=%d, successful=%d, errors=%d}", 
-                               totalProcessed, successful, errors);
+            return String.format("CleanupResult{processed=%d, successful=%d, errors=%d}",
+                    totalProcessed, successful, errors);
         }
     }
 }

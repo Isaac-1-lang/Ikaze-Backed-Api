@@ -80,9 +80,9 @@ public class CheckoutController {
             log.error("Error creating checkout session: {}", e.getMessage(), e);
             Map<String, Object> response = new HashMap<>();
             response.put("success", false);
-            response.put("message", "An unexpected error occurred while creating checkout session.");
+            response.put("details", "An unexpected error occurred while creating checkout session.");
             response.put("errorCode", "INTERNAL_ERROR");
-            response.put("details", e.getMessage());
+            response.put("message", e.getMessage());
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(response);
         }
     }
@@ -259,11 +259,11 @@ public class CheckoutController {
     public ResponseEntity<?> cleanupExpiredLocks() {
         try {
             checkoutService.cleanupExpiredBatchLocks();
-            
+
             Map<String, Object> response = new HashMap<>();
             response.put("success", true);
             response.put("message", "Expired batch locks cleaned up successfully");
-            
+
             return ResponseEntity.ok(response);
         } catch (Exception e) {
             log.error("Error cleaning up expired locks: {}", e.getMessage(), e);
@@ -280,11 +280,11 @@ public class CheckoutController {
     public ResponseEntity<?> debugStockLocks(@PathVariable String sessionId) {
         try {
             Map<String, Object> lockInfo = checkoutService.getLockedStockInfo(sessionId);
-            
+
             Map<String, Object> response = new HashMap<>();
             response.put("success", true);
             response.put("lockInfo", lockInfo);
-            
+
             return ResponseEntity.ok(response);
         } catch (Exception e) {
             log.error("Error getting stock lock info: {}", e.getMessage(), e);
