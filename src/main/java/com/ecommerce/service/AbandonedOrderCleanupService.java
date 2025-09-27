@@ -6,6 +6,7 @@ import java.util.Optional;
 
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -22,6 +23,7 @@ public class AbandonedOrderCleanupService {
 
     private final OrderRepository orderRepository;
     private final RewardService rewardService;
+    private final EnhancedStockLockService enhancedStockLockService;
 
     /**
      * Clean up a single abandoned order
@@ -32,10 +34,13 @@ public class AbandonedOrderCleanupService {
             log.info("Cleaning up abandoned order: {} (created: {})", 
                     order.getOrderId(), order.getCreatedAt());
             
-            // Handle points refund for hybrid payments that were cancelled/abandoned
+            // Refund points if any were used
             refundPointsForAbandonedOrder(order);
             
-            // Delete the order (cascades to related entities)
+            // Unlock stock batches for this order
+            unlockStockBatchesForOrder(order);
+            
+            // Delete the order
             orderRepository.delete(order);
             
             log.info("Successfully cleaned up abandoned order: {}", order.getOrderId());
@@ -43,6 +48,77 @@ public class AbandonedOrderCleanupService {
         } catch (Exception e) {
             log.error("Error cleaning up abandoned order {}: {}", order.getOrderId(), e.getMessage(), e);
             throw e;
+        }
+    }
+
+    /**
+     * Scheduled cleanup of abandoned orders - runs every 5 minutes
+     * Only cleans up orders that are older than 10 minutes to avoid deleting orders
+     * that are currently being processed
+     */
+    @Scheduled(fixedRate = 5000) // 5 minutes = 300,000 milliseconds 
+    @Transactional
+    public void scheduledCleanupAbandonedOrders() {
+        try {
+            log.info("🔄 SCHEDULED CLEANUP STARTED - Looking for abandoned orders...");
+            
+            LocalDateTime cutoffTime = LocalDateTime.now().minusMinutes(10);
+            
+            List<Order> abandonedOrders;
+            int totalCleaned = 0;
+            
+            // Process in batches to avoid memory issues
+            do {
+                Pageable pageable = PageRequest.of(0, 20); // Smaller batch size for scheduled cleanup
+                abandonedOrders = orderRepository.findAbandonedPendingOrders(cutoffTime, pageable);
+                
+                for (Order order : abandonedOrders) {
+                    try {
+                        cleanupSingleAbandonedOrder(order);
+                        totalCleaned++;
+                    } catch (Exception e) {
+                        log.error("Failed to cleanup abandoned order {} during scheduled cleanup: {}", 
+                                 order.getOrderId(), e.getMessage());
+                    }
+                }
+                
+            } while (!abandonedOrders.isEmpty());
+            
+            if (totalCleaned > 0) {
+                log.info("SCHEDULED CLEANUP COMPLETED: cleaned up {} abandoned orders", totalCleaned);
+            } else {
+                log.info(" SCHEDULED CLEANUP COMPLETED: no abandoned orders found (cutoff: {})", cutoffTime);
+            }
+            
+        } catch (Exception e) {
+            log.error("Error during scheduled abandoned order cleanup: {}", e.getMessage(), e);
+        }
+    }
+
+    /**
+     * Unlock stock batches for an abandoned order
+     */
+    private void unlockStockBatchesForOrder(Order order) {
+        try {
+            if (order.getOrderTransaction() != null && order.getOrderTransaction().getStripeSessionId() != null) {
+                String sessionId = order.getOrderTransaction().getStripeSessionId();
+                enhancedStockLockService.unlockAllBatches(sessionId);
+                log.debug("Unlocked stock batches for session: {}", sessionId);
+            } else {
+                // For orders without stripe session, try to unlock using order ID as session
+                String tempSessionId = "temp_" + order.getOrderId().toString();
+                enhancedStockLockService.unlockAllBatches(tempSessionId);
+                log.debug("Unlocked stock batches for temp session: {}", tempSessionId);
+                
+                // Also try guest session format
+                String tempGuestSessionId = "temp_guest_" + order.getOrderId().toString();
+                enhancedStockLockService.unlockAllBatches(tempGuestSessionId);
+                log.debug("Unlocked stock batches for temp guest session: {}", tempGuestSessionId);
+            }
+        } catch (Exception e) {
+            log.error("Error unlocking stock batches for abandoned order {}: {}", 
+                     order.getOrderId(), e.getMessage());
+            // Don't throw exception here - we still want to clean up the order
         }
     }
 
@@ -105,7 +181,7 @@ public class AbandonedOrderCleanupService {
     public CleanupResult manualCleanupAllAbandonedOrders() {
         log.info("Starting manual cleanup of all abandoned orders");
         
-        LocalDateTime cutoffTime = LocalDateTime.now().minusMinutes(30); // 30 minutes default
+        LocalDateTime cutoffTime = LocalDateTime.now().minusMinutes(30);
         
         int totalProcessed = 0;
         int totalSuccessful = 0;

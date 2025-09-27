@@ -114,7 +114,6 @@ public class EnhancedStockLockService {
                     int previousQuantity = batch.getQuantity();
                     int quantityToRestore = lock.getLockedQuantity();
                     
-                    // Restore the locked quantity back to the batch
                     batch.increaseQuantity(quantityToRestore);
                     batchesToUpdate.add(batch);
                     totalRestoredQuantity += quantityToRestore;
@@ -236,7 +235,7 @@ public class EnhancedStockLockService {
     /**
      * Scheduled cleanup of expired locks
      */
-    @Scheduled(fixedRate = 300000) // Every 5 minutes
+    @Scheduled(fixedRate = 300000)
     @Transactional
     public void cleanupExpiredLocks() {
         try {
@@ -254,7 +253,6 @@ public class EnhancedStockLockService {
             for (StockBatchLock lock : expiredLocks) {
                 StockBatch batch = lock.getStockBatch();
                 if (batch != null) {
-                    // Restore the locked quantity back to the batch
                     batch.increaseQuantity(lock.getLockedQuantity());
                     batchesToUpdate.add(batch);
                     
@@ -263,7 +261,6 @@ public class EnhancedStockLockService {
                 }
             }
             
-            // Save batch updates and delete expired locks
             stockBatchRepository.saveAll(batchesToUpdate);
             stockBatchLockRepository.deleteAll(expiredLocks);
             

@@ -515,7 +515,6 @@ public class OrderController {
         dto.setCreatedAt(order.getCreatedAt());
         dto.setUpdatedAt(order.getUpdatedAt());
     
-        // Set customer information from User entity
         if (order.getUser() != null) {
             OrderCustomerInfoDTO customerInfo = new OrderCustomerInfoDTO();
             customerInfo.setFirstName(order.getUser().getFirstName());
@@ -523,7 +522,6 @@ public class OrderController {
             customerInfo.setEmail(order.getUser().getUserEmail());
             customerInfo.setPhoneNumber(order.getUser().getPhoneNumber());
             
-            // Add address info to customer info if available
             if (addr != null) {
                 customerInfo.setStreetAddress(addr.getStreet());
                 customerInfo.setCountry(addr.getCountry());

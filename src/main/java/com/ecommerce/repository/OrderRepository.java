@@ -197,7 +197,7 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
         @Query("SELECT o FROM Order o " +
                "LEFT JOIN FETCH o.orderTransaction tx " +
                "LEFT JOIN FETCH o.user u " +
-               "WHERE o.orderStatus = 'PENDING' " +
+               "WHERE tx.status = 'PENDING' " +
                "AND o.createdAt < :cutoffTime " +
                "ORDER BY o.createdAt ASC")
         List<Order> findAbandonedPendingOrders(@Param("cutoffTime") LocalDateTime cutoffTime, 
@@ -207,7 +207,8 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
          * Count abandoned pending orders older than the specified cutoff time
          */
         @Query("SELECT COUNT(o) FROM Order o " +
-               "WHERE o.orderStatus = 'PENDING' " +
+               "LEFT JOIN o.orderTransaction tx " +
+               "WHERE tx.status = 'PENDING' " +
                "AND o.createdAt < :cutoffTime")
         long countAbandonedPendingOrders(@Param("cutoffTime") LocalDateTime cutoffTime);
 
@@ -215,8 +216,9 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
          * Check if a specific order is considered abandoned
          */
         @Query("SELECT COUNT(o) > 0 FROM Order o " +
+               "LEFT JOIN o.orderTransaction tx " +
                "WHERE o.orderId = :orderId " +
-               "AND o.orderStatus = 'PENDING' " +
+               "AND tx.status = 'PENDING' " +
                "AND o.createdAt < :cutoffTime")
         boolean isOrderAbandoned(@Param("orderId") Long orderId, @Param("cutoffTime") LocalDateTime cutoffTime);
 
