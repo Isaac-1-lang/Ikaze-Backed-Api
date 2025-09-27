@@ -312,6 +312,18 @@ public class OrderPDFService {
                 new Font(normalFont.getBaseFont(), normalFont.getSize(), Font.NORMAL, SUCCESS_GREEN), true));
         }
         
+        // Points information for points and hybrid payments
+        if (order.getOrderTransaction() != null) {
+            Integer pointsUsed = order.getOrderTransaction().getPointsUsed();
+            BigDecimal pointsValue = order.getOrderTransaction().getPointsValue();
+            
+            if (pointsUsed != null && pointsUsed > 0) {
+                summaryTable.addCell(createSummaryCell("Points Used (" + pointsUsed + " pts):", normalFont, false));
+                summaryTable.addCell(createSummaryCell("-$" + formatPrice(pointsValue), 
+                    new Font(normalFont.getBaseFont(), normalFont.getSize(), Font.NORMAL, SUCCESS_GREEN), true));
+            }
+        }
+        
         // Add separator line
         PdfPCell separatorLeft = new PdfPCell();
         separatorLeft.setBorder(Rectangle.TOP);

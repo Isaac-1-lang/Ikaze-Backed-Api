@@ -34,4 +34,5 @@ public class OrderResponseDTO {
     private LocalDateTime updatedAt;
     private String estimatedDelivery;
     private String trackingNumber;
+    private OrderTransactionDTO transaction;
 }

@@ -14,6 +14,7 @@ public class PointsPaymentResult {
     private boolean success;
     private String message;
     private Long orderId;
+    private String orderNumber;
     private Integer pointsUsed;
     private BigDecimal pointsValue;
     private BigDecimal remainingAmount;

@@ -151,6 +151,36 @@ public class OrderEmailService {
             context.setVariable("totalAmount", formatCurrency(order.getOrderInfo().getTotalAmount()));
         }
         
+        // Points information for points and hybrid payments
+        if (order.getOrderTransaction() != null) {
+            Integer pointsUsed = order.getOrderTransaction().getPointsUsed();
+            BigDecimal pointsValue = order.getOrderTransaction().getPointsValue();
+            
+            if (pointsUsed != null && pointsUsed > 0) {
+                context.setVariable("pointsUsed", pointsUsed);
+                context.setVariable("pointsValue", formatCurrency(pointsValue));
+                context.setVariable("hasPointsPayment", true);
+                
+                // Determine payment method
+                String paymentMethod = order.getOrderTransaction().getPaymentMethod().toString();
+                boolean isHybridPayment = pointsValue != null && 
+                    order.getOrderInfo() != null && 
+                    pointsValue.compareTo(order.getOrderInfo().getTotalAmount()) < 0;
+                
+                context.setVariable("isHybridPayment", isHybridPayment);
+                context.setVariable("paymentMethod", paymentMethod);
+                
+                if (isHybridPayment && order.getOrderInfo() != null) {
+                    BigDecimal remainingAmount = order.getOrderInfo().getTotalAmount().subtract(pointsValue);
+                    context.setVariable("remainingAmount", formatCurrency(remainingAmount));
+                }
+            } else {
+                context.setVariable("hasPointsPayment", false);
+            }
+        } else {
+            context.setVariable("hasPointsPayment", false);
+        }
+        
         List<OrderItemEmailDTO> emailItems = order.getOrderItems().stream()
                 .map(this::convertToEmailDTO)
                 .collect(java.util.stream.Collectors.toList());

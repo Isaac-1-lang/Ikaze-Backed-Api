@@ -52,12 +52,12 @@ public class PointsPaymentController {
         } catch (RuntimeException e) {
             log.error("Error processing points payment: {}", e.getMessage(), e);
             PointsPaymentResult errorResult = new PointsPaymentResult(false, e.getMessage(), 
-                    null, 0, BigDecimal.ZERO, BigDecimal.ZERO, null, false);
+                    null, null, 0, BigDecimal.ZERO, BigDecimal.ZERO, null, false);
             return ResponseEntity.badRequest().body(errorResult);
         } catch (Exception e) {
             log.error("Unexpected error processing points payment: {}", e.getMessage(), e);
             PointsPaymentResult errorResult = new PointsPaymentResult(false, "Payment processing failed", 
-                    null, 0, BigDecimal.ZERO, BigDecimal.ZERO, null, false);
+                    null, null, 0, BigDecimal.ZERO, BigDecimal.ZERO, null, false);
             return ResponseEntity.internalServerError().body(errorResult);
         }
     }
@@ -80,7 +80,7 @@ public class PointsPaymentController {
         } catch (Exception e) {
             log.error("Error completing hybrid payment: {}", e.getMessage(), e);
             PointsPaymentResult errorResult = new PointsPaymentResult(false, "Failed to complete payment", 
-                    null, 0, BigDecimal.ZERO, BigDecimal.ZERO, null, false);
+                    null, null, 0, BigDecimal.ZERO, BigDecimal.ZERO, null, false);
             return ResponseEntity.badRequest().body(errorResult);
         }
     }

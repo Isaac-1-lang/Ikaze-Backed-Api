@@ -94,21 +94,46 @@ public class OrderController {
             Map<String, Object> res = new HashMap<>();
             res.put("success", false);
             res.put("message", "An unexpected error occurred while fetching orders by userId.");
-            res.put("errorCode", "INTERNAL_ERROR");
-            res.put("details", e.getMessage());
-            return ResponseEntity.internalServerError().body(res);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(res);
         }
     }
 
     @GetMapping("/id/{orderId}")
-    // @PreAuthorize("hasAnyRole('ADMIN','EMPLOYEE')")
-    @Operation(summary = "Get order by orderId", description = "Retrieve an order by its orderId (admin/employee only)", responses = {
+    @PreAuthorize("hasAnyRole('ADMIN','EMPLOYEE','CUSTOMER','DELIVERY_AGENT')")
+    @Operation(summary = "Get order by orderId", description = "Retrieve an order by its orderId (protected endpoint)", responses = {
             @ApiResponse(responseCode = "200", description = "Order found", content = @Content(schema = @Schema(implementation = OrderResponseDTO.class))),
             @ApiResponse(responseCode = "404", description = "Order not found")
     })
     public ResponseEntity<?> getOrderById(@PathVariable Long orderId) {
         try {
-            Order order = orderService.getOrderById(orderId);
+            // Get current authenticated user
+            UUID userId = getCurrentUserId();
+            if (userId == null) {
+                Map<String, Object> res = new HashMap<>();
+                res.put("success", false);
+                res.put("message", "User not authenticated");
+                res.put("errorCode", "UNAUTHORIZED");
+                res.put("details", "User ID could not be extracted from token");
+                return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(res);
+            }
+
+            // Use the new method with user validation for customers
+            Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+            boolean isAdminOrEmployee = auth.getAuthorities().stream()
+                    .anyMatch(grantedAuthority -> 
+                        grantedAuthority.getAuthority().equals("ROLE_ADMIN") || 
+                        grantedAuthority.getAuthority().equals("ROLE_EMPLOYEE"));
+
+            Order order;
+            if (isAdminOrEmployee) {
+                // Admins and employees can view any order
+                order = orderService.getOrderById(orderId);
+            } else {
+                // Customers can only view their own orders
+                order = ((com.ecommerce.ServiceImpl.OrderServiceImpl) orderService)
+                        .getOrderByIdWithUserValidation(orderId, userId);
+            }
+
             if (order == null) {
                 Map<String, Object> res = new HashMap<>();
                 res.put("success", false);
@@ -118,6 +143,14 @@ public class OrderController {
                 return ResponseEntity.status(HttpStatus.NOT_FOUND).body(res);
             }
             return ResponseEntity.ok(Map.of("success", true, "data", toDto(order)));
+        } catch (SecurityException e) {
+            log.warn("Access denied for order {}: {}", orderId, e.getMessage());
+            Map<String, Object> res = new HashMap<>();
+            res.put("success", false);
+            res.put("message", "Access denied");
+            res.put("errorCode", "ACCESS_DENIED");
+            res.put("details", e.getMessage());
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).body(res);
         } catch (Exception e) {
             log.error("Failed to fetch order by id", e);
             Map<String, Object> res = new HashMap<>();
@@ -221,24 +254,25 @@ public class OrderController {
     }
 
     @GetMapping("/number/{orderNumber}")
-    // @PreAuthorize("hasAnyRole('CUSTOMER','ADMIN','EMPLOYEE')")
-    @Operation(summary = "Get order by order number", description = "Retrieve an order by its order number", responses = {
+    @PreAuthorize("hasAnyRole('CUSTOMER','ADMIN','EMPLOYEE','DELIVERY_AGENT')")
+    @Operation(summary = "Get order by order number", description = "Retrieve an order by its order number (protected endpoint)", responses = {
             @ApiResponse(responseCode = "200", description = "Order found", content = @Content(schema = @Schema(implementation = OrderResponseDTO.class))),
             @ApiResponse(responseCode = "404", description = "Order not found")
     })
-    public ResponseEntity<?> getOrderByNumber(@PathVariable String orderNumber,
-            @RequestParam(name = "userId") String userId) {
+    public ResponseEntity<?> getOrderByNumber(@PathVariable String orderNumber) {
         try {
-            if (userId == null || userId.isBlank()) {
+            // Get current authenticated user
+            UUID userId = getCurrentUserId();
+            if (userId == null) {
                 Map<String, Object> response = new HashMap<>();
                 response.put("success", false);
-                response.put("message", "User ID is required as a request parameter");
-                response.put("errorCode", "VALIDATION_ERROR");
-                response.put("details", "Missing userId parameter");
-                return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(response);
+                response.put("message", "User not authenticated");
+                response.put("errorCode", "UNAUTHORIZED");
+                response.put("details", "User ID could not be extracted from token");
+                return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(response);
             }
-            UUID uuid = UUID.fromString(userId);
-            Order order = orderService.getOrderByNumber(uuid, orderNumber);
+
+            Order order = orderService.getOrderByNumber(userId, orderNumber);
             OrderResponseDTO orderResponse = toDto(order);
 
             Map<String, Object> response = new HashMap<>();
@@ -247,13 +281,6 @@ public class OrderController {
 
             return ResponseEntity.ok(response);
 
-        } catch (IllegalArgumentException e) {
-            Map<String, Object> response = new HashMap<>();
-            response.put("success", false);
-            response.put("message", "Invalid userId format");
-            response.put("errorCode", "VALIDATION_ERROR");
-            response.put("details", e.getMessage());
-            return ResponseEntity.badRequest().body(response);
         } catch (EntityNotFoundException e) {
             Map<String, Object> response = new HashMap<>();
             response.put("success", false);

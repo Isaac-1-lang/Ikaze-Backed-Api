@@ -38,6 +38,7 @@ public class PointsPaymentServiceImpl implements PointsPaymentService {
     private final OrderItemBatchRepository orderItemBatchRepository;
     private final StripeService stripeService;
     private final EnhancedStockLockService enhancedStockLockService;
+    private final OrderEmailService orderEmailService;
 
     @Override
     public PointsPaymentPreviewDTO previewPointsPayment(PointsPaymentRequest request) {
@@ -128,8 +129,16 @@ public class PointsPaymentServiceImpl implements PointsPaymentService {
             transactionRepository.save(transaction);
             log.info("Transaction updated successfully");
 
+            // Send order confirmation email
+            try {
+                orderEmailService.sendOrderConfirmationEmail(savedOrder);
+                log.info("Order confirmation email sent successfully for points payment order: {}", savedOrder.getOrderId());
+            } catch (Exception e) {
+                log.error("Failed to send order confirmation email for points payment order {}: {}", savedOrder.getOrderId(), e.getMessage());
+            }
+
             return new PointsPaymentResult(true, "Payment completed successfully", 
-                    savedOrder.getOrderId(), pointsToUse, preview.getPointsValue(), 
+                    savedOrder.getOrderId(), savedOrder.getOrderCode(), pointsToUse, preview.getPointsValue(), 
                     BigDecimal.ZERO, null, false);
     }
 
@@ -216,7 +225,7 @@ public class PointsPaymentServiceImpl implements PointsPaymentService {
             log.info("Transaction updated with points information successfully");
 
             return new PointsPaymentResult(true, "Hybrid payment initiated", 
-                    savedOrder.getOrderId(), pointsToUse, pointsValue, 
+                    savedOrder.getOrderId(), savedOrder.getOrderCode(), pointsToUse, pointsValue, 
                     preview.getRemainingToPay(), stripeSessionId, true);
     }
 
@@ -234,13 +243,25 @@ public class PointsPaymentServiceImpl implements PointsPaymentService {
             transaction.setPaymentDate(LocalDateTime.now());
             transactionRepository.save(transaction);
 
+            // Get order to retrieve orderNumber
+            Order order = orderRepository.findById(orderId)
+                    .orElseThrow(() -> new RuntimeException("Order not found"));
+            
+            // Send order confirmation email for completed hybrid payment
+            try {
+                orderEmailService.sendOrderConfirmationEmail(order);
+                log.info("Order confirmation email sent successfully for hybrid payment order: {}", order.getOrderId());
+            } catch (Exception e) {
+                log.error("Failed to send order confirmation email for hybrid payment order {}: {}", order.getOrderId(), e.getMessage());
+            }
+            
             return new PointsPaymentResult(true, "Hybrid payment completed", 
-                    orderId, transaction.getPointsUsed(), transaction.getPointsValue(), 
+                    orderId, order.getOrderCode(), transaction.getPointsUsed(), transaction.getPointsValue(), 
                     BigDecimal.ZERO, null, false);
         } catch (Exception e) {
             log.error("Error completing hybrid payment: {}", e.getMessage(), e);
             return new PointsPaymentResult(false, "Failed to complete payment: " + e.getMessage(), 
-                    null, 0, BigDecimal.ZERO, BigDecimal.ZERO, null, false);
+                    null, null, 0, BigDecimal.ZERO, BigDecimal.ZERO, null, false);
         }
     }
 

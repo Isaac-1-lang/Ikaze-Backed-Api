@@ -86,6 +86,26 @@ public class OrderServiceImpl implements OrderService {
                 .orElse(null);
     }
 
+    /**
+     * Get order by ID with user ownership validation
+     * This method ensures that only the owner of the order can access it
+     */
+    public Order getOrderByIdWithUserValidation(Long orderId, UUID userId) {
+        Order order = orderRepository.findById(orderId).orElse(null);
+        if (order == null) {
+            return null;
+        }
+        
+        // Check if the requesting user is the owner of the order
+        if (order.getUser() != null && !order.getUser().getId().equals(userId)) {
+            log.warn("User {} attempted to access order {} which belongs to user {}", 
+                    userId, orderId, order.getUser().getId());
+            throw new SecurityException("Access denied: You can only view your own orders");
+        }
+        
+        return order;
+    }
+
     @Override
     public List<Order> getOrdersForUser(UUID userId) {
         return orderRepository.findAllForUserWithDetails(userId);
