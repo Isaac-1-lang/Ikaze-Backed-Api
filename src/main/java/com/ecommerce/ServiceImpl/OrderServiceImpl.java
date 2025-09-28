@@ -342,6 +342,11 @@ public class OrderServiceImpl implements OrderService {
             order.setOrderStatus(newStatus);
             order.setUpdatedAt(LocalDateTime.now());
 
+            // Set delivery timestamp when order is marked as delivered
+            if (newStatus == Order.OrderStatus.DELIVERED) {
+                order.setDeliveredAt(LocalDateTime.now());
+            }
+
             // Update transaction status based on order status
             if (order.getOrderTransaction() != null) {
                 switch (newStatus) {
@@ -362,7 +367,6 @@ public class OrderServiceImpl implements OrderService {
 
             Order savedOrder = orderRepository.save(order);
             log.info("Order {} status updated to {}", orderId, status);
-
             // TODO: Send notification (stub)
             // e.g., notificationService.sendOrderStatusChanged(order)
 

@@ -1,0 +1,503 @@
+package com.ecommerce.controller;
+
+import com.ecommerce.dto.*;
+import com.ecommerce.entity.ReturnRequest;
+import com.ecommerce.service.ReturnService;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.media.Schema;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.responses.ApiResponses;
+import io.swagger.v3.oas.annotations.security.SecurityRequirement;
+import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.validation.Valid;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.web.PageableDefault;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.Authentication;
+import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
+
+import java.util.HashMap;
+import java.util.Map;
+import java.util.UUID;
+
+/**
+ * REST Controller for managing product return requests
+ * Handles both authenticated customer and guest return scenarios
+ */
+@RestController
+@RequestMapping("/api/v1/returns")
+@RequiredArgsConstructor
+@Slf4j
+@Tag(name = "Return Management", description = "APIs for managing product return requests")
+public class ReturnController {
+
+    private final ReturnService returnService;
+
+    // ==================== CUSTOMER ENDPOINTS ====================
+
+    /**
+     * Submit a return request for authenticated customers
+     */
+    @PostMapping(value = "/submit", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    @PreAuthorize("hasRole('CUSTOMER')")
+    @Operation(
+        summary = "Submit return request (Authenticated)",
+        description = "Submit a return request for authenticated customers with optional media files",
+        security = @SecurityRequirement(name = "bearerAuth")
+    )
+    @ApiResponses(value = {
+        @ApiResponse(responseCode = "201", description = "Return request submitted successfully",
+                content = @Content(schema = @Schema(implementation = ReturnRequestDTO.class))),
+        @ApiResponse(responseCode = "400", description = "Invalid request data"),
+        @ApiResponse(responseCode = "401", description = "Unauthorized - Authentication required"),
+        @ApiResponse(responseCode = "403", description = "Forbidden - Customer role required"),
+        @ApiResponse(responseCode = "404", description = "Order not found"),
+        @ApiResponse(responseCode = "409", description = "Return request already exists for this order"),
+        @ApiResponse(responseCode = "422", description = "Order not eligible for return")
+    })
+    public ResponseEntity<?> submitReturnRequest(
+            @Valid @RequestPart("returnRequest") SubmitReturnRequestDTO submitDTO,
+            @RequestPart(value = "mediaFiles", required = false) MultipartFile[] mediaFiles,
+            Authentication authentication) {
+        
+        try {
+            log.info("Processing return request submission for authenticated customer {} and order {}",
+                    submitDTO.getCustomerId(), submitDTO.getOrderId());
+
+            ReturnRequestDTO result = returnService.submitReturnRequest(submitDTO, mediaFiles);
+            
+            log.info("Return request {} submitted successfully for customer {} and order {}",
+                    result.getId(), submitDTO.getCustomerId(), submitDTO.getOrderId());
+
+            return ResponseEntity.status(HttpStatus.CREATED).body(result);
+
+        } catch (IllegalArgumentException e) {
+            log.warn("Invalid return request data: {}", e.getMessage());
+            return ResponseEntity.badRequest().body(createErrorResponse("INVALID_REQUEST", e.getMessage()));
+        } catch (RuntimeException e) {
+            log.error("Error processing return request for customer {} and order {}: {}",
+                    submitDTO.getCustomerId(), submitDTO.getOrderId(), e.getMessage(), e);
+            
+            if (e.getMessage().contains("not found")) {
+                return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                        .body(createErrorResponse("ORDER_NOT_FOUND", e.getMessage()));
+            } else if (e.getMessage().contains("already exists")) {
+                return ResponseEntity.status(HttpStatus.CONFLICT)
+                        .body(createErrorResponse("RETURN_EXISTS", e.getMessage()));
+            } else if (e.getMessage().contains("not eligible") || e.getMessage().contains("expired")) {
+                return ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY)
+                        .body(createErrorResponse("NOT_ELIGIBLE", e.getMessage()));
+            }
+            
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(createErrorResponse("RETURN_ERROR", "Failed to process return request"));
+        }
+    }
+
+    /**
+     * Submit a return request for guest users
+     */
+    @PostMapping(value = "/submit/guest", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    @Operation(
+        summary = "Submit return request (Guest)",
+        description = "Submit a return request for guest users using order number and pickup token"
+    )
+    @ApiResponses(value = {
+        @ApiResponse(responseCode = "201", description = "Return request submitted successfully",
+                content = @Content(schema = @Schema(implementation = ReturnRequestDTO.class))),
+        @ApiResponse(responseCode = "400", description = "Invalid request data"),
+        @ApiResponse(responseCode = "404", description = "Order not found or invalid pickup token"),
+        @ApiResponse(responseCode = "409", description = "Return request already exists for this order"),
+        @ApiResponse(responseCode = "422", description = "Order not eligible for return")
+    })
+    public ResponseEntity<?> submitGuestReturnRequest(
+            @Valid @RequestPart("returnRequest") SubmitGuestReturnRequestDTO submitDTO,
+            @RequestPart(value = "mediaFiles", required = false) MultipartFile[] mediaFiles) {
+        
+        try {
+            log.info("Processing guest return request submission for order number {}",
+                    submitDTO.getOrderNumber());
+
+            ReturnRequestDTO result = returnService.submitGuestReturnRequest(submitDTO, mediaFiles);
+            
+            log.info("Guest return request {} submitted successfully for order {}",
+                    result.getId(), submitDTO.getOrderNumber());
+
+            return ResponseEntity.status(HttpStatus.CREATED).body(result);
+
+        } catch (IllegalArgumentException e) {
+            log.warn("Invalid guest return request data: {}", e.getMessage());
+            return ResponseEntity.badRequest().body(createErrorResponse("INVALID_REQUEST", e.getMessage()));
+        } catch (RuntimeException e) {
+            log.error("Error processing guest return request for order {}: {}",
+                    submitDTO.getOrderNumber(), e.getMessage(), e);
+            
+            if (e.getMessage().contains("not found") || e.getMessage().contains("invalid")) {
+                return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                        .body(createErrorResponse("ORDER_NOT_FOUND", e.getMessage()));
+            } else if (e.getMessage().contains("already exists")) {
+                return ResponseEntity.status(HttpStatus.CONFLICT)
+                        .body(createErrorResponse("RETURN_EXISTS", e.getMessage()));
+            } else if (e.getMessage().contains("not eligible") || e.getMessage().contains("expired")) {
+                return ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY)
+                        .body(createErrorResponse("NOT_ELIGIBLE", e.getMessage()));
+            }
+            
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(createErrorResponse("RETURN_ERROR", "Failed to process return request"));
+        }
+    }
+
+    /**
+     * Get return requests for authenticated customer
+     */
+    @GetMapping("/my-returns")
+    @PreAuthorize("hasRole('CUSTOMER')")
+    @Operation(
+        summary = "Get customer return requests",
+        description = "Get paginated list of return requests for authenticated customer",
+        security = @SecurityRequirement(name = "bearerAuth")
+    )
+    @ApiResponses(value = {
+        @ApiResponse(responseCode = "200", description = "Return requests retrieved successfully"),
+        @ApiResponse(responseCode = "401", description = "Unauthorized - Authentication required"),
+        @ApiResponse(responseCode = "403", description = "Forbidden - Customer role required")
+    })
+    public ResponseEntity<?> getCustomerReturnRequests(
+            @Parameter(description = "Customer ID") @RequestParam UUID customerId,
+            @PageableDefault(size = 10) Pageable pageable,
+            Authentication authentication) {
+        
+        try {
+            log.info("Retrieving return requests for customer {}", customerId);
+
+            Page<ReturnRequestDTO> returnRequests = returnService.getReturnRequestsByCustomer(customerId, pageable);
+            
+            log.info("Retrieved {} return requests for customer {}", 
+                    returnRequests.getTotalElements(), customerId);
+
+            return ResponseEntity.ok(returnRequests);
+
+        } catch (Exception e) {
+            log.error("Error retrieving return requests for customer {}: {}", customerId, e.getMessage(), e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(createErrorResponse("RETRIEVAL_ERROR", "Failed to retrieve return requests"));
+        }
+    }
+
+    /**
+     * Get specific return request details
+     */
+    @GetMapping("/{returnRequestId}")
+    @PreAuthorize("hasAnyRole('CUSTOMER', 'ADMIN', 'EMPLOYEE')")
+    @Operation(
+        summary = "Get return request details",
+        description = "Get detailed information about a specific return request",
+        security = @SecurityRequirement(name = "bearerAuth")
+    )
+    @ApiResponses(value = {
+        @ApiResponse(responseCode = "200", description = "Return request details retrieved successfully",
+                content = @Content(schema = @Schema(implementation = ReturnRequestDTO.class))),
+        @ApiResponse(responseCode = "401", description = "Unauthorized - Authentication required"),
+        @ApiResponse(responseCode = "403", description = "Forbidden - Insufficient permissions"),
+        @ApiResponse(responseCode = "404", description = "Return request not found")
+    })
+    public ResponseEntity<?> getReturnRequestDetails(
+            @Parameter(description = "Return request ID") @PathVariable Long returnRequestId,
+            Authentication authentication) {
+        
+        try {
+            log.info("Retrieving return request details for ID {}", returnRequestId);
+
+            ReturnRequestDTO returnRequest = returnService.getReturnRequestById(returnRequestId);
+            
+            log.info("Return request {} details retrieved successfully", returnRequestId);
+
+            return ResponseEntity.ok(returnRequest);
+
+        } catch (RuntimeException e) {
+            log.error("Error retrieving return request {}: {}", returnRequestId, e.getMessage(), e);
+            
+            if (e.getMessage().contains("not found")) {
+                return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                        .body(createErrorResponse("RETURN_NOT_FOUND", e.getMessage()));
+            }
+            
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(createErrorResponse("RETRIEVAL_ERROR", "Failed to retrieve return request"));
+        }
+    }
+
+    // ==================== ADMIN/EMPLOYEE ENDPOINTS ====================
+
+    /**
+     * Get all return requests (Admin/Employee only)
+     */
+    @GetMapping("/admin/all")
+    @PreAuthorize("hasAnyRole('ADMIN', 'EMPLOYEE')")
+    @Operation(
+        summary = "Get all return requests (Admin)",
+        description = "Get paginated list of all return requests for admin/employee review",
+        security = @SecurityRequirement(name = "bearerAuth")
+    )
+    @ApiResponses(value = {
+        @ApiResponse(responseCode = "200", description = "Return requests retrieved successfully"),
+        @ApiResponse(responseCode = "401", description = "Unauthorized - Authentication required"),
+        @ApiResponse(responseCode = "403", description = "Forbidden - Admin/Employee role required")
+    })
+    public ResponseEntity<?> getAllReturnRequests(
+            @PageableDefault(size = 20) Pageable pageable,
+            Authentication authentication) {
+        
+        try {
+            log.info("Admin {} retrieving all return requests", authentication.getName());
+
+            Page<ReturnRequestDTO> returnRequests = returnService.getAllReturnRequests(pageable);
+            
+            log.info("Retrieved {} total return requests for admin review", 
+                    returnRequests.getTotalElements());
+
+            return ResponseEntity.ok(returnRequests);
+
+        } catch (Exception e) {
+            log.error("Error retrieving all return requests for admin {}: {}", 
+                    authentication.getName(), e.getMessage(), e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(createErrorResponse("RETRIEVAL_ERROR", "Failed to retrieve return requests"));
+        }
+    }
+
+    /**
+     * Get return requests by status (Admin/Employee only)
+     */
+    @GetMapping("/admin/status/{status}")
+    @PreAuthorize("hasAnyRole('ADMIN', 'EMPLOYEE')")
+    @Operation(
+        summary = "Get return requests by status (Admin)",
+        description = "Get paginated list of return requests filtered by status",
+        security = @SecurityRequirement(name = "bearerAuth")
+    )
+    @ApiResponses(value = {
+        @ApiResponse(responseCode = "200", description = "Return requests retrieved successfully"),
+        @ApiResponse(responseCode = "400", description = "Invalid status parameter"),
+        @ApiResponse(responseCode = "401", description = "Unauthorized - Authentication required"),
+        @ApiResponse(responseCode = "403", description = "Forbidden - Admin/Employee role required")
+    })
+    public ResponseEntity<?> getReturnRequestsByStatus(
+            @Parameter(description = "Return request status") @PathVariable String status,
+            @PageableDefault(size = 20) Pageable pageable,
+            Authentication authentication) {
+        
+        try {
+            log.info("Admin {} retrieving return requests with status {}", authentication.getName(), status);
+
+            // Validate status parameter
+            ReturnRequest.ReturnStatus returnStatus;
+            try {
+                returnStatus = ReturnRequest.ReturnStatus.valueOf(status.toUpperCase());
+            } catch (IllegalArgumentException e) {
+                return ResponseEntity.badRequest()
+                        .body(createErrorResponse("INVALID_STATUS", "Invalid return status: " + status));
+            }
+
+            Page<ReturnRequestDTO> returnRequests = returnService.getReturnRequestsByStatus(returnStatus, pageable);
+            
+            log.info("Retrieved {} return requests with status {} for admin review", 
+                    returnRequests.getTotalElements(), status);
+
+            return ResponseEntity.ok(returnRequests);
+
+        } catch (Exception e) {
+            log.error("Error retrieving return requests by status {} for admin {}: {}", 
+                    status, authentication.getName(), e.getMessage(), e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(createErrorResponse("RETRIEVAL_ERROR", "Failed to retrieve return requests"));
+        }
+    }
+
+    /**
+     * Get guest return requests (Admin/Employee only)
+     */
+    @GetMapping("/admin/guest")
+    @PreAuthorize("hasAnyRole('ADMIN', 'EMPLOYEE')")
+    @Operation(
+        summary = "Get guest return requests (Admin)",
+        description = "Get paginated list of return requests from guest users",
+        security = @SecurityRequirement(name = "bearerAuth")
+    )
+    @ApiResponses(value = {
+        @ApiResponse(responseCode = "200", description = "Guest return requests retrieved successfully"),
+        @ApiResponse(responseCode = "401", description = "Unauthorized - Authentication required"),
+        @ApiResponse(responseCode = "403", description = "Forbidden - Admin/Employee role required")
+    })
+    public ResponseEntity<?> getGuestReturnRequests(
+            @PageableDefault(size = 20) Pageable pageable,
+            Authentication authentication) {
+        
+        try {
+            log.info("Admin {} retrieving guest return requests", authentication.getName());
+
+            Page<ReturnRequestDTO> returnRequests = returnService.getGuestReturnRequests(pageable);
+            
+            log.info("Retrieved {} guest return requests for admin review", 
+                    returnRequests.getTotalElements());
+
+            return ResponseEntity.ok(returnRequests);
+
+        } catch (Exception e) {
+            log.error("Error retrieving guest return requests for admin {}: {}", 
+                    authentication.getName(), e.getMessage(), e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(createErrorResponse("RETRIEVAL_ERROR", "Failed to retrieve guest return requests"));
+        }
+    }
+
+    /**
+     * Review and make decision on return request (Admin/Employee only)
+     */
+    @PostMapping("/admin/{returnRequestId}/review")
+    @PreAuthorize("hasAnyRole('ADMIN', 'EMPLOYEE')")
+    @Operation(
+        summary = "Review return request (Admin)",
+        description = "Approve or deny a return request",
+        security = @SecurityRequirement(name = "bearerAuth")
+    )
+    @ApiResponses(value = {
+        @ApiResponse(responseCode = "200", description = "Return request reviewed successfully",
+                content = @Content(schema = @Schema(implementation = ReturnRequestDTO.class))),
+        @ApiResponse(responseCode = "400", description = "Invalid review data"),
+        @ApiResponse(responseCode = "401", description = "Unauthorized - Authentication required"),
+        @ApiResponse(responseCode = "403", description = "Forbidden - Admin/Employee role required"),
+        @ApiResponse(responseCode = "404", description = "Return request not found"),
+        @ApiResponse(responseCode = "409", description = "Return request already reviewed")
+    })
+    public ResponseEntity<?> reviewReturnRequest(
+            @Parameter(description = "Return request ID") @PathVariable Long returnRequestId,
+            @Valid @RequestBody ReturnDecisionDTO decisionDTO,
+            Authentication authentication) {
+        
+        try {
+            log.info("Admin {} reviewing return request {} with decision {}", 
+                    authentication.getName(), returnRequestId, decisionDTO.getDecision());
+
+            // Set the return request ID in the DTO
+            decisionDTO.setReturnRequestId(returnRequestId);
+
+            ReturnRequestDTO result = returnService.reviewReturnRequest(decisionDTO);
+            
+            log.info("Return request {} reviewed successfully by admin {} with decision {}", 
+                    returnRequestId, authentication.getName(), decisionDTO.getDecision());
+
+            return ResponseEntity.ok(result);
+
+        } catch (IllegalArgumentException e) {
+            log.warn("Invalid review data for return request {}: {}", returnRequestId, e.getMessage());
+            return ResponseEntity.badRequest().body(createErrorResponse("INVALID_REQUEST", e.getMessage()));
+        } catch (RuntimeException e) {
+            log.error("Error reviewing return request {} by admin {}: {}", 
+                    returnRequestId, authentication.getName(), e.getMessage(), e);
+            
+            if (e.getMessage().contains("not found")) {
+                return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                        .body(createErrorResponse("RETURN_NOT_FOUND", e.getMessage()));
+            } else if (e.getMessage().contains("not in pending status") || e.getMessage().contains("already")) {
+                return ResponseEntity.status(HttpStatus.CONFLICT)
+                        .body(createErrorResponse("ALREADY_REVIEWED", e.getMessage()));
+            }
+            
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(createErrorResponse("REVIEW_ERROR", "Failed to review return request"));
+        }
+    }
+
+    /**
+     * Complete quality control for approved return (Admin/Employee only)
+     */
+    @PostMapping("/admin/{returnRequestId}/quality-control")
+    @PreAuthorize("hasAnyRole('ADMIN', 'EMPLOYEE')")
+    @Operation(
+        summary = "Complete quality control (Admin)",
+        description = "Complete quality control assessment for an approved return",
+        security = @SecurityRequirement(name = "bearerAuth")
+    )
+    @ApiResponses(value = {
+        @ApiResponse(responseCode = "200", description = "Quality control completed successfully"),
+        @ApiResponse(responseCode = "400", description = "Invalid quality control data"),
+        @ApiResponse(responseCode = "401", description = "Unauthorized - Authentication required"),
+        @ApiResponse(responseCode = "403", description = "Forbidden - Admin/Employee role required"),
+        @ApiResponse(responseCode = "404", description = "Return request not found"),
+        @ApiResponse(responseCode = "409", description = "Return request not in correct status for QC")
+    })
+    public ResponseEntity<?> completeQualityControl(
+            @Parameter(description = "Return request ID") @PathVariable Long returnRequestId,
+            @Valid @RequestBody QualityControlDTO qcDTO,
+            Authentication authentication) {
+        
+        try {
+            log.info("Admin {} completing quality control for return request {} with result {}", 
+                    authentication.getName(), returnRequestId, qcDTO.getQcResult());
+
+            // Set the return request ID in the DTO
+            qcDTO.setReturnRequestId(returnRequestId);
+
+            returnService.completeQualityControl(qcDTO);
+            
+            log.info("Quality control completed successfully for return request {} by admin {} with result {}", 
+                    returnRequestId, authentication.getName(), qcDTO.getQcResult());
+
+            return ResponseEntity.ok(createSuccessResponse("Quality control completed successfully"));
+
+        } catch (IllegalArgumentException e) {
+            log.warn("Invalid quality control data for return request {}: {}", returnRequestId, e.getMessage());
+            return ResponseEntity.badRequest().body(createErrorResponse("INVALID_REQUEST", e.getMessage()));
+        } catch (RuntimeException e) {
+            log.error("Error completing quality control for return request {} by admin {}: {}", 
+                    returnRequestId, authentication.getName(), e.getMessage(), e);
+            
+            if (e.getMessage().contains("not found")) {
+                return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                        .body(createErrorResponse("RETURN_NOT_FOUND", e.getMessage()));
+            } else if (e.getMessage().contains("not approved") || e.getMessage().contains("status")) {
+                return ResponseEntity.status(HttpStatus.CONFLICT)
+                        .body(createErrorResponse("INVALID_STATUS", e.getMessage()));
+            }
+            
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(createErrorResponse("QC_ERROR", "Failed to complete quality control"));
+        }
+    }
+
+    // ==================== UTILITY METHODS ====================
+
+    /**
+     * Create standardized error response
+     */
+    private Map<String, Object> createErrorResponse(String errorCode, String message) {
+        Map<String, Object> error = new HashMap<>();
+        error.put("success", false);
+        error.put("errorCode", errorCode);
+        error.put("message", message);
+        error.put("timestamp", System.currentTimeMillis());
+        return error;
+    }
+
+    /**
+     * Create standardized success response
+     */
+    private Map<String, Object> createSuccessResponse(String message) {
+        Map<String, Object> response = new HashMap<>();
+        response.put("success", true);
+        response.put("message", message);
+        response.put("timestamp", System.currentTimeMillis());
+        return response;
+    }
+}

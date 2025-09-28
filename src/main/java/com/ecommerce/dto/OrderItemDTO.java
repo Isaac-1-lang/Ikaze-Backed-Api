@@ -5,6 +5,7 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 import java.math.BigDecimal;
+import java.time.LocalDateTime;
 
 @Data
 @NoArgsConstructor
@@ -18,4 +19,10 @@ public class OrderItemDTO {
     private Integer quantity;
     private BigDecimal price;
     private BigDecimal totalPrice;
+    
+    // Return eligibility fields
+    private Integer maxReturnDays;
+    private LocalDateTime deliveredAt;
+    private Boolean isReturnEligible;
+    private Integer daysRemainingForReturn;
 }

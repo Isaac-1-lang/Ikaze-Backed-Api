@@ -5,7 +5,9 @@ import com.ecommerce.entity.OrderInfo;
 import com.ecommerce.entity.OrderAddress;
 import com.ecommerce.entity.OrderItem;
 import com.ecommerce.entity.OrderTransaction;
+import com.ecommerce.entity.Product;
 import com.ecommerce.entity.ProductImage;
+import com.ecommerce.entity.ProductVariant;
 import com.ecommerce.dto.OrderResponseDTO;
 import com.ecommerce.dto.OrderItemDTO;
 import com.ecommerce.dto.OrderAddressDTO;
@@ -14,6 +16,7 @@ import com.ecommerce.dto.OrderTransactionDTO;
 import com.ecommerce.dto.SimpleProductDTO;
 import com.ecommerce.dto.CreateOrderDTO;
 import com.ecommerce.service.OrderService;
+import java.time.LocalDateTime;
 import com.ecommerce.repository.UserRepository;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.media.Content;
@@ -31,6 +34,7 @@ import org.springframework.web.bind.annotation.*;
 import jakarta.validation.Valid;
 import jakarta.persistence.EntityNotFoundException;
 
+import java.time.LocalDateTime;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -119,9 +123,8 @@ public class OrderController {
             }
             Authentication auth = SecurityContextHolder.getContext().getAuthentication();
             boolean isAdminOrEmployee = auth.getAuthorities().stream()
-                    .anyMatch(grantedAuthority -> 
-                        grantedAuthority.getAuthority().equals("ROLE_ADMIN") || 
-                        grantedAuthority.getAuthority().equals("ROLE_EMPLOYEE"));
+                    .anyMatch(grantedAuthority -> grantedAuthority.getAuthority().equals("ROLE_ADMIN") ||
+                            grantedAuthority.getAuthority().equals("ROLE_EMPLOYEE"));
 
             Order order;
             if (isAdminOrEmployee) {
@@ -503,7 +506,7 @@ public class OrderController {
         OrderInfo info = order.getOrderInfo();
         OrderAddress addr = order.getOrderAddress();
         OrderTransaction tx = order.getOrderTransaction();
-    
+
         OrderResponseDTO dto = new OrderResponseDTO();
         dto.setId(order.getOrderId() != null ? order.getOrderId().toString() : null);
         dto.setUserId(
@@ -514,18 +517,18 @@ public class OrderController {
         dto.setStatus(order.getOrderStatus() != null ? order.getOrderStatus().name() : null);
         dto.setCreatedAt(order.getCreatedAt());
         dto.setUpdatedAt(order.getUpdatedAt());
-    
+
         if (order.getUser() != null) {
             OrderCustomerInfoDTO customerInfo = new OrderCustomerInfoDTO();
             customerInfo.setFirstName(order.getUser().getFirstName());
             customerInfo.setLastName(order.getUser().getLastName());
             customerInfo.setEmail(order.getUser().getUserEmail());
             customerInfo.setPhoneNumber(order.getUser().getPhoneNumber());
-            
+
             if (addr != null) {
                 customerInfo.setStreetAddress(addr.getStreet());
                 customerInfo.setCountry(addr.getCountry());
-                
+
                 if (addr.getRegions() != null && !addr.getRegions().isEmpty()) {
                     String[] regions = addr.getRegions().split(",");
                     if (regions.length >= 2) {
@@ -539,7 +542,7 @@ public class OrderController {
             }
             dto.setCustomerInfo(customerInfo);
         }
-    
+
         // Set order info
         if (info != null) {
             dto.setSubtotal(info.getTotalAmount());
@@ -549,7 +552,7 @@ public class OrderController {
             dto.setTotal(info.getFinalAmount());
             dto.setNotes(info.getNotes());
         }
-    
+
         // Set shipping address with all fields including lat/lng
         if (addr != null) {
             OrderAddressDTO ad = new OrderAddressDTO();
@@ -559,7 +562,7 @@ public class OrderController {
             ad.setLatitude(addr.getLatitude());
             ad.setLongitude(addr.getLongitude());
             ad.setRoadName(addr.getRoadName());
-    
+
             if (addr.getRegions() != null && !addr.getRegions().isEmpty()) {
                 String[] regions = addr.getRegions().split(",");
                 if (regions.length >= 2) {
@@ -572,16 +575,17 @@ public class OrderController {
             }
             dto.setShippingAddress(ad);
         }
-    
+
         // Set payment information
         if (tx != null) {
             dto.setPaymentMethod(tx.getPaymentMethod() != null ? tx.getPaymentMethod().name() : null);
             dto.setPaymentStatus(tx.getStatus() != null ? tx.getStatus().name() : null);
         }
-    
+
         if (tx != null) {
             OrderTransactionDTO transactionDTO = new OrderTransactionDTO();
-            transactionDTO.setOrderTransactionId(tx.getOrderTransactionId() != null ? tx.getOrderTransactionId().toString() : null);
+            transactionDTO.setOrderTransactionId(
+                    tx.getOrderTransactionId() != null ? tx.getOrderTransactionId().toString() : null);
             transactionDTO.setTransactionRef(tx.getTransactionRef());
             transactionDTO.setPaymentMethod(tx.getPaymentMethod() != null ? tx.getPaymentMethod().name() : null);
             transactionDTO.setStatus(tx.getStatus() != null ? tx.getStatus().name() : null);
@@ -595,12 +599,12 @@ public class OrderController {
             transactionDTO.setUpdatedAt(tx.getUpdatedAt());
             dto.setTransaction(transactionDTO);
         }
-    
+
         if (order.getOrderItems() != null && !order.getOrderItems().isEmpty()) {
             List<OrderItemDTO> itemDTOs = order.getOrderItems().stream().map(this::mapOrderItemToDTO).toList();
             dto.setItems(itemDTOs);
         }
-    
+
         return dto;
     }
 
@@ -645,9 +649,62 @@ public class OrderController {
             }
             dto.setVariant(variantDto);
         }
+        calculateReturnEligibility(dto, item);
 
         return dto;
     }
+
+private void calculateReturnEligibility(OrderItemDTO dto, OrderItem item) {
+    Order order = item.getOrder();
+    Integer defaultReturnDays = 15;
+
+    // Get return days from product, with null safety
+    if (item.getProduct() != null) {
+        Integer productReturnDays = item.getProduct().getMaximumDaysForReturn();
+        if (productReturnDays != null && productReturnDays > 0) {
+            defaultReturnDays = productReturnDays;
+        }
+    }
+    
+    // Get return days from product variant, with null safety
+    if (item.getProductVariant() != null) {
+        Product effectiveProduct = item.getEffectiveProduct();
+        if (effectiveProduct != null) {
+            Integer variantReturnDays = effectiveProduct.getMaximumDaysForReturn();
+            if (variantReturnDays != null && variantReturnDays > 0) {
+                defaultReturnDays = variantReturnDays;
+            }
+        }
+    }
+    
+    // Ensure we have a valid return days value
+    if (defaultReturnDays == null || defaultReturnDays <= 0) {
+        defaultReturnDays = 15; // Fallback to 15 days
+    }
+    
+    dto.setMaxReturnDays(defaultReturnDays);
+    dto.setDeliveredAt(order.getDeliveredAt());
+    
+    if (order.getOrderStatus() == Order.OrderStatus.DELIVERED && order.getDeliveredAt() != null) {
+        LocalDateTime deliveredAt = order.getDeliveredAt();
+        LocalDateTime returnDeadline = deliveredAt.plusDays(defaultReturnDays);
+        LocalDateTime now = LocalDateTime.now();
+        
+        boolean isEligible = now.isBefore(returnDeadline);
+        dto.setIsReturnEligible(isEligible);
+        
+        if (isEligible) {
+            long daysRemaining = java.time.temporal.ChronoUnit.DAYS.between(now, returnDeadline);
+            dto.setDaysRemainingForReturn((int) Math.max(0, daysRemaining));
+        } else {
+            dto.setDaysRemainingForReturn(0);
+        }
+    } else {
+        // Order not delivered yet, not eligible for return
+        dto.setIsReturnEligible(false);
+        dto.setDaysRemainingForReturn(0);
+    }
+}
 
     /**
      * Track order by order number (public endpoint)
@@ -770,10 +827,8 @@ public class OrderController {
             log.info("Updating order status to DELIVERED and marking token as used");
             order.setOrderStatus(Order.OrderStatus.DELIVERED);
             order.setPickupTokenUsed(true);
+            order.setDeliveredAt(java.time.LocalDateTime.now());
             Order savedOrder = orderService.saveOrder(order);
-
-            log.info("Order updated successfully: ID={}, Status={}, PickupTokenUsed={}",
-                    savedOrder.getOrderId(), savedOrder.getOrderStatus(), savedOrder.getPickupTokenUsed());
 
             if (savedOrder.getReadyForDeliveryGroup() != null) {
                 log.info("Checking if all orders in delivery group {} are delivered",
