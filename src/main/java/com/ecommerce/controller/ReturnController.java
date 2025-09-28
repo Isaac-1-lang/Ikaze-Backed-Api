@@ -240,13 +240,13 @@ public class ReturnController {
     // ==================== ADMIN/EMPLOYEE ENDPOINTS ====================
 
     /**
-     * Get all return requests (Admin/Employee only)
+     * Get all return requests with filtering (Admin/Employee only)
      */
     @GetMapping("/admin/all")
     @PreAuthorize("hasAnyRole('ADMIN', 'EMPLOYEE')")
     @Operation(
-        summary = "Get all return requests (Admin)",
-        description = "Get paginated list of all return requests for admin/employee review",
+        summary = "Get all return requests with filtering (Admin)",
+        description = "Get paginated list of return requests with optional filtering by status, customer type, and search",
         security = @SecurityRequirement(name = "bearerAuth")
     )
     @ApiResponses(value = {
@@ -255,21 +255,39 @@ public class ReturnController {
         @ApiResponse(responseCode = "403", description = "Forbidden - Admin/Employee role required")
     })
     public ResponseEntity<?> getAllReturnRequests(
+            @Parameter(description = "Filter by return status") @RequestParam(required = false) String status,
+            @Parameter(description = "Filter by customer type (REGISTERED/GUEST)") @RequestParam(required = false) String customerType,
+            @Parameter(description = "Search by order number, customer name, or email") @RequestParam(required = false) String search,
+            @Parameter(description = "Filter by date from (ISO format)") @RequestParam(required = false) String dateFrom,
+            @Parameter(description = "Filter by date to (ISO format)") @RequestParam(required = false) String dateTo,
             @PageableDefault(size = 20) Pageable pageable,
             Authentication authentication) {
         
         try {
-            log.info("Admin {} retrieving all return requests", authentication.getName());
+            log.info("Admin {} retrieving return requests with filters - status: {}, customerType: {}, search: {}", 
+                    authentication.getName(), status, customerType, search);
 
-            Page<ReturnRequestDTO> returnRequests = returnService.getAllReturnRequests(pageable);
+            // Validate status parameter if provided
+            ReturnRequest.ReturnStatus returnStatus = null;
+            if (status != null && !status.isEmpty() && !"ALL".equalsIgnoreCase(status)) {
+                try {
+                    returnStatus = ReturnRequest.ReturnStatus.valueOf(status.toUpperCase());
+                } catch (IllegalArgumentException e) {
+                    return ResponseEntity.badRequest()
+                            .body(createErrorResponse("INVALID_STATUS", "Invalid return status: " + status));
+                }
+            }
+
+            Page<ReturnRequestDTO> returnRequests = returnService.getAllReturnRequestsWithFilters(
+                    returnStatus, customerType, search, dateFrom, dateTo, pageable);
             
-            log.info("Retrieved {} total return requests for admin review", 
+            log.info("Retrieved {} return requests for admin review with applied filters", 
                     returnRequests.getTotalElements());
 
             return ResponseEntity.ok(returnRequests);
 
         } catch (Exception e) {
-            log.error("Error retrieving all return requests for admin {}: {}", 
+            log.error("Error retrieving return requests for admin {}: {}", 
                     authentication.getName(), e.getMessage(), e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                     .body(createErrorResponse("RETRIEVAL_ERROR", "Failed to retrieve return requests"));
@@ -364,7 +382,7 @@ public class ReturnController {
     /**
      * Review and make decision on return request (Admin/Employee only)
      */
-    @PostMapping("/admin/{returnRequestId}/review")
+    @PostMapping("/admin/review")
     @PreAuthorize("hasAnyRole('ADMIN', 'EMPLOYEE')")
     @Operation(
         summary = "Review return request (Admin)",
@@ -381,30 +399,26 @@ public class ReturnController {
         @ApiResponse(responseCode = "409", description = "Return request already reviewed")
     })
     public ResponseEntity<?> reviewReturnRequest(
-            @Parameter(description = "Return request ID") @PathVariable Long returnRequestId,
             @Valid @RequestBody ReturnDecisionDTO decisionDTO,
             Authentication authentication) {
         
         try {
             log.info("Admin {} reviewing return request {} with decision {}", 
-                    authentication.getName(), returnRequestId, decisionDTO.getDecision());
-
-            // Set the return request ID in the DTO
-            decisionDTO.setReturnRequestId(returnRequestId);
+                    authentication.getName(), decisionDTO.getReturnRequestId(), decisionDTO.getDecision());
 
             ReturnRequestDTO result = returnService.reviewReturnRequest(decisionDTO);
             
             log.info("Return request {} reviewed successfully by admin {} with decision {}", 
-                    returnRequestId, authentication.getName(), decisionDTO.getDecision());
+                    decisionDTO.getReturnRequestId(), authentication.getName(), decisionDTO.getDecision());
 
             return ResponseEntity.ok(result);
 
         } catch (IllegalArgumentException e) {
-            log.warn("Invalid review data for return request {}: {}", returnRequestId, e.getMessage());
+            log.warn("Invalid review data for return request {}: {}", decisionDTO.getReturnRequestId(), e.getMessage());
             return ResponseEntity.badRequest().body(createErrorResponse("INVALID_REQUEST", e.getMessage()));
         } catch (RuntimeException e) {
             log.error("Error reviewing return request {} by admin {}: {}", 
-                    returnRequestId, authentication.getName(), e.getMessage(), e);
+                    decisionDTO.getReturnRequestId(), authentication.getName(), e.getMessage(), e);
             
             if (e.getMessage().contains("not found")) {
                 return ResponseEntity.status(HttpStatus.NOT_FOUND)

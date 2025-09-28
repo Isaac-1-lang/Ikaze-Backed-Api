@@ -94,7 +94,8 @@ public class ReturnRequest {
     public enum ReturnStatus {
         PENDING,
         APPROVED,
-        DENIED
+        DENIED,
+        COMPLETED
     }
 
     /**

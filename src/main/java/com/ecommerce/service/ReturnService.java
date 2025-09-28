@@ -6,6 +6,7 @@ import com.ecommerce.repository.*;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -225,17 +226,14 @@ public class ReturnService {
         } else {
             throw new IllegalArgumentException("Invalid QC result: " + qcDTO.getQcResult());
         }
-
-        log.info("Quality control completed for return request {}: {}",
-                returnRequest.getId(), qcDTO.getQcResult());
     }
 
     /**
-     * Get return requests by authenticated customer with pagination
+     * Get return requests by customer with pagination
      */
     @Transactional(readOnly = true)
     public Page<ReturnRequestDTO> getReturnRequestsByCustomer(UUID customerId, Pageable pageable) {
-        Page<ReturnRequest> requests = returnRequestRepository.findByCustomerId(customerId, pageable);
+        Page<ReturnRequest> requests = returnRequestRepository.findByCustomerIdWithDetails(customerId, pageable);
         return requests.map(this::convertToDTO);
     }
 
@@ -244,7 +242,7 @@ public class ReturnService {
      */
     @Transactional(readOnly = true)
     public Page<ReturnRequestDTO> getGuestReturnRequests(Pageable pageable) {
-        Page<ReturnRequest> requests = returnRequestRepository.findByCustomerId(null, pageable);
+        Page<ReturnRequest> requests = returnRequestRepository.findGuestReturnRequests(pageable);
         return requests.map(this::convertToDTO);
     }
 
@@ -253,7 +251,7 @@ public class ReturnService {
      */
     @Transactional(readOnly = true)
     public Page<ReturnRequestDTO> getReturnRequestsByStatus(ReturnRequest.ReturnStatus status, Pageable pageable) {
-        Page<ReturnRequest> requests = returnRequestRepository.findByStatus(status, pageable);
+        Page<ReturnRequest> requests = returnRequestRepository.findByStatusWithDetails(status, pageable);
         return requests.map(this::convertToDTO);
     }
 
@@ -272,8 +270,115 @@ public class ReturnService {
      */
     @Transactional(readOnly = true)
     public Page<ReturnRequestDTO> getAllReturnRequests(Pageable pageable) {
-        Page<ReturnRequest> requests = returnRequestRepository.findAll(pageable);
+        Page<ReturnRequest> requests = returnRequestRepository.findAllWithDetails(pageable);
         return requests.map(this::convertToDTO);
+    }
+
+    /**
+     * Get all return requests with comprehensive filtering (Admin use only)
+     */
+    @Transactional(readOnly = true)
+    public Page<ReturnRequestDTO> getAllReturnRequestsWithFilters(
+            ReturnRequest.ReturnStatus status,
+            String customerType,
+            String search,
+            String dateFrom,
+            String dateTo,
+            Pageable pageable) {
+        
+        log.info("Retrieving return requests with filters - status: {}, customerType: {}, search: {}", 
+                status, customerType, search);
+
+        // Get all return requests using standard findAll to avoid query issues
+        List<ReturnRequest> allRequestsList = returnRequestRepository.findAll();
+        
+        // Apply filtering in Java
+        List<ReturnRequest> filteredRequests = allRequestsList.stream()
+                .filter(rr -> {
+                    // Status filter
+                    if (status != null && !rr.getStatus().equals(status)) {
+                        return false;
+                    }
+                    
+                    // Customer type filter
+                    if (customerType != null && !"ALL".equals(customerType)) {
+                        if ("REGISTERED".equals(customerType) && rr.getCustomerId() == null) {
+                            return false;
+                        }
+                        if ("GUEST".equals(customerType) && rr.getCustomerId() != null) {
+                            return false;
+                        }
+                    }
+                    
+                    // Search filter
+                    if (search != null && !search.trim().isEmpty()) {
+                        String searchLower = search.toLowerCase();
+                        boolean matches = false;
+                        
+                        // Search in order code (with safe access)
+                        try {
+                            if (rr.getOrder() != null && rr.getOrder().getOrderCode() != null) {
+                                matches |= rr.getOrder().getOrderCode().toLowerCase().contains(searchLower);
+                            }
+                        } catch (Exception e) {
+                            // Ignore lazy loading exceptions for search
+                        }
+                        
+                        // Search in customer info (with safe access)
+                        try {
+                            if (rr.getCustomer() != null) {
+                                matches |= (rr.getCustomer().getFirstName() != null && 
+                                           rr.getCustomer().getFirstName().toLowerCase().contains(searchLower));
+                                matches |= (rr.getCustomer().getLastName() != null && 
+                                           rr.getCustomer().getLastName().toLowerCase().contains(searchLower));
+                                matches |= (rr.getCustomer().getUserEmail() != null && 
+                                           rr.getCustomer().getUserEmail().toLowerCase().contains(searchLower));
+                            }
+                        } catch (Exception e) {
+                            // Ignore lazy loading exceptions for search
+                        }
+                        
+                        // Search in guest customer info (with safe access)
+                        try {
+                            if (rr.getOrder() != null && rr.getOrder().getOrderCustomerInfo() != null) {
+                                var guestInfo = rr.getOrder().getOrderCustomerInfo();
+                                matches |= (guestInfo.getEmail() != null && 
+                                           guestInfo.getEmail().toLowerCase().contains(searchLower));
+                                matches |= (guestInfo.getFirstName() != null && 
+                                           guestInfo.getFirstName().toLowerCase().contains(searchLower));
+                                matches |= (guestInfo.getLastName() != null && 
+                                           guestInfo.getLastName().toLowerCase().contains(searchLower));
+                            }
+                        } catch (Exception e) {
+                            // Ignore lazy loading exceptions for search
+                        }
+                        
+                        if (!matches) {
+                            return false;
+                        }
+                    }
+                    
+                    return true;
+                })
+                .sorted((rr1, rr2) -> {
+                    // Apply sorting based on pageable sort
+                    if (pageable.getSort().isSorted()) {
+                        // Default to submittedAt DESC if no specific sort
+                        return rr2.getSubmittedAt().compareTo(rr1.getSubmittedAt());
+                    }
+                    return rr2.getSubmittedAt().compareTo(rr1.getSubmittedAt());
+                })
+                .collect(Collectors.toList());
+        
+        // Create a new Page with filtered results
+        int start = Math.min((int) pageable.getOffset(), filteredRequests.size());
+        int end = Math.min((start + pageable.getPageSize()), filteredRequests.size());
+        List<ReturnRequest> pageContent = start < filteredRequests.size() ? 
+                filteredRequests.subList(start, end) : new ArrayList<>();
+        
+        Page<ReturnRequest> filteredPage = new PageImpl<>(pageContent, pageable, filteredRequests.size());
+        
+        return filteredPage.map(this::convertToDTO);
     }
 
     /**
@@ -543,34 +648,58 @@ public class ReturnService {
         dto.setUpdatedAt(returnRequest.getUpdatedAt());
         dto.setCanBeAppealed(returnRequest.canBeAppealed());
 
-        // Convert return media to DTOs
-        if (returnRequest.getReturnMedia() != null && !returnRequest.getReturnMedia().isEmpty()) {
-            dto.setReturnMedia(returnRequest.getReturnMedia().stream()
-                    .map(this::convertReturnMediaToDTO)
-                    .toList());
+        // Convert return media to DTOs with safe access
+        try {
+            if (returnRequest.getReturnMedia() != null && !returnRequest.getReturnMedia().isEmpty()) {
+                dto.setReturnMedia(returnRequest.getReturnMedia().stream()
+                        .map(this::convertReturnMediaToDTO)
+                        .toList());
+            }
+        } catch (Exception e) {
+            log.warn("Could not load return media for return request {}: {}", returnRequest.getId(), e.getMessage());
         }
 
-        // Convert return items to DTOs
-        if (returnRequest.getReturnItems() != null && !returnRequest.getReturnItems().isEmpty()) {
-            dto.setReturnItems(returnRequest.getReturnItems().stream()
-                    .map(this::convertReturnItemToDTO)
-                    .toList());
+        // Convert return items to DTOs with safe access
+        try {
+            if (returnRequest.getReturnItems() != null && !returnRequest.getReturnItems().isEmpty()) {
+                dto.setReturnItems(returnRequest.getReturnItems().stream()
+                        .map(this::convertReturnItemToDTO)
+                        .toList());
+            }
+        } catch (Exception e) {
+            log.warn("Could not load return items for return request {}: {}", returnRequest.getId(), e.getMessage());
         }
 
-        // Convert return appeal to DTO
-        if (returnRequest.getReturnAppeal() != null) {
-            dto.setReturnAppeal(convertReturnAppealToDTO(returnRequest.getReturnAppeal()));
+        // Convert return appeal to DTO with safe access
+        try {
+            if (returnRequest.getReturnAppeal() != null) {
+                dto.setReturnAppeal(convertReturnAppealToDTO(returnRequest.getReturnAppeal()));
+            }
+        } catch (Exception e) {
+            log.warn("Could not load return appeal for return request {}: {}", returnRequest.getId(), e.getMessage());
         }
 
-        // Add customer info if available (not for guest users)
-        if (returnRequest.getCustomerId() != null && returnRequest.getCustomer() != null) {
-            dto.setCustomerName(returnRequest.getCustomer().getFullName());
-            dto.setCustomerEmail(returnRequest.getCustomer().getUserEmail());
-        }
-
-        // Add order info if available
-        if (returnRequest.getOrder() != null) {
-            dto.setOrderNumber(returnRequest.getOrder().getOrderCode());
+        // Add customer info and order info with safe access
+        try {
+            if (returnRequest.getOrder() != null) {
+                dto.setOrderNumber(returnRequest.getOrder().getOrderCode());
+                
+                // For registered customers
+                if (returnRequest.getCustomerId() != null && returnRequest.getCustomer() != null) {
+                    dto.setCustomerName(returnRequest.getCustomer().getFirstName() + " " + returnRequest.getCustomer().getLastName());
+                    dto.setCustomerEmail(returnRequest.getCustomer().getUserEmail());
+                } 
+                // For guest customers - get info from OrderCustomerInfo
+                else if (returnRequest.getCustomerId() == null && returnRequest.getOrder().getOrderCustomerInfo() != null) {
+                    OrderCustomerInfo customerInfo = returnRequest.getOrder().getOrderCustomerInfo();
+                    dto.setCustomerName(customerInfo.getFullName());
+                    dto.setCustomerEmail(customerInfo.getEmail());
+                }
+            }
+        } catch (Exception e) {
+            log.warn("Could not load order/customer information for return request {}: {}", returnRequest.getId(), e.getMessage());
+            // Set basic info if available
+            dto.setOrderNumber("Order #" + returnRequest.getOrderId());
         }
 
         return dto;

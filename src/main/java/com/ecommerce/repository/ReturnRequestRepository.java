@@ -29,6 +29,14 @@ public interface ReturnRequestRepository extends JpaRepository<ReturnRequest, Lo
     /**
      * Find return requests by customer ID with pagination
      */
+    @Query("SELECT DISTINCT rr FROM ReturnRequest rr " +
+           "LEFT JOIN FETCH rr.order o " +
+           "LEFT JOIN FETCH o.orderCustomerInfo oci " +
+           "LEFT JOIN FETCH rr.customer u " +
+           "LEFT JOIN FETCH rr.returnItems ri " +
+           "WHERE rr.customerId = :customerId")
+    Page<ReturnRequest> findByCustomerIdWithDetails(@Param("customerId") UUID customerId, Pageable pageable);
+    
     Page<ReturnRequest> findByCustomerId(UUID customerId, Pageable pageable);
 
     /**
@@ -39,6 +47,14 @@ public interface ReturnRequestRepository extends JpaRepository<ReturnRequest, Lo
     /**
      * Find return requests by status with pagination
      */
+    @Query("SELECT DISTINCT rr FROM ReturnRequest rr " +
+           "LEFT JOIN FETCH rr.order o " +
+           "LEFT JOIN FETCH o.orderCustomerInfo oci " +
+           "LEFT JOIN FETCH rr.customer u " +
+           "LEFT JOIN FETCH rr.returnItems ri " +
+           "WHERE rr.status = :status")
+    Page<ReturnRequest> findByStatusWithDetails(@Param("status") ReturnRequest.ReturnStatus status, Pageable pageable);
+    
     Page<ReturnRequest> findByStatus(ReturnRequest.ReturnStatus status, Pageable pageable);
 
     /**
@@ -130,4 +146,30 @@ public interface ReturnRequestRepository extends JpaRepository<ReturnRequest, Lo
      */
     @Query("SELECT rr FROM ReturnRequest rr WHERE rr.customerId = :customerId AND rr.submittedAt >= :thirtyDaysAgo ORDER BY rr.submittedAt DESC")
     List<ReturnRequest> findRecentByCustomerId(@Param("customerId") UUID customerId, @Param("thirtyDaysAgo") LocalDateTime thirtyDaysAgo);
+
+    /**
+     * Find all return requests - basic query without complex joins
+     */
+    @Query("SELECT rr FROM ReturnRequest rr ORDER BY rr.submittedAt DESC")
+    List<ReturnRequest> findAllReturnRequestsBasic();
+
+    /**
+     * Find guest return requests (where customerId is null)
+     */
+    @Query("SELECT DISTINCT rr FROM ReturnRequest rr " +
+           "LEFT JOIN FETCH rr.order o " +
+           "LEFT JOIN FETCH o.orderCustomerInfo oci " +
+           "LEFT JOIN FETCH rr.returnItems ri " +
+           "WHERE rr.customerId IS NULL")
+    Page<ReturnRequest> findGuestReturnRequests(Pageable pageable);
+
+    /**
+     * Find all return requests with relationships fetched
+     */
+    @Query("SELECT DISTINCT rr FROM ReturnRequest rr " +
+           "LEFT JOIN FETCH rr.order o " +
+           "LEFT JOIN FETCH o.orderCustomerInfo oci " +
+           "LEFT JOIN FETCH rr.customer u " +
+           "LEFT JOIN FETCH rr.returnItems ri")
+    Page<ReturnRequest> findAllWithDetails(Pageable pageable);
 }

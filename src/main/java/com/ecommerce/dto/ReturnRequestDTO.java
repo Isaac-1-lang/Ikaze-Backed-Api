@@ -21,7 +21,7 @@ public class ReturnRequestDTO {
     @NotNull(message = "Order ID is required")
     private Long orderId;
     
-    private UUID customerId; // Null for guest users
+    private UUID customerId;
     
     @NotBlank(message = "Return reason is required")
     private String reason;
