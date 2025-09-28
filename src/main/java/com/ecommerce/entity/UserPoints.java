@@ -26,12 +26,12 @@ public class UserPoints {
 
     @NotNull(message = "Points amount is required")
     @Column(nullable = false)
-    private Integer points;
+    private Integer points; // Positive for earned, negative for spent (existing schema)
 
     @NotNull(message = "Points type is required")
     @Enumerated(EnumType.STRING)
     @Column(name = "points_type", nullable = false)
-    private PointsType pointsType;
+    private PointsType pointsType; // Use existing enum
 
     @Column(name = "description")
     private String description;
@@ -57,19 +57,18 @@ public class UserPoints {
         EARNED_PURCHASE,
         EARNED_REVIEW,
         EARNED_SIGNUP,
+        EARNED_REFUND,
         SPENT_PURCHASE,
         ADJUSTMENT
     }
 
+    // Removed PointsCategory enum - not needed since PointsType provides categorization
+
     public boolean isEarned() {
-        return points > 0;
+        return points > 0; // Positive points = earned
     }
 
     public boolean isSpent() {
-        return points < 0;
-    }
-
-    public Integer getAbsolutePoints() {
-        return Math.abs(points);
+        return points < 0; // Negative points = spent
     }
 }

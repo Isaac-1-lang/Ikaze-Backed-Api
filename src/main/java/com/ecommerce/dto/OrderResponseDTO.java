@@ -26,6 +26,7 @@ public class OrderResponseDTO {
     private BigDecimal total;
     private OrderAddressDTO shippingAddress;
     private OrderAddressDTO billingAddress;
+    private OrderCustomerInfoDTO customerInfo;
     private String paymentMethod;
     private String paymentStatus;
     private String notes;
@@ -33,4 +34,5 @@ public class OrderResponseDTO {
     private LocalDateTime updatedAt;
     private String estimatedDelivery;
     private String trackingNumber;
+    private OrderTransactionDTO transaction;
 }

@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Order Update - ShopSphere</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            max-width: 600px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f8fafc;
+        }
+        .email-container {
+            background-color: #ffffff;
+            border-radius: 12px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            overflow: hidden;
+        }
+        .header {
+            background: linear-gradient(135deg, #10b981, #059669);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+        .header h1 {
+            margin: 0;
+            font-size: 28px;
+            font-weight: bold;
+        }
+        .header p {
+            margin: 10px 0 0 0;
+            font-size: 16px;
+            opacity: 0.9;
+        }
+        .content {
+            padding: 30px;
+        }
+        .greeting {
+            font-size: 18px;
+            margin-bottom: 20px;
+            color: #1f2937;
+        }
+        .status-update {
+            background-color: #f0f9ff;
+            border: 2px solid #3b82f6;
+            border-radius: 8px;
+            padding: 20px;
+            margin: 20px 0;
+            text-align: center;
+        }
+        .status-update h3 {
+            margin: 0 0 15px 0;
+            color: #3b82f6;
+            font-size: 20px;
+        }
+        .status-badge {
+            display: inline-block;
+            background: linear-gradient(135deg, #3b82f6, #6366f1);
+            color: white;
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-weight: 600;
+            font-size: 14px;
+            margin: 10px 0;
+        }
+        .status-message {
+            font-size: 16px;
+            color: #4b5563;
+            margin: 15px 0;
+        }
+        .order-details {
+            background-color: #f3f4f6;
+            border-radius: 8px;
+            padding: 20px;
+            margin: 20px 0;
+        }
+        .order-details h3 {
+            margin: 0 0 15px 0;
+            color: #3b82f6;
+            font-size: 18px;
+        }
+        .detail-row {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 8px;
+            padding: 5px 0;
+        }
+        .detail-label {
+            font-weight: 600;
+            color: #4b5563;
+        }
+        .detail-value {
+            color: #1f2937;
+        }
+        .cta-section {
+            text-align: center;
+            margin: 30px 0;
+        }
+        .cta-button {
+            display: inline-block;
+            background: linear-gradient(135deg, #3b82f6, #6366f1);
+            color: white;
+            text-decoration: none;
+            padding: 12px 30px;
+            border-radius: 6px;
+            font-weight: 600;
+            transition: transform 0.2s;
+        }
+        .cta-button:hover {
+            transform: translateY(-2px);
+        }
+        .footer {
+            background-color: #f3f4f6;
+            padding: 25px;
+            text-align: center;
+            color: #6b7280;
+            font-size: 14px;
+        }
+        .footer h4 {
+            color: #3b82f6;
+            margin: 0 0 15px 0;
+        }
+        .footer p {
+            margin: 5px 0;
+        }
+        @media (max-width: 600px) {
+            body {
+                padding: 10px;
+            }
+            .content {
+                padding: 20px;
+            }
+            .detail-row {
+                flex-direction: column;
+                gap: 5px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="email-container">
+        <!-- Header -->
+        <div class="header">
+            <h1>📦 Order Update</h1>
+            <p>Your order status has been updated</p>
+        </div>
+
+        <!-- Content -->
+        <div class="content">
+            <div class="greeting">
+                <p>Hello <strong th:text="${customerName}">Customer</strong>,</p>
+                <p>We have an update on your order:</p>
+            </div>
+
+            <!-- Status Update -->
+            <div class="status-update">
+                <h3>🔄 Status Update</h3>
+                <div class="status-badge" th:text="${orderStatus}">PROCESSING</div>
+                <div class="status-message" th:text="${statusMessage}">Your order is being processed and will be ready soon.</div>
+            </div>
+
+            <!-- Order Details -->
+            <div class="order-details">
+                <h3>📋 Order Information</h3>
+                <div class="detail-row">
+                    <span class="detail-label">Order Number:</span>
+                    <span class="detail-value" th:text="${orderNumber}">ORD-123456</span>
+                </div>
+                <div class="detail-row">
+                    <span class="detail-label">Current Status:</span>
+                    <span class="detail-value" th:text="${orderStatus}">PROCESSING</span>
+                </div>
+            </div>
+
+            <!-- Call to Action -->
+            <div class="cta-section">
+                <a th:href="${trackingUrl}" class="cta-button">Track Your Order</a>
+            </div>
+
+            <div style="margin-top: 30px; padding: 20px; background-color: #ecfdf5; border-radius: 8px; border-left: 4px solid #10b981;">
+                <h4 style="color: #065f46; margin: 0 0 10px 0;">💡 What's Next?</h4>
+                <p style="color: #065f46; margin: 0; font-size: 14px;">
+                    We'll keep you updated as your order progresses. You'll receive another email when your order is ready for pickup or shipped.
+                </p>
+            </div>
+        </div>
+
+        <!-- Footer -->
+        <div class="footer">
+            <h4>Need Help?</h4>
+            <p><strong>Customer Support:</strong> support@shopsphere.com</p>
+            <p><strong>Phone:</strong> +250 788 123 456</p>
+            <p><strong>Hours:</strong> Monday - Friday, 9AM - 6PM</p>
+            
+            <p style="margin-top: 20px; font-size: 12px; color: #9ca3af;">
+                Thank you for choosing ShopSphere!
+            </p>
+        </div>
+    </div>
+</body>
+</html>

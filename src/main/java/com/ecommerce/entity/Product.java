@@ -154,38 +154,49 @@ public class Product {
 
     private String generateSlug(String name) {
         return name.toLowerCase()
-                .replaceAll("[^a-z0-9\\s-]", "")
                 .replaceAll("\\s+", "-")
                 .replaceAll("-+", "-")
                 .trim();
     }
 
     public boolean isInStock() {
+        if (variants != null && !variants.isEmpty()) {
+            return variants.stream()
+                    .anyMatch(ProductVariant::isInStock);
+        }
         return stocks != null && stocks.stream()
-                .anyMatch(stock -> stock.getQuantity() > 0);
+                .anyMatch(stock -> stock.getTotalBatchQuantity() > 0);
     }
 
     public boolean isLowStock() {
+        if (variants != null && !variants.isEmpty()) {
+            return variants.stream()
+                    .anyMatch(ProductVariant::isLowStock);
+        }
         return stocks != null && stocks.stream()
-                .anyMatch(stock -> stock.getQuantity() <= stock.getLowStockThreshold() && stock.getQuantity() > 0);
+                .anyMatch(stock -> {
+                    int batchQuantity = stock.getTotalBatchQuantity();
+                    return batchQuantity <= stock.getLowStockThreshold() && batchQuantity > 0;
+                });
     }
 
     public boolean isOutOfStock() {
+        if (variants != null && !variants.isEmpty()) {
+            return variants.stream()
+                    .allMatch(ProductVariant::isOutOfStock);
+        }
         return stocks == null || stocks.stream()
-                .allMatch(stock -> stock.getQuantity() <= 0);
+                .allMatch(stock -> stock.getTotalBatchQuantity() <= 0);
     }
 
     public Integer getTotalStockQuantity() {
         if (variants != null && !variants.isEmpty()) {
-            // For products with variants, sum up all variant batch quantities
             return variants.stream()
                     .mapToInt(ProductVariant::getTotalStockQuantity)
                     .sum();
         }
-        // For products without variants, use traditional stock quantity
-        // (not batch-based since variants handle batch management)
         return stocks != null ? stocks.stream()
-                .mapToInt(Stock::getQuantity)
+                .mapToInt(Stock::getTotalBatchQuantity)
                 .sum() : 0;
     }
 

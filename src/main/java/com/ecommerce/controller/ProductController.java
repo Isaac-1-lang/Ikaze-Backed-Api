@@ -162,6 +162,35 @@ public class ProductController {
         }
     }
 
+    @PostMapping("/{productId}/variants/{variantId}/assign-stock-with-batches")
+    @PreAuthorize("hasAnyRole('ADMIN', 'EMPLOYEE')")
+    @Operation(summary = "Assign stock with batches to product variant", description = "Assign stock quantities with batch details to warehouses for a specific product variant", responses = {
+            @ApiResponse(responseCode = "200", description = "Variant stock with batches assigned successfully"),
+            @ApiResponse(responseCode = "400", description = "Invalid input data"),
+            @ApiResponse(responseCode = "404", description = "Product or variant not found"),
+            @ApiResponse(responseCode = "401", description = "Unauthorized"),
+            @ApiResponse(responseCode = "500", description = "Internal server error")
+    })
+    public ResponseEntity<?> assignVariantStockWithBatches(
+            @PathVariable UUID productId,
+            @PathVariable Long variantId,
+            @RequestBody List<WarehouseStockWithBatchesRequest> warehouseStocks) {
+        try {
+            log.info("Assigning stock with batches to variant {} of product {} for {} warehouses", 
+                    variantId, productId, warehouseStocks.size());
+            Map<String, Object> response = productService.assignVariantStockWithBatches(productId, variantId, warehouseStocks);
+            return ResponseEntity.ok(response);
+        } catch (IllegalArgumentException e) {
+            log.error("Validation error assigning variant stock with batches: {}", e.getMessage());
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                    .body(createErrorResponse("VALIDATION_ERROR", e.getMessage()));
+        } catch (Exception e) {
+            log.error("Error assigning variant stock with batches: {}", e.getMessage(), e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(createErrorResponse("INTERNAL_ERROR", "Failed to assign variant stock with batches"));
+        }
+    }
+
     @GetMapping("/{productId}/has-stock")
     @PreAuthorize("hasAnyRole('ADMIN', 'EMPLOYEE')")
     @Operation(summary = "Check if product has stock", description = "Check whether a product has stock assigned", responses = {
@@ -221,13 +250,17 @@ public class ProductController {
     }
 
     @GetMapping("/{productId}")
-    @Operation(summary = "Get a product by ID", description = "Retrieve a product by its UUID", responses = {
+    @PreAuthorize("hasAnyRole('ADMIN', 'EMPLOYEE')")
+    @Operation(summary = "Get a product by ID (Admin/Employee)", description = "Retrieve a product by its UUID - shows all products regardless of availability status", responses = {
             @ApiResponse(responseCode = "200", description = "Product found", content = @Content(schema = @Schema(implementation = ProductDTO.class))),
-            @ApiResponse(responseCode = "404", description = "Product not found")
+            @ApiResponse(responseCode = "404", description = "Product not found"),
+            @ApiResponse(responseCode = "401", description = "Unauthorized"),
+            @ApiResponse(responseCode = "403", description = "Forbidden")
     })
     public ResponseEntity<?> getProductById(@PathVariable UUID productId) {
         try {
-            log.debug("Fetching product with ID: {}", productId);
+            log.debug("Fetching product with ID: {} for admin/employee view", productId);
+            
             ProductDTO product = productService.getProductById(productId);
             return ResponseEntity.ok(product);
         } catch (EntityNotFoundException e) {
@@ -293,14 +326,18 @@ public class ProductController {
     }
 
     @GetMapping("/slug/{slug}")
-    @Operation(summary = "Get a product by slug", description = "Retrieve a product by its slug", responses = {
+    @PreAuthorize("hasAnyRole('ADMIN', 'EMPLOYEE')")
+    @Operation(summary = "Get a product by slug (Admin/Employee)", description = "Retrieve a product by its slug - shows all products regardless of availability status", responses = {
             @ApiResponse(responseCode = "200", description = "Product found", content = @Content(schema = @Schema(implementation = ProductDTO.class))),
-            @ApiResponse(responseCode = "404", description = "Product not found")
+            @ApiResponse(responseCode = "404", description = "Product not found"),
+            @ApiResponse(responseCode = "401", description = "Unauthorized"),
+            @ApiResponse(responseCode = "403", description = "Forbidden")
     })
     public ResponseEntity<?> getProductBySlug(@PathVariable String slug) {
         try {
-            log.debug("Fetching product with slug: {}", slug);
+            log.debug("Fetching product with slug: {} for admin/employee view", slug);
             ProductDTO product = productService.getProductBySlug(slug);
+            
             return ResponseEntity.ok(product);
         } catch (EntityNotFoundException e) {
             log.warn("Product not found with slug: {}", slug);
@@ -314,8 +351,11 @@ public class ProductController {
     }
 
     @GetMapping
-    @Operation(summary = "Get all products", description = "Retrieve all products with pagination for card display", responses = {
-            @ApiResponse(responseCode = "200", description = "Products retrieved successfully", content = @Content(schema = @Schema(implementation = ManyProductsDto.class)))
+    @PreAuthorize("hasAnyRole('ADMIN', 'EMPLOYEE')")
+    @Operation(summary = "Get all products (Admin/Employee)", description = "Retrieve all products with pagination - shows all products regardless of availability status", responses = {
+            @ApiResponse(responseCode = "200", description = "Products retrieved successfully", content = @Content(schema = @Schema(implementation = ManyProductsDto.class))),
+            @ApiResponse(responseCode = "401", description = "Unauthorized"),
+            @ApiResponse(responseCode = "403", description = "Forbidden")
     })
     public ResponseEntity<?> getAllProducts(
             @RequestParam(defaultValue = "0") int page,
@@ -324,19 +364,19 @@ public class ProductController {
             @RequestParam(defaultValue = "desc") String sortDirection) {
 
         try {
-            log.debug("Fetching all products with pagination - page: {}, size: {}, sortBy: {}, sortDirection: {}",
+            log.debug("Fetching all products for admin/employee with pagination - page: {}, size: {}, sortBy: {}, sortDirection: {}",
                     page, size, sortBy, sortDirection);
 
             Sort.Direction direction = sortDirection.equalsIgnoreCase("asc") ? Sort.Direction.ASC : Sort.Direction.DESC;
             Page<ManyProductsDto> products = productService
-                    .getAllProducts(PageRequest.of(page, size, Sort.by(direction, sortBy)));
+                    .getAllProductsForAdmins(PageRequest.of(page, size, Sort.by(direction, sortBy)));
             return ResponseEntity.ok(products);
         } catch (IllegalArgumentException e) {
             log.error("Invalid pagination parameters: {}", e.getMessage());
             return ResponseEntity.status(HttpStatus.BAD_REQUEST)
                     .body(createErrorResponse("INVALID_PARAMETERS", e.getMessage()));
         } catch (Exception e) {
-            log.error("Error fetching all products: {}", e.getMessage(), e);
+            log.error("Error fetching all products for admin/employee: {}", e.getMessage(), e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                     .body(createErrorResponse("INTERNAL_ERROR", "Failed to fetch products"));
         }
@@ -365,14 +405,17 @@ public class ProductController {
     }
 
     @PostMapping("/search")
-    @Operation(summary = "Search products with comprehensive filtering", description = "Search products using various filter criteria and return paginated results", responses = {
+    @PreAuthorize("hasAnyRole('ADMIN', 'EMPLOYEE')")
+    @Operation(summary = "Search products with comprehensive filtering (Admin/Employee)", description = "Search all products using various filter criteria - shows all products regardless of availability status", responses = {
             @ApiResponse(responseCode = "200", description = "Search results retrieved successfully", content = @Content(schema = @Schema(implementation = ManyProductsDto.class))),
             @ApiResponse(responseCode = "400", description = "Invalid search criteria"),
+            @ApiResponse(responseCode = "401", description = "Unauthorized"),
+            @ApiResponse(responseCode = "403", description = "Forbidden"),
             @ApiResponse(responseCode = "500", description = "Internal server error")
     })
     public ResponseEntity<?> searchProducts(@Valid @RequestBody ProductSearchDTO searchDTO) {
         try {
-            log.debug("Searching products with criteria: {}", searchDTO);
+            log.debug("Searching products for admin/employee with criteria: {}", searchDTO);
 
             // Validate that at least one filter criterion is provided
             if (!searchDTO.hasAtLeastOneFilter()) {
@@ -385,11 +428,11 @@ public class ProductController {
             Page<ManyProductsDto> searchResults = productService.searchProducts(searchDTO);
 
             if (searchResults.isEmpty()) {
-                log.debug("No products found matching the search criteria");
+                log.debug("No products found matching the search criteria for admin/employee");
                 return ResponseEntity.ok(searchResults); // Return empty page
             }
 
-            log.debug("Found {} products matching search criteria", searchResults.getTotalElements());
+            log.debug("Found {} products matching search criteria for admin/employee", searchResults.getTotalElements());
             return ResponseEntity.ok(searchResults);
 
         } catch (IllegalArgumentException e) {
@@ -397,7 +440,7 @@ public class ProductController {
             return ResponseEntity.status(HttpStatus.BAD_REQUEST)
                     .body(createErrorResponse("INVALID_PARAMETERS", e.getMessage()));
         } catch (Exception e) {
-            log.error("Error searching products: {}", e.getMessage(), e);
+            log.error("Error searching products for admin/employee: {}", e.getMessage(), e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                     .body(createErrorResponse("INTERNAL_ERROR", "Failed to search products"));
         }

@@ -264,14 +264,33 @@ public class ShippingCostServiceImpl implements ShippingCostService {
         Warehouse selectedWarehouse;
         boolean isInternational = false;
 
+        // Get customer coordinates for warehouse selection
+        double tempCustomerLat;
+        double tempCustomerLon;
+        
+        if (deliveryAddress.getLatitude() != null && deliveryAddress.getLongitude() != null) {
+            tempCustomerLat = deliveryAddress.getLatitude();
+            tempCustomerLon = deliveryAddress.getLongitude();
+        } else {
+            Map<String, Double> tempCoords = geocodingService.getCoordinates(deliveryAddress);
+            if (tempCoords == null) {
+                log.error("Could not determine customer location for warehouse selection");
+                throw new RuntimeException("Could not determine customer location");
+            }
+            tempCustomerLat = tempCoords.get("latitude");
+            tempCustomerLon = tempCoords.get("longitude");
+        }
+
         if (countryWarehouses.isEmpty()) {
             // No warehouse in delivery country - use nearest warehouse (international
             // shipping)
             log.info("No warehouse in delivery country. Finding nearest warehouse for international shipping.");
+            final double finalTempCustomerLat = tempCustomerLat;
+            final double finalTempCustomerLon = tempCustomerLon;
             selectedWarehouse = warehouses.stream()
                     .min(Comparator.comparingDouble(w -> DistanceCalculator.getDistanceFromLatLonInKm(
-                            geocodingService.getCoordinates(deliveryAddress).get("latitude"),
-                            geocodingService.getCoordinates(deliveryAddress).get("longitude"),
+                            finalTempCustomerLat,
+                            finalTempCustomerLon,
                             w.getLatitude().doubleValue(),
                             w.getLongitude().doubleValue())))
                     .orElse(warehouses.get(0));
@@ -280,10 +299,12 @@ public class ShippingCostServiceImpl implements ShippingCostService {
                     selectedWarehouse.getName(), selectedWarehouse.getCountry());
         } else {
             // Use nearest warehouse in the same country
+            final double finalTempCustomerLat = tempCustomerLat;
+            final double finalTempCustomerLon = tempCustomerLon;
             selectedWarehouse = countryWarehouses.stream()
                     .min(Comparator.comparingDouble(w -> DistanceCalculator.getDistanceFromLatLonInKm(
-                            geocodingService.getCoordinates(deliveryAddress).get("latitude"),
-                            geocodingService.getCoordinates(deliveryAddress).get("longitude"),
+                            finalTempCustomerLat,
+                            finalTempCustomerLon,
                             w.getLatitude().doubleValue(),
                             w.getLongitude().doubleValue())))
                     .orElse(countryWarehouses.get(0));
@@ -292,14 +313,24 @@ public class ShippingCostServiceImpl implements ShippingCostService {
         }
 
         // Step 3: Get customer coordinates
-        Map<String, Double> customerCoords = geocodingService.getCoordinates(deliveryAddress);
-        if (customerCoords == null) {
-            log.error("Could not determine customer location for address: {}", deliveryAddress);
-            throw new RuntimeException("Could not determine customer location");
+        double customerLat;
+        double customerLon;
+        
+        // Use provided coordinates if available, otherwise use geocoding service
+        if (deliveryAddress.getLatitude() != null && deliveryAddress.getLongitude() != null) {
+            customerLat = deliveryAddress.getLatitude();
+            customerLon = deliveryAddress.getLongitude();
+            log.info("Using provided coordinates from address: ({}, {})", customerLat, customerLon);
+        } else {
+            log.info("No coordinates provided, using geocoding service");
+            Map<String, Double> customerCoords = geocodingService.getCoordinates(deliveryAddress);
+            if (customerCoords == null) {
+                log.error("Could not determine customer location for address: {}", deliveryAddress);
+                throw new RuntimeException("Could not determine customer location");
+            }
+            customerLat = customerCoords.get("latitude");
+            customerLon = customerCoords.get("longitude");
         }
-
-        double customerLat = customerCoords.get("latitude");
-        double customerLon = customerCoords.get("longitude");
         log.info("Customer coordinates: ({}, {})", customerLat, customerLon);
         log.info("Warehouse coordinates: ({}, {})",
                 selectedWarehouse.getLatitude().doubleValue(),
@@ -432,12 +463,31 @@ public class ShippingCostServiceImpl implements ShippingCostService {
         Warehouse selectedWarehouse;
         boolean isInternational = false;
 
+        // Get customer coordinates for warehouse selection
+        double tempCustomerLat;
+        double tempCustomerLon;
+        
+        if (deliveryAddress.getLatitude() != null && deliveryAddress.getLongitude() != null) {
+            tempCustomerLat = deliveryAddress.getLatitude();
+            tempCustomerLon = deliveryAddress.getLongitude();
+        } else {
+            Map<String, Double> tempCoords = geocodingService.getCoordinates(deliveryAddress);
+            if (tempCoords == null) {
+                log.error("Could not determine customer location for warehouse selection");
+                throw new RuntimeException("Could not determine customer location");
+            }
+            tempCustomerLat = tempCoords.get("latitude");
+            tempCustomerLon = tempCoords.get("longitude");
+        }
+
         if (countryWarehouses.isEmpty()) {
             log.info("No warehouse in delivery country. Finding nearest warehouse for international shipping.");
+            final double finalTempCustomerLat = tempCustomerLat;
+            final double finalTempCustomerLon = tempCustomerLon;
             selectedWarehouse = warehouses.stream()
                     .min(Comparator.comparingDouble(w -> DistanceCalculator.getDistanceFromLatLonInKm(
-                            geocodingService.getCoordinates(deliveryAddress).get("latitude"),
-                            geocodingService.getCoordinates(deliveryAddress).get("longitude"),
+                            finalTempCustomerLat,
+                            finalTempCustomerLon,
                             w.getLatitude().doubleValue(),
                             w.getLongitude().doubleValue())))
                     .orElse(warehouses.get(0));
@@ -445,10 +495,12 @@ public class ShippingCostServiceImpl implements ShippingCostService {
             log.info("Selected nearest warehouse for international shipping: {} ({})", 
                     selectedWarehouse.getName(), selectedWarehouse.getCountry());
         } else {
+            final double finalTempCustomerLat = tempCustomerLat;
+            final double finalTempCustomerLon = tempCustomerLon;
             selectedWarehouse = countryWarehouses.stream()
                     .min(Comparator.comparingDouble(w -> DistanceCalculator.getDistanceFromLatLonInKm(
-                            geocodingService.getCoordinates(deliveryAddress).get("latitude"),
-                            geocodingService.getCoordinates(deliveryAddress).get("longitude"),
+                            finalTempCustomerLat,
+                            finalTempCustomerLon,
                             w.getLatitude().doubleValue(),
                             w.getLongitude().doubleValue())))
                     .orElse(countryWarehouses.get(0));
@@ -456,14 +508,24 @@ public class ShippingCostServiceImpl implements ShippingCostService {
                     selectedWarehouse.getName(), selectedWarehouse.getCountry());
         }
 
-        Map<String, Double> customerCoords = geocodingService.getCoordinates(deliveryAddress);
-        if (customerCoords == null) {
-            log.error("Could not determine customer location for address: {}", deliveryAddress);
-            throw new RuntimeException("Could not determine customer location");
+        // Get customer coordinates for distance calculation
+        double customerLat;
+        double customerLon;
+        
+        if (deliveryAddress.getLatitude() != null && deliveryAddress.getLongitude() != null) {
+            customerLat = deliveryAddress.getLatitude();
+            customerLon = deliveryAddress.getLongitude();
+            log.info("Using provided coordinates from address: ({}, {})", customerLat, customerLon);
+        } else {
+            log.info("No coordinates provided, using geocoding service");
+            Map<String, Double> customerCoords = geocodingService.getCoordinates(deliveryAddress);
+            if (customerCoords == null) {
+                log.error("Could not determine customer location for address: {}", deliveryAddress);
+                throw new RuntimeException("Could not determine customer location");
+            }
+            customerLat = customerCoords.get("latitude");
+            customerLon = customerCoords.get("longitude");
         }
-
-        double customerLat = customerCoords.get("latitude");
-        double customerLon = customerCoords.get("longitude");
         log.info("Customer coordinates: ({}, {})", customerLat, customerLon);
         log.info("Warehouse coordinates: ({}, {})", 
                 selectedWarehouse.getLatitude().doubleValue(), 

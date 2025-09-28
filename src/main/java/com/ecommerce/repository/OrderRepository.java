@@ -1,6 +1,8 @@
 package com.ecommerce.repository;
 
 import com.ecommerce.entity.Order;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -13,6 +15,12 @@ import java.util.UUID;
 
 @Repository
 public interface OrderRepository extends JpaRepository<Order, Long> {
+
+        /**
+         * Calculate total quantity of items in an order without loading collections
+         */
+        @Query("SELECT COALESCE(SUM(oi.quantity), 0) FROM OrderItem oi WHERE oi.order.orderId = :orderId")
+        int getTotalQuantityByOrderId(@Param("orderId") Long orderId);
 
         /**
          * Find orders by user ID
@@ -127,6 +135,20 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
         List<Order> findAllWithDetailsForAdmin();
 
         /**
+         * Find all orders with all details for admin with pagination
+         */
+        @Query("SELECT DISTINCT o FROM Order o " +
+                        "LEFT JOIN FETCH o.user u " +
+                        "LEFT JOIN FETCH o.orderItems oi " +
+                        "LEFT JOIN FETCH oi.productVariant v " +
+                        "LEFT JOIN FETCH v.product p " +
+                        "LEFT JOIN FETCH o.orderInfo info " +
+                        "LEFT JOIN FETCH o.orderAddress addr " +
+                        "LEFT JOIN FETCH o.orderCustomerInfo customer " +
+                        "LEFT JOIN FETCH o.orderTransaction tx")
+        Page<Order> findAllWithDetailsForAdmin(Pageable pageable);
+
+        /**
          * Find order by ID with all details for admin (includes all relationships
          * except images)
          */
@@ -171,5 +193,33 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
                         "LEFT JOIN FETCH o.orderTransaction tx " +
                         "WHERE o.orderStatus = :status")
         List<Order> findByOrderStatusWithDetailsForAdmin(@Param("status") Order.OrderStatus status);
+
+        @Query("SELECT o FROM Order o " +
+               "LEFT JOIN FETCH o.orderTransaction tx " +
+               "LEFT JOIN FETCH o.user u " +
+               "WHERE tx.status = 'PENDING' " +
+               "AND o.createdAt < :cutoffTime " +
+               "ORDER BY o.createdAt ASC")
+        List<Order> findAbandonedPendingOrders(@Param("cutoffTime") LocalDateTime cutoffTime, 
+                                             Pageable pageable);
+
+        /**
+         * Count abandoned pending orders older than the specified cutoff time
+         */
+        @Query("SELECT COUNT(o) FROM Order o " +
+               "LEFT JOIN o.orderTransaction tx " +
+               "WHERE tx.status = 'PENDING' " +
+               "AND o.createdAt < :cutoffTime")
+        long countAbandonedPendingOrders(@Param("cutoffTime") LocalDateTime cutoffTime);
+
+        /**
+         * Check if a specific order is considered abandoned
+         */
+        @Query("SELECT COUNT(o) > 0 FROM Order o " +
+               "LEFT JOIN o.orderTransaction tx " +
+               "WHERE o.orderId = :orderId " +
+               "AND tx.status = 'PENDING' " +
+               "AND o.createdAt < :cutoffTime")
+        boolean isOrderAbandoned(@Param("orderId") Long orderId, @Param("cutoffTime") LocalDateTime cutoffTime);
 
 }

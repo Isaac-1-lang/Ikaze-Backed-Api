@@ -1,5 +1,8 @@
 package com.ecommerce.service;
 
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
 import com.ecommerce.entity.Order;
 import com.ecommerce.entity.OrderItem;
 import com.ecommerce.entity.OrderTransaction;
@@ -7,13 +10,13 @@ import com.ecommerce.entity.Product;
 import com.ecommerce.repository.OrderRepository;
 import com.ecommerce.repository.OrderTransactionRepository;
 import com.fasterxml.jackson.core.JsonProcessingException;
+import com.stripe.Stripe;
 import com.stripe.exception.StripeException;
 import com.stripe.model.checkout.Session;
 import com.stripe.param.checkout.SessionCreateParams;
 import com.stripe.param.checkout.SessionRetrieveParams;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.stereotype.Service;
 
 import jakarta.annotation.PostConstruct;
 import java.math.BigDecimal;
@@ -41,12 +44,17 @@ public class StripeService {
                 }
         }
 
+        @Transactional
         public String createCheckoutSessionForOrder(Order order, String currency, String platform)
                         throws StripeException, JsonProcessingException {
                 log.info("Creating Stripe checkout session for order: {}", order.getOrderId());
 
+                // Reload the order with eager fetching to avoid lazy loading issues
+                Order reloadedOrder = orderRepository.findById(order.getOrderId())
+                        .orElseThrow(() -> new RuntimeException("Order not found: " + order.getOrderId()));
+
                 List<SessionCreateParams.LineItem> lineItems = new ArrayList<>();
-                for (OrderItem item : order.getOrderItems()) {
+                for (OrderItem item : reloadedOrder.getOrderItems()) {
                         long unitAmount = item.getPrice().multiply(BigDecimal.valueOf(100)).longValue();
                         Product product = item.getEffectiveProduct();
                         SessionCreateParams.LineItem.PriceData.ProductData productData = SessionCreateParams.LineItem.PriceData.ProductData
@@ -69,10 +77,10 @@ public class StripeService {
                 }
 
                 // Add shipping cost as a separate line item if it exists
-                if (order.getOrderInfo() != null && order.getOrderInfo().getShippingCost() != null
-                                && order.getOrderInfo().getShippingCost().compareTo(BigDecimal.ZERO) > 0) {
+                if (reloadedOrder.getOrderInfo() != null && reloadedOrder.getOrderInfo().getShippingCost() != null
+                                && reloadedOrder.getOrderInfo().getShippingCost().compareTo(BigDecimal.ZERO) > 0) {
 
-                        long shippingAmount = order.getOrderInfo().getShippingCost().multiply(BigDecimal.valueOf(100))
+                        long shippingAmount = reloadedOrder.getOrderInfo().getShippingCost().multiply(BigDecimal.valueOf(100))
                                         .longValue();
 
                         SessionCreateParams.LineItem.PriceData.ProductData shippingProductData = SessionCreateParams.LineItem.PriceData.ProductData
@@ -93,13 +101,12 @@ public class StripeService {
                                         .build();
                         lineItems.add(shippingItem);
 
-                        log.info("Added shipping cost to Stripe session: {}", order.getOrderInfo().getShippingCost());
+                        log.info("Added shipping cost to Stripe session: {}", reloadedOrder.getOrderInfo().getShippingCost());
                 }
 
-                // pass orderId in metadata for later lookup
                 Map<String, String> metadata = Map.of(
-                                "orderId", order.getOrderId().toString(),
-                                "orderCode", order.getOrderCode());
+                                "orderId", reloadedOrder.getOrderId().toString(),
+                                "orderCode", reloadedOrder.getOrderCode());
 
                 String webSuccess = "http://localhost:3000/payment-success";
                 String webCancel = "http://localhost:3000/payment-cancel";
@@ -127,7 +134,7 @@ public class StripeService {
                 log.info("Stripe session created with ID: {}", session.getId());
 
                 // update transaction with stripe session id
-                OrderTransaction tx = order.getOrderTransaction();
+                OrderTransaction tx = reloadedOrder.getOrderTransaction();
                 tx.setStripeSessionId(session.getId());
                 txRepo.save(tx);
                 log.info("Transaction updated with Stripe session ID");
@@ -135,6 +142,83 @@ public class StripeService {
                 return session.getUrl();
         }
 
+        @Transactional
+        public String createCheckoutSessionForHybridPayment(Order order, String currency, String platform, BigDecimal reducedAmount)
+                        throws StripeException, JsonProcessingException {
+                log.info("Creating Stripe checkout session for HYBRID payment - order: {}, reduced amount: {}", 
+                        order.getOrderId(), reducedAmount);
+
+                // Reload the order with eager fetching to avoid lazy loading issues
+                Order reloadedOrder = orderRepository.findById(order.getOrderId())
+                        .orElseThrow(() -> new RuntimeException("Order not found: " + order.getOrderId()));
+
+                // For hybrid payments, create a single line item with the reduced amount
+                long reducedAmountCents = reducedAmount.multiply(BigDecimal.valueOf(100)).longValue();
+                
+                SessionCreateParams.LineItem.PriceData.ProductData productData = SessionCreateParams.LineItem.PriceData.ProductData
+                                .builder()
+                                .setName("Order #" + reloadedOrder.getOrderCode() + " (After Points Discount)")
+                                .setDescription("Remaining amount after points redemption")
+                                .build();
+
+                SessionCreateParams.LineItem.PriceData priceData = SessionCreateParams.LineItem.PriceData
+                                .builder()
+                                .setCurrency(currency)
+                                .setUnitAmount(reducedAmountCents)
+                                .setProductData(productData)
+                                .build();
+
+                SessionCreateParams.LineItem lineItem = SessionCreateParams.LineItem.builder()
+                                .setPriceData(priceData)
+                                .setQuantity(1L)
+                                .build();
+
+                List<SessionCreateParams.LineItem> lineItems = new ArrayList<>();
+                lineItems.add(lineItem);
+
+                Map<String, String> metadata = Map.of(
+                                "orderId", reloadedOrder.getOrderId().toString(),
+                                "orderCode", reloadedOrder.getOrderCode(),
+                                "paymentType", "hybrid",
+                                "pointsUsed", reloadedOrder.getOrderTransaction().getPointsUsed().toString(),
+                                "pointsValue", reloadedOrder.getOrderTransaction().getPointsValue().toString());
+
+                String webSuccess = "http://localhost:3000/payment-success";
+                String webCancel = "http://localhost:3000/payment-cancel";
+                String mobSuccess = "snapshop://checkout-redirect";
+                String mobCancel = "snapshop://checkout-redirect";
+                String successUrl;
+                String cancelUrl;
+                if (platform != null && platform.equalsIgnoreCase("mobile")) {
+                        successUrl = mobSuccess;
+                        cancelUrl = mobCancel;
+                } else {
+                        successUrl = webSuccess;
+                        cancelUrl = webCancel;
+                }
+
+                SessionCreateParams params = SessionCreateParams.builder()
+                                .addPaymentMethodType(SessionCreateParams.PaymentMethodType.CARD)
+                                .setMode(SessionCreateParams.Mode.PAYMENT)
+                                .addAllLineItem(lineItems)
+                                .putAllMetadata(metadata)
+                                .setSuccessUrl(successUrl + "?session_id={CHECKOUT_SESSION_ID}")
+                                .setCancelUrl(cancelUrl + "?session_id={CHECKOUT_SESSION_ID}")
+                                .build();
+
+                Session session = Session.create(params);
+                log.info("Stripe HYBRID session created with ID: {}, amount: {}", session.getId(), reducedAmount);
+
+                // update transaction with stripe session id
+                OrderTransaction tx = reloadedOrder.getOrderTransaction();
+                tx.setStripeSessionId(session.getId());
+                txRepo.save(tx);
+                log.info("Transaction updated with Stripe session ID for hybrid payment");
+
+                return session.getUrl();
+        }
+
+        @Transactional(readOnly = true)
         public Session retrieveSession(String sessionId) throws StripeException {
                 log.info("Retrieving Stripe session: {}", sessionId);
 

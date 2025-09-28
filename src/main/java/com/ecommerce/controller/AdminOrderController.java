@@ -3,9 +3,14 @@ package com.ecommerce.controller;
 import com.ecommerce.dto.AdminOrderDTO;
 import com.ecommerce.service.OrderService;
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -27,14 +32,41 @@ public class AdminOrderController {
     private final OrderService orderService;
 
     @GetMapping
-    @Operation(summary = "Get all orders", description = "Retrieve all orders in the system")
-    public ResponseEntity<?> getAllOrders() {
+    @Operation(summary = "Get all orders with pagination", description = "Retrieve all orders in the system with pagination support")
+    public ResponseEntity<?> getAllOrders(
+            @Parameter(description = "Page number (0-based)", example = "0")
+            @RequestParam(defaultValue = "0") int page,
+            @Parameter(description = "Page size", example = "15")
+            @RequestParam(defaultValue = "15") int size,
+            @Parameter(description = "Sort by field", example = "createdAt")
+            @RequestParam(defaultValue = "createdAt") String sortBy,
+            @Parameter(description = "Sort direction", example = "desc")
+            @RequestParam(defaultValue = "desc") String sortDir) {
         try {
-            List<AdminOrderDTO> orders = orderService.getAllAdminOrders();
+            // Create sort object
+            Sort sort = sortDir.equalsIgnoreCase("desc") 
+                ? Sort.by(sortBy).descending() 
+                : Sort.by(sortBy).ascending();
+            
+            // Create pageable object
+            Pageable pageable = PageRequest.of(page, size, sort);
+            
+            // Get paginated orders
+            Page<AdminOrderDTO> ordersPage = orderService.getAllAdminOrdersPaginated(pageable);
 
             Map<String, Object> response = new HashMap<>();
             response.put("success", true);
-            response.put("data", orders);
+            response.put("data", ordersPage.getContent());
+            response.put("pagination", Map.of(
+                "currentPage", ordersPage.getNumber(),
+                "totalPages", ordersPage.getTotalPages(),
+                "totalElements", ordersPage.getTotalElements(),
+                "pageSize", ordersPage.getSize(),
+                "hasNext", ordersPage.hasNext(),
+                "hasPrevious", ordersPage.hasPrevious(),
+                "isFirst", ordersPage.isFirst(),
+                "isLast", ordersPage.isLast()
+            ));
 
             return ResponseEntity.ok(response);
 

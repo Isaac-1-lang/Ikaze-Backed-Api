@@ -8,7 +8,7 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
-import java.time.LocalDate;
+import java.time.LocalDateTime;
 
 @Data
 @Builder
@@ -19,9 +19,9 @@ public class CreateVariantBatchRequest {
     @NotBlank(message = "Batch number is required")
     private String batchNumber;
 
-    private LocalDate manufactureDate;
+    private LocalDateTime manufactureDate;
 
-    private LocalDate expiryDate;
+    private LocalDateTime expiryDate;
 
     @NotNull(message = "Quantity is required")
     @PositiveOrZero(message = "Quantity must be zero or positive")

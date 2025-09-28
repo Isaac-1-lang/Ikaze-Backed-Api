@@ -83,15 +83,16 @@ public class Stock {
     }
 
     public boolean isInStock() {
-        return quantity > 0;
+        return getTotalBatchQuantity() > 0;
     }
 
     public boolean isLowStock() {
-        return quantity <= lowStockThreshold && quantity > 0;
+        int batchQuantity = getTotalBatchQuantity();
+        return batchQuantity <= lowStockThreshold && batchQuantity > 0;
     }
 
     public boolean isOutOfStock() {
-        return quantity <= 0;
+        return getTotalBatchQuantity() <= 0;
     }
 
     public Product getEffectiveProduct() {
@@ -121,20 +122,25 @@ public class Stock {
     }
 
     /**
-     * Gets the quantity
+     * Gets the quantity from active batches (replaces direct quantity field usage)
      * 
-     * @return The quantity
+     * @return The total quantity from active batches
      */
     public Integer getQuantity() {
-        return quantity;
+        return getTotalBatchQuantity();
     }
 
     /**
-     * Sets the quantity
+     * Sets the quantity - deprecated, use batch management instead
+     * This method is kept for backward compatibility but should not be used
      * 
      * @param quantity The quantity to set
+     * @deprecated Use batch management through StockBatch entities instead
      */
+    @Deprecated
     public void setQuantity(Integer quantity) {
+        // Keep for backward compatibility but log warning
+        System.out.println("Warning: Direct quantity setting is deprecated. Use batch management instead.");
         this.quantity = quantity;
     }
 

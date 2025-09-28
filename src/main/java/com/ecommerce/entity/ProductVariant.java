@@ -123,10 +123,9 @@ public class ProductVariant {
             return 0;
         }
         
-        // For variants, use stock quantities which are automatically updated 
-        // from active batch totals by the StockBatchService
+        // Calculate stock directly from active batches instead of Stock.quantity
         return stocks.stream()
-                .mapToInt(Stock::getQuantity)
+                .mapToInt(Stock::getTotalBatchQuantity)
                 .sum();
     }
 

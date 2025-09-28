@@ -9,7 +9,7 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 import java.math.BigDecimal;
-import java.time.LocalDate;
+import java.time.LocalDateTime;
 
 @Data
 @Builder
@@ -23,9 +23,9 @@ public class CreateStockBatchRequest {
     @NotBlank(message = "Batch number is required")
     private String batchNumber;
 
-    private LocalDate manufactureDate;
+    private LocalDateTime manufactureDate;
 
-    private LocalDate expiryDate;
+    private LocalDateTime expiryDate;
 
     @NotNull(message = "Quantity is required")
     @PositiveOrZero(message = "Quantity must be zero or positive")

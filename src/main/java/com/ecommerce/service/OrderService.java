@@ -5,6 +5,8 @@ import com.ecommerce.dto.CreateOrderDTO;
 import com.ecommerce.dto.AdminOrderDTO;
 import com.ecommerce.dto.DeliveryOrderDTO;
 import com.ecommerce.dto.CustomerOrderDTO;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -12,12 +14,12 @@ import java.util.UUID;
 public interface OrderService {
     List<Order> getAllOrders();
 
-    Order getOrderById(Long orderId);
+    Page<Order> getAllOrders(Pageable pageable);
 
     List<Order> getOrdersForUser(UUID userId);
 
     Order getOrderByIdForUser(UUID userId, Long orderId);
-
+    Order getOrderById(Long orderId);
     Order getOrderByNumber(UUID userId, String orderNumber);
 
     Order createOrder(UUID userId, CreateOrderDTO createOrderDTO);
@@ -37,6 +39,8 @@ public interface OrderService {
 
     // Admin methods
     List<AdminOrderDTO> getAllAdminOrders();
+
+    Page<AdminOrderDTO> getAllAdminOrdersPaginated(Pageable pageable);
 
     List<AdminOrderDTO> getOrdersByStatus(String status);
 

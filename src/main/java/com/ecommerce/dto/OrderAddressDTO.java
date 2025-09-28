@@ -12,9 +12,11 @@ public class OrderAddressDTO {
     private String street;
     private String city;
     private String state;
-    private String zipCode;
     private String country;
     private String phone;
+    private Double latitude;
+    private Double longitude;
+    private String roadName;
 }
 
 

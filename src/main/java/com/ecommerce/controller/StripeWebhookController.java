@@ -16,29 +16,35 @@ import com.ecommerce.entity.ProductVariant;
 import com.ecommerce.repository.OrderRepository;
 import com.ecommerce.repository.OrderTransactionRepository;
 import com.ecommerce.repository.ProductVariantRepository;
+import com.ecommerce.service.AbandonedOrderCleanupService;
 import com.stripe.exception.SignatureVerificationException;
 import com.stripe.model.Event;
 import com.stripe.model.checkout.Session;
 import com.stripe.net.Webhook;
 
 import jakarta.persistence.EntityNotFoundException;
+import lombok.extern.slf4j.Slf4j;
 
 @RestController
 @RequestMapping("/api/webhook")
+@Slf4j
 public class StripeWebhookController {
 
     private final OrderRepository orderRepository;
     private final OrderTransactionRepository txRepository;
     private final ProductVariantRepository variantRepository;
+    private final AbandonedOrderCleanupService abandonedOrderCleanupService;
     private final org.springframework.core.env.Environment environment;
 
     public StripeWebhookController(OrderRepository orderRepository,
             OrderTransactionRepository txRepository,
             ProductVariantRepository variantRepository,
+            AbandonedOrderCleanupService abandonedOrderCleanupService,
             org.springframework.core.env.Environment environment) {
         this.orderRepository = orderRepository;
         this.txRepository = txRepository;
         this.variantRepository = variantRepository;
+        this.abandonedOrderCleanupService = abandonedOrderCleanupService;
         this.environment = environment;
     }
 
@@ -72,6 +78,24 @@ public class StripeWebhookController {
                 }
 
                 processSuccessfulPayment(tx, session);
+            });
+        } else if ("checkout.session.expired".equals(event.getType())) {
+            // Handle payment cancellation/expiration immediately
+            Session session = (Session) event.getDataObjectDeserializer()
+                    .getObject().orElse(null);
+
+            if (session == null)
+                return ResponseEntity.ok("no session");
+
+            String sessionId = session.getId();
+
+            // Find and cleanup the abandoned order immediately
+            txRepository.findByStripeSessionId(sessionId).ifPresent(tx -> {
+                if (tx.getStatus() == OrderTransaction.TransactionStatus.COMPLETED) {
+                    return;
+                }
+
+                processCancelledPayment(tx, session);
             });
         }
 
@@ -109,6 +133,24 @@ public class StripeWebhookController {
         }
 
         // 4. send confirmation email to orderCustomerInfo.email (not shown)
+    }
+
+    @Transactional
+    protected void processCancelledPayment(OrderTransaction tx, Session session) {
+        try {
+            Order order = tx.getOrder();
+            
+            // Log the cancellation
+            log.info("Processing cancelled payment for order: {}, session: {}", 
+                    order.getOrderId(), session.getId());
+            abandonedOrderCleanupService.cleanupSingleAbandonedOrder(order);
+            
+            log.info("Successfully processed cancellation for order: {}", order.getOrderId());
+            
+        } catch (Exception e) {
+            log.error("Error processing cancelled payment for session {}: {}", 
+                     session.getId(), e.getMessage(), e);
+        }
     }
 
     private String getReceiptUrlFromSession(Session session) {

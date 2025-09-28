@@ -47,6 +47,8 @@ public interface RewardService {
 
     UserPointsDTO deductPointsForPurchase(UUID userId, Integer points, String description);
 
+    UserPointsDTO refundPointsForCancelledOrder(UUID userId, Integer points, String description);
+
     Integer getUserCurrentPoints(UUID userId);
 
     UserRewardSummaryDTO getUserRewardSummary(UUID userId);

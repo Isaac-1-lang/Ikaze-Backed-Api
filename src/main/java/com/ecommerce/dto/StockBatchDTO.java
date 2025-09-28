@@ -10,7 +10,6 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 import java.math.BigDecimal;
-import java.time.LocalDate;
 import java.time.LocalDateTime;
 
 @Data
@@ -21,8 +20,8 @@ public class StockBatchDTO {
     private Long id;
     private Long stockId;
     private String batchNumber;
-    private LocalDate manufactureDate;
-    private LocalDate expiryDate;
+    private LocalDateTime manufactureDate;
+    private LocalDateTime expiryDate;
     private Integer quantity;
     private BatchStatus status;
     private String supplierName;

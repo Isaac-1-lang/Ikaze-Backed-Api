@@ -57,10 +57,11 @@ import com.ecommerce.service.CloudinaryService;
 
 import com.ecommerce.service.ProductService;
 
+import com.ecommerce.service.ProductAvailabilityService;
+
 import jakarta.persistence.EntityNotFoundException;
 
 import jakarta.persistence.criteria.*;
-
 import jakarta.transaction.Transactional;
 
 import lombok.RequiredArgsConstructor;
@@ -146,6 +147,8 @@ public class ProductServiceImpl implements ProductService {
 
     private final ElasticsearchClient elasticsearchClient;
 
+    private final ProductAvailabilityService productAvailabilityService;
+
     @Override
     @Transactional
     public Map<String, Object> createEmptyProduct(String name) {
@@ -230,7 +233,9 @@ public class ProductServiceImpl implements ProductService {
 
             List<Stock> stocks = stockRepository.findByProduct(product);
             for (Stock stock : stocks) {
-                stockBatchRepository.deleteByStock(stock);
+                // Safely handle existing batches (preserve those referenced by orders)
+                safelyHandleExistingStockBatches(stock);
+                // Delete the stock entry (batches are handled above)
                 stockRepository.delete(stock);
             }
             log.info("Successfully removed all stock for product {}", productId);
@@ -238,6 +243,106 @@ public class ProductServiceImpl implements ProductService {
         } catch (Exception e) {
             log.error("Error removing product stock: {}", e.getMessage(), e);
             throw new RuntimeException("Failed to remove product stock: " + e.getMessage(), e);
+        }
+    }
+
+    @Override
+    @Transactional
+    public Map<String, Object> assignProductStockWithBatches(UUID productId,
+            List<WarehouseStockWithBatchesRequest> warehouseStocks) {
+        try {
+            log.info("Assigning stock with batches to product {} for {} warehouses", 
+                    productId, warehouseStocks.size());
+
+            Product product = productRepository.findById(productId)
+                    .orElseThrow(() -> new IllegalArgumentException("Product not found"));
+
+            if (product.getVariants() != null && !product.getVariants().isEmpty()) {
+                throw new IllegalArgumentException("Product has variants. Use assignVariantStockWithBatches instead.");
+            }
+
+            List<Stock> existingStocks = stockRepository.findByProduct(product);
+            for (Stock existingStock : existingStocks) {
+                safelyHandleExistingStockBatches(existingStock);
+            }
+
+            List<Stock> processedStocks = new ArrayList<>();
+            int totalBatchesCreated = 0;
+
+            for (WarehouseStockWithBatchesRequest stockRequest : warehouseStocks) {
+                Warehouse warehouse = warehouseRepository.findById(stockRequest.getWarehouseId())
+                        .orElseThrow(() -> new IllegalArgumentException(
+                                "Warehouse not found: " + stockRequest.getWarehouseId()));
+
+                Stock stock = existingStocks.stream()
+                        .filter(s -> s.getWarehouse().getId().equals(warehouse.getId()))
+                        .findFirst()
+                        .orElse(null);
+
+                if (stock == null) {
+                    // Create new stock entry for product (without variant)
+                    stock = new Stock();
+                    stock.setProduct(product);
+                    stock.setWarehouse(warehouse);
+                    stock.setQuantity(0); // Will be calculated from batches
+                }
+                
+                // Update stock threshold
+                stock.setLowStockThreshold(stockRequest.getLowStockThreshold());
+                Stock savedStock = stockRepository.save(stock);
+
+                // Create batches for this stock
+                List<StockBatch> batches = new ArrayList<>();
+                for (WarehouseStockWithBatchesRequest.StockBatchRequest batchRequest : stockRequest.getBatches()) {
+                    // Check if batch number already exists for this stock
+                    if (stockBatchRepository.findByStockAndBatchNumber(savedStock, batchRequest.getBatchNumber())
+                            .isPresent()) {
+                        throw new IllegalArgumentException(
+                                "Batch number '" + batchRequest.getBatchNumber() + "' already exists for this product stock");
+                    }
+
+                    StockBatch batch = new StockBatch();
+                    batch.setStock(savedStock);
+                    batch.setBatchNumber(batchRequest.getBatchNumber());
+                    batch.setManufactureDate(batchRequest.getManufactureDate());
+                    batch.setExpiryDate(batchRequest.getExpiryDate());
+                    batch.setQuantity(batchRequest.getQuantity());
+                    batch.setSupplierName(batchRequest.getSupplierName());
+                    batch.setSupplierBatchNumber(batchRequest.getSupplierBatchNumber());
+                    batch.setStatus(com.ecommerce.enums.BatchStatus.ACTIVE);
+
+                    StockBatch savedBatch = stockBatchRepository.save(batch);
+                    batches.add(savedBatch);
+                    totalBatchesCreated++;
+                }
+
+                // Update stock quantity based on active batches
+                Integer totalQuantity = batches.stream()
+                        .filter(batch -> batch.getStatus() == com.ecommerce.enums.BatchStatus.ACTIVE)
+                        .mapToInt(StockBatch::getQuantity)
+                        .sum();
+                savedStock.setQuantity(totalQuantity);
+                stockRepository.save(savedStock);
+
+                processedStocks.add(savedStock);
+            }
+
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", true);
+            response.put("message", "Product stock with batches assigned successfully");
+            response.put("assignedWarehouses", warehouseStocks.size());
+            response.put("totalBatchesCreated", totalBatchesCreated);
+
+            log.info("Successfully assigned stock with {} batches to product {} for {} warehouses",
+                    totalBatchesCreated, productId, warehouseStocks.size());
+            return response;
+
+        } catch (IllegalArgumentException e) {
+            log.error("Validation error assigning product stock with batches: {}", e.getMessage());
+            throw e;
+        } catch (Exception e) {
+            log.error("Error assigning product stock with batches: {}", e.getMessage(), e);
+            throw new RuntimeException("Failed to assign product stock with batches: " + e.getMessage(), e);
         }
     }
 
@@ -257,7 +362,9 @@ public class ProductServiceImpl implements ProductService {
 
             List<Stock> existingStocks = stockRepository.findByProduct(product);
             for (Stock existingStock : existingStocks) {
-                stockBatchRepository.deleteByStock(existingStock);
+                // Safely handle existing batches (preserve those referenced by orders)
+                safelyHandleExistingStockBatches(existingStock);
+                // Delete the stock entry (batches are handled above)
                 stockRepository.delete(existingStock);
             }
 
@@ -305,29 +412,54 @@ public class ProductServiceImpl implements ProductService {
         }
     }
 
+    /**
+     * Safely handle existing stock batches - preserve those referenced by orders, 
+     * deactivate others, and only delete unreferenced ones
+     */
+    private void safelyHandleExistingStockBatches(Stock existingStock) {
+        List<StockBatch> existingBatches = stockBatchRepository.findByStock(existingStock);
+        
+        int preservedBatches = 0;
+        int deactivatedBatches = 0;
+        int deletedBatches = 0;
+        
+        for (StockBatch batch : existingBatches) {
+            if (stockBatchRepository.isReferencedByOrders(batch.getId())) {
+                if (batch.getStatus() == com.ecommerce.enums.BatchStatus.ACTIVE) {
+                    batch.setStatus(com.ecommerce.enums.BatchStatus.INACTIVE);
+                    stockBatchRepository.save(batch);
+                    deactivatedBatches++;
+                } else {
+                    preservedBatches++;
+                }
+            } else {
+                stockBatchRepository.delete(batch);
+                deletedBatches++;
+            }
+        }
+    }
+
     @Override
     @Transactional
-    public Map<String, Object> assignProductStockWithBatches(UUID productId,
+    public Map<String, Object> assignVariantStockWithBatches(UUID productId, Long variantId,
             List<WarehouseStockWithBatchesRequest> warehouseStocks) {
         try {
-            log.info("Assigning stock with batches to product {} for {} warehouses", productId, warehouseStocks.size());
+            log.info("Assigning stock with batches to variant {} of product {} for {} warehouses", 
+                    variantId, productId, warehouseStocks.size());
 
             Product product = productRepository.findById(productId)
                     .orElseThrow(() -> new IllegalArgumentException("Product not found"));
-
-            if (product.getVariants() != null && !product.getVariants().isEmpty()) {
-                throw new IllegalArgumentException(
-                        "Cannot assign stock to product with variants. Stock should be managed at variant level.");
-            }
-
-            // Remove existing stock and batches
-            List<Stock> existingStocks = stockRepository.findByProduct(product);
+    
+            ProductVariant variant = product.getVariants().stream()
+                    .filter(v -> v.getId().equals(variantId))
+                    .findFirst()
+                    .orElseThrow(() -> new IllegalArgumentException("Variant not found"));
+            List<Stock> existingStocks = stockRepository.findByProductVariant(variant);
             for (Stock existingStock : existingStocks) {
-                stockBatchRepository.deleteByStock(existingStock);
-                stockRepository.delete(existingStock);
+                safelyHandleExistingStockBatches(existingStock);
             }
 
-            List<Stock> newStocks = new ArrayList<>();
+            List<Stock> processedStocks = new ArrayList<>();
             int totalBatchesCreated = 0;
 
             for (WarehouseStockWithBatchesRequest stockRequest : warehouseStocks) {
@@ -335,15 +467,23 @@ public class ProductServiceImpl implements ProductService {
                         .orElseThrow(() -> new IllegalArgumentException(
                                 "Warehouse not found: " + stockRequest.getWarehouseId()));
 
-                // Create stock entry
-                Stock stock = new Stock();
-                stock.setProduct(product);
-                stock.setWarehouse(warehouse);
-                stock.setQuantity(0); // Will be calculated from batches
+                Stock stock = existingStocks.stream()
+                        .filter(s -> s.getWarehouse().getId().equals(warehouse.getId()))
+                        .findFirst()
+                        .orElse(null);
+
+                if (stock == null) {
+                    // Create new stock entry for variant
+                    stock = new Stock();
+                    stock.setProductVariant(variant);
+                    stock.setWarehouse(warehouse);
+                    stock.setQuantity(0); // Will be calculated from batches
+                }
+                
+                // Update stock threshold
                 stock.setLowStockThreshold(stockRequest.getLowStockThreshold());
-
                 Stock savedStock = stockRepository.save(stock);
-
+    
                 // Create batches for this stock
                 List<StockBatch> batches = new ArrayList<>();
                 for (WarehouseStockWithBatchesRequest.StockBatchRequest batchRequest : stockRequest.getBatches()) {
@@ -351,9 +491,9 @@ public class ProductServiceImpl implements ProductService {
                     if (stockBatchRepository.findByStockAndBatchNumber(savedStock, batchRequest.getBatchNumber())
                             .isPresent()) {
                         throw new IllegalArgumentException(
-                                "Batch number '" + batchRequest.getBatchNumber() + "' already exists for this stock");
+                                "Batch number '" + batchRequest.getBatchNumber() + "' already exists for this variant stock");
                     }
-
+    
                     StockBatch batch = new StockBatch();
                     batch.setStock(savedStock);
                     batch.setBatchNumber(batchRequest.getBatchNumber());
@@ -363,12 +503,12 @@ public class ProductServiceImpl implements ProductService {
                     batch.setSupplierName(batchRequest.getSupplierName());
                     batch.setSupplierBatchNumber(batchRequest.getSupplierBatchNumber());
                     batch.setStatus(com.ecommerce.enums.BatchStatus.ACTIVE);
-
+    
                     StockBatch savedBatch = stockBatchRepository.save(batch);
                     batches.add(savedBatch);
                     totalBatchesCreated++;
                 }
-
+    
                 // Update stock quantity based on active batches
                 Integer totalQuantity = batches.stream()
                         .filter(batch -> batch.getStatus() == com.ecommerce.enums.BatchStatus.ACTIVE)
@@ -376,26 +516,26 @@ public class ProductServiceImpl implements ProductService {
                         .sum();
                 savedStock.setQuantity(totalQuantity);
                 stockRepository.save(savedStock);
-
-                newStocks.add(savedStock);
+    
+                processedStocks.add(savedStock);
             }
-
+    
             Map<String, Object> response = new HashMap<>();
             response.put("success", true);
-            response.put("message", "Stock with batches assigned successfully");
+            response.put("message", "Variant stock with batches assigned successfully");
             response.put("assignedWarehouses", warehouseStocks.size());
             response.put("totalBatchesCreated", totalBatchesCreated);
-
-            log.info("Successfully assigned stock with {} batches to product {} for {} warehouses",
-                    totalBatchesCreated, productId, warehouseStocks.size());
+    
+            log.info("Successfully assigned stock with {} batches to variant {} of product {} for {} warehouses",
+                    totalBatchesCreated, variantId, productId, warehouseStocks.size());
             return response;
-
+    
         } catch (IllegalArgumentException e) {
-            log.error("Validation error assigning product stock with batches: {}", e.getMessage());
+            log.error("Validation error assigning variant stock with batches: {}", e.getMessage());
             throw e;
         } catch (Exception e) {
-            log.error("Error assigning product stock with batches: {}", e.getMessage(), e);
-            throw new RuntimeException("Failed to assign product stock with batches: " + e.getMessage(), e);
+            log.error("Error assigning variant stock with batches: {}", e.getMessage(), e);
+            throw new RuntimeException("Failed to assign variant stock with batches: " + e.getMessage(), e);
         }
     }
 
@@ -1101,7 +1241,10 @@ public class ProductServiceImpl implements ProductService {
     private Page<ManyProductsDto> searchProductsWithElasticsearch(ProductSearchDTO searchDTO, int page, int size,
             String sortBy, String sortDirection) {
         try {
-            ensureProductsIndexExists();
+            if (!ensureProductsIndexExists()) {
+                log.warn("Elasticsearch not available, falling back to database search");
+                return searchProductsWithJPA(searchDTO, page, size, sortBy, sortDirection);
+            }
 
             String searchTerm = searchDTO.getName() != null ? searchDTO.getName() : searchDTO.getSearchKeyword();
 
@@ -3316,7 +3459,10 @@ public class ProductServiceImpl implements ProductService {
             List<Map<String, Object>> suggestions = new ArrayList<>();
 
             // Ensure products index exists
-            ensureProductsIndexExists();
+            if (!ensureProductsIndexExists()) {
+                log.warn("Elasticsearch not available, falling back to database search");
+                return getFallbackSearchSuggestions(query);
+            }
 
             // Get search term suggestions with typo tolerance
             suggestions.addAll(getSearchTermSuggestions(query));
@@ -3494,8 +3640,13 @@ public class ProductServiceImpl implements ProductService {
         return suggestions;
     }
 
-    private void ensureProductsIndexExists() {
+    private boolean ensureProductsIndexExists() {
         try {
+            if (elasticsearchClient == null) {
+                log.warn("Elasticsearch client is not available");
+                return false;
+            }
+            
             ExistsRequest existsRequest = ExistsRequest.of(e -> e.index("products"));
             boolean exists = elasticsearchClient.indices().exists(existsRequest).value();
 
@@ -3514,8 +3665,10 @@ public class ProductServiceImpl implements ProductService {
                 elasticsearchClient.indices().create(createRequest);
                 log.info("Created Elasticsearch products index");
             }
+            return true;
         } catch (Exception e) {
-            log.error("Error ensuring products index exists", e);
+            log.warn("Elasticsearch is not available: {}. Search functionality will be limited.", e.getMessage());
+            return false;
         }
     }
 
@@ -3656,7 +3809,10 @@ public class ProductServiceImpl implements ProductService {
     private void indexProductInElasticsearch(Product product) {
         try {
             // Ensure products index exists
-            ensureProductsIndexExists();
+            if (!ensureProductsIndexExists()) {
+                log.warn("Elasticsearch not available, skipping product indexing for product: {}", product.getProductId());
+                return;
+            }
 
             // Create product document for Elasticsearch
             Map<String, Object> productDoc = new HashMap<>();
@@ -4943,6 +5099,7 @@ public class ProductServiceImpl implements ProductService {
                     .shippingInfo(productDetail.getShippingInfo())
                     .returnPolicy(productDetail.getReturnPolicy())
                     .maximumDaysForReturn(product.getMaximumDaysForReturn())
+                    .displayToCustomers(product.getDisplayToCustomers())
                     .build();
 
         } catch (Exception e) {
@@ -5018,6 +5175,11 @@ public class ProductServiceImpl implements ProductService {
                 hasChanges = true;
             }
 
+            if(updateDTO.getDisplayToCustomers() != null){
+                product.setDisplayToCustomers(updateDTO.getDisplayToCustomers());
+                log.info("Display to customers: {}", updateDTO.getDisplayToCustomers());
+                hasChanges = true;
+            }
             if (updateDTO.getShippingInfo() != null) {
                 productDetail.setShippingInfo(updateDTO.getShippingInfo());
                 hasChanges = true;
@@ -5061,6 +5223,368 @@ public class ProductServiceImpl implements ProductService {
         } catch (Exception e) {
             log.error("Error updating product details for product ID {}: {}", productId, e.getMessage(), e);
             throw new RuntimeException("Failed to update product details: " + e.getMessage(), e);
+        }
+    }
+
+    @Override
+    public Page<ManyProductsDto> getAllProductsForCustomers(Pageable pageable) {
+        try {
+            Page<Product> products = productRepository.findAvailableForCustomersWithStock(pageable);
+            return products.map(this::convertToManyProductsDto);
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to get products for customers: " + e.getMessage(), e);
+        }
+    }
+
+    @Override
+    public Page<ManyProductsDto> getAllProductsForAdmins(Pageable pageable) {
+        try {
+            log.info("Getting all products for admins with pagination: {}", pageable);
+            Page<Product> products = productRepository.findAvailableForAdmins(pageable);
+            return products.map(this::convertToManyProductsDto);
+        } catch (Exception e) {
+            log.error("Error getting products for admins: {}", e.getMessage(), e);
+            throw new RuntimeException("Failed to get products for admins: " + e.getMessage(), e);
+        }
+    }
+
+    @Override
+    public Page<ManyProductsDto> searchProductsForCustomers(ProductSearchDTO searchDTO) {
+        try {
+            log.info("Searching products for customers with criteria: {}", searchDTO);
+            
+            // Use the comprehensive search logic from the main searchProducts method
+            // but filter results for customer availability
+            Page<ManyProductsDto> searchResults = searchProducts(searchDTO);
+            
+            // Filter the results to only include products available for customers
+            List<ManyProductsDto> availableProducts = searchResults.getContent().stream()
+                .filter(product -> {
+                    try {
+                        UUID productUuid = product.getProductId();
+                        Product productEntity = productRepository.findById(productUuid).orElse(null);
+                        if (productEntity == null) {
+                            return false;
+                        }
+                        return productAvailabilityService.isProductAvailableForCustomers(productEntity);
+                    } catch (Exception e) {
+                        log.warn("Error checking availability for product {}: {}", product.getProductId(), e.getMessage());
+                        return false;
+                    }
+                })
+                .collect(Collectors.toList());
+            
+            // Create new page with filtered results
+            Page<ManyProductsDto> filteredResults = new PageImpl<>(
+                availableProducts,
+                searchResults.getPageable(),
+                availableProducts.size()
+            );
+            
+            log.info("Filtered {} search results to {} available products for customers", 
+                    searchResults.getContent().size(), availableProducts.size());
+            
+            return filteredResults;
+        } catch (Exception e) {
+            log.error("Error searching products for customers: {}", e.getMessage(), e);
+            throw new RuntimeException("Failed to search products for customers: " + e.getMessage(), e);
+        }
+    }
+
+    @Override
+    public Page<ManyProductsDto> searchProductsForAdmins(ProductSearchDTO searchDTO) {
+        try {
+            log.info("Searching products for admins with criteria: {}", searchDTO);
+            return searchProducts(searchDTO);
+        } catch (Exception e) {
+            log.error("Error searching products for admins: {}", e.getMessage(), e);
+            throw new RuntimeException("Failed to search products for admins: " + e.getMessage(), e);
+        }
+    }
+
+    @Override
+    public Page<ManyProductsDto> getFeaturedProductsForCustomers(Pageable pageable) {
+        try {
+            log.info("Getting featured products for customers with pagination: {}", pageable);
+            Page<Product> products = productRepository.findFeaturedForCustomersWithStock(pageable);
+            return products.map(this::convertToManyProductsDto);
+        } catch (Exception e) {
+            log.error("Error getting featured products for customers: {}", e.getMessage(), e);
+            throw new RuntimeException("Failed to get featured products for customers: " + e.getMessage(), e);
+        }
+    }
+
+    @Override
+    public Page<ManyProductsDto> getBestsellerProductsForCustomers(Pageable pageable) {
+        try {
+            log.info("Getting bestseller products for customers with pagination: {}", pageable);
+            Page<Product> products = productRepository.findBestsellersForCustomersWithStock(pageable);
+            return products.map(this::convertToManyProductsDto);
+        } catch (Exception e) {
+            log.error("Error getting bestseller products for customers: {}", e.getMessage(), e);
+            throw new RuntimeException("Failed to get bestseller products for customers: " + e.getMessage(), e);
+        }
+    }
+
+    @Override
+    public Page<ManyProductsDto> getNewArrivalProductsForCustomers(Pageable pageable) {
+        try {
+            log.info("Getting new arrival products for customers with pagination: {}", pageable);
+            Page<Product> products = productRepository.findNewArrivalsForCustomersWithStock(pageable);
+            return products.map(this::convertToManyProductsDto);
+        } catch (Exception e) {
+            log.error("Error getting new arrival products for customers: {}", e.getMessage(), e);
+            throw new RuntimeException("Failed to get new arrival products for customers: " + e.getMessage(), e);
+        }
+    }
+
+    @Override
+    public Page<ManyProductsDto> getProductsByCategoryForCustomers(Long categoryId, Pageable pageable) {
+        try {
+            log.info("Getting products by category {} for customers with pagination: {}", categoryId, pageable);
+            Category category = categoryRepository.findById(categoryId)
+                .orElseThrow(() -> new EntityNotFoundException("Category not found with ID: " + categoryId));
+            
+            Page<Product> products = productRepository.findByCategoryForCustomersWithStock(category, pageable);
+            return products.map(this::convertToManyProductsDto);
+        } catch (Exception e) {
+            log.error("Error getting products by category for customers: {}", e.getMessage(), e);
+            throw new RuntimeException("Failed to get products by category for customers: " + e.getMessage(), e);
+        }
+    }
+
+    @Override
+    public Page<ManyProductsDto> getProductsByBrandForCustomers(UUID brandId, Pageable pageable) {
+        try {
+            log.info("Getting products by brand {} for customers with pagination: {}", brandId, pageable);
+            Brand brand = brandRepository.findById(brandId)
+                .orElseThrow(() -> new EntityNotFoundException("Brand not found with ID: " + brandId));
+            
+            Page<Product> products = productRepository.findByBrandForCustomersWithStock(brand, pageable);
+            return products.map(this::convertToManyProductsDto);
+        } catch (Exception e) {
+            log.error("Error getting products by brand for customers: {}", e.getMessage(), e);
+            throw new RuntimeException("Failed to get products by brand for customers: " + e.getMessage(), e);
+        }
+    }
+
+    @Override
+    public boolean isProductAvailableForCustomers(UUID productId) {
+        try {
+            log.info("Checking if product {} is available for customers", productId);
+            Product product = productRepository.findById(productId)
+                .orElseThrow(() -> new EntityNotFoundException("Product not found with ID: " + productId));
+            
+            return productAvailabilityService.isProductAvailableForCustomers(product);
+        } catch (Exception e) {
+            log.error("Error checking product availability for customers: {}", e.getMessage(), e);
+            throw new RuntimeException("Failed to check product availability for customers: " + e.getMessage(), e);
+        }
+    }
+
+    @Override
+    public List<ProductVariantDTO> getAvailableVariantsForCustomers(UUID productId) {
+        try {
+            log.info("Getting available variants for product {} for customers", productId);
+            Product product = productRepository.findById(productId)
+                .orElseThrow(() -> new EntityNotFoundException("Product not found with ID: " + productId));
+            
+            List<ProductVariant> availableVariants = productAvailabilityService.getAvailableVariants(product);
+            return availableVariants.stream()
+                .map(this::convertToProductVariantDTO)
+                .collect(Collectors.toList());
+        } catch (Exception e) {
+            log.error("Error getting available variants for customers: {}", e.getMessage(), e);
+            throw new RuntimeException("Failed to get available variants for customers: " + e.getMessage(), e);
+        }
+    }
+
+    private ManyProductsDto convertToManyProductsDto(Product product) {
+        try {
+            ManyProductsDto.SimpleCategoryDto categoryDto = null;
+            if (product.getCategory() != null) {
+                categoryDto = ManyProductsDto.SimpleCategoryDto.builder()
+                    .id(product.getCategory().getId())
+                    .name(product.getCategory().getName())
+                    .description(product.getCategory().getDescription())
+                    .slug(product.getCategory().getSlug())
+                    .build();
+            }
+
+            ManyProductsDto.SimpleBrandDto brandDto = null;
+            if (product.getBrand() != null) {
+                brandDto = ManyProductsDto.SimpleBrandDto.builder()
+                    .brandId(product.getBrand().getBrandId())
+                    .brandName(product.getBrand().getBrandName())
+                    .description(product.getBrand().getDescription())
+                    .logoUrl(product.getBrand().getLogoUrl())
+                    .build();
+            }
+
+            ManyProductsDto.SimpleProductImageDto primaryImageDto = null;
+            if (product.getImages() != null && !product.getImages().isEmpty()) {
+                ProductImage primaryImage = product.getImages().stream()
+                    .filter(ProductImage::isPrimary)
+                    .findFirst()
+                    .orElse(product.getImages().get(0));
+                
+                primaryImageDto = ManyProductsDto.SimpleProductImageDto.builder()
+                    .id(primaryImage.getId())
+                    .imageUrl(primaryImage.getImageUrl())
+                    .altText(primaryImage.getAltText())
+                    .isPrimary(primaryImage.isPrimary())
+                    .sortOrder(primaryImage.getSortOrder())
+                    .build();
+            }
+
+            ManyProductsDto.SimpleDiscountDto discountDto = null;
+            boolean hasActiveDiscount = false;
+            if (product.getDiscount() != null) {
+                Discount discount = product.getDiscount();
+                LocalDateTime now = LocalDateTime.now();
+                boolean isActive = discount.isActive() && 
+                    (discount.getStartDate() == null || !discount.getStartDate().isAfter(now)) &&
+                    (discount.getEndDate() == null || !discount.getEndDate().isBefore(now));
+                
+                if (isActive) {
+                    hasActiveDiscount = true;
+                    discountDto = ManyProductsDto.SimpleDiscountDto.builder()
+                        .discountId(discount.getDiscountId())
+                        .name(discount.getName())
+                        .percentage(discount.getPercentage())
+                        .startDate(discount.getStartDate() != null ? discount.getStartDate().toString() : null)
+                        .endDate(discount.getEndDate() != null ? discount.getEndDate().toString() : null)
+                        .active(discount.isActive())
+                        .isValid(isActive)
+                        .discountCode(discount.getDiscountCode())
+                        .build();
+                }
+            }
+
+            BigDecimal discountedPrice = null;
+            if (hasActiveDiscount && product.getDiscount() != null) {
+                BigDecimal discountAmount = product.getPrice()
+                    .multiply(product.getDiscount().getPercentage())
+                    .divide(new BigDecimal("100"), 2, RoundingMode.HALF_UP);
+                discountedPrice = product.getPrice().subtract(discountAmount);
+            }
+
+            int totalStock = productAvailabilityService.getTotalAvailableStock(product);
+
+            return ManyProductsDto.builder()
+                .productId(product.getProductId())
+                .productName(product.getProductName())
+                .shortDescription(product.getShortDescription())
+                .price(product.getPrice())
+                .compareAtPrice(product.getCompareAtPrice())
+                .discountedPrice(discountedPrice)
+                .stockQuantity(totalStock)
+                .category(categoryDto)
+                .brand(brandDto)
+                .isBestSeller(product.isBestseller())
+                .isNew(product.isNewArrival())
+                .isFeatured(product.isFeatured())
+                .discountInfo(discountDto)
+                .primaryImage(primaryImageDto)
+                .averageRating(calculateAverageRating(product))
+                .reviewCount(product.getReviews() != null ? product.getReviews().size() : 0)
+                .hasActiveDiscount(hasActiveDiscount)
+                .build();
+        } catch (Exception e) {
+            log.error("Error converting product to ManyProductsDto: {}", e.getMessage(), e);
+            throw new RuntimeException("Failed to convert product to DTO: " + e.getMessage(), e);
+        }
+    }
+
+    private Double calculateAverageRating(Product product) {
+        if (product.getReviews() == null || product.getReviews().isEmpty()) {
+            return 0.0;
+        }
+        
+        double sum = product.getReviews().stream()
+            .mapToDouble(Review::getRating)
+            .sum();
+        
+        return sum / product.getReviews().size();
+    }
+
+    private ProductVariantDTO convertToProductVariantDTO(ProductVariant variant) {
+        try {
+            List<ProductVariantDTO.VariantWarehouseStockDTO> warehouseStocks = new ArrayList<>();
+            List<Stock> stocks = stockRepository.findByProductVariant(variant);
+            
+            for (Stock stock : stocks) {
+                Integer totalQuantity = stockBatchRepository.getTotalActiveQuantityByStock(stock);
+                if (totalQuantity == null) totalQuantity = 0;
+                
+                ProductVariantDTO.VariantWarehouseStockDTO stockDTO = ProductVariantDTO.VariantWarehouseStockDTO.builder()
+                    .warehouseId(stock.getWarehouse().getId())
+                    .warehouseName(stock.getWarehouse().getName())
+                    .warehouseLocation(stock.getWarehouse().getAddress())
+                    .stockQuantity(totalQuantity)
+                    .lowStockThreshold(stock.getLowStockThreshold())
+                    .isLowStock(totalQuantity <= stock.getLowStockThreshold())
+                    .lastUpdated(stock.getUpdatedAt())
+                    .build();
+                
+                warehouseStocks.add(stockDTO);
+            }
+
+            DiscountDTO discountDTO = null;
+            boolean hasActiveDiscount = false;
+            BigDecimal discountedPrice = null;
+            
+            if (variant.getDiscount() != null) {
+                Discount discount = variant.getDiscount();
+                LocalDateTime now = LocalDateTime.now();
+                boolean isActive = discount.isActive() && 
+                    (discount.getStartDate() == null || !discount.getStartDate().isAfter(now)) &&
+                    (discount.getEndDate() == null || !discount.getEndDate().isBefore(now));
+                
+                if (isActive) {
+                    hasActiveDiscount = true;
+                    discountDTO = DiscountDTO.builder()
+                        .discountId(discount.getDiscountId())
+                        .name(discount.getName())
+                        .description(discount.getDescription())
+                        .percentage(discount.getPercentage())
+                        .discountCode(discount.getDiscountCode())
+                        .startDate(discount.getStartDate())
+                        .endDate(discount.getEndDate())
+                        .active(discount.isActive())
+                        .valid(isActive)
+                        .createdAt(discount.getCreatedAt())
+                        .updatedAt(discount.getUpdatedAt())
+                        .build();
+                    
+                    BigDecimal discountAmount = variant.getPrice()
+                        .multiply(discount.getPercentage())
+                        .divide(new BigDecimal("100"), 2, RoundingMode.HALF_UP);
+                    discountedPrice = variant.getPrice().subtract(discountAmount);
+                }
+            }
+
+            return ProductVariantDTO.builder()
+                .variantId(variant.getId())
+                .variantSku(variant.getVariantSku())
+                .variantName(variant.getVariantName())
+                .variantBarcode(variant.getVariantBarcode())
+                .price(variant.getPrice())
+                .salePrice(variant.getCompareAtPrice())
+                .costPrice(variant.getCostPrice())
+                .isActive(variant.isActive())
+                .isInStock(productAvailabilityService.isVariantAvailableForCustomers(variant))
+                .isLowStock(productAvailabilityService.isVariantLowStock(variant))
+                .createdAt(variant.getCreatedAt())
+                .updatedAt(variant.getUpdatedAt())
+                .warehouseStocks(warehouseStocks)
+                .discount(discountDTO)
+                .discountedPrice(discountedPrice)
+                .hasActiveDiscount(hasActiveDiscount)
+                .build();
+        } catch (Exception e) {
+            log.error("Error converting variant to ProductVariantDTO: {}", e.getMessage(), e);
+            throw new RuntimeException("Failed to convert variant to DTO: " + e.getMessage(), e);
         }
     }
 }

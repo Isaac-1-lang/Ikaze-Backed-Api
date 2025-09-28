@@ -25,4 +25,5 @@ public class ProductDetailsUpdateDTO {
     private String shippingInfo;
     private String returnPolicy;
     private Integer maximumDaysForReturn;
+    private Boolean displayToCustomers;
 }

@@ -52,6 +52,12 @@ public class OrderTransaction {
     @Column(name = "payment_date")
     private LocalDateTime paymentDate;
 
+    @Column(name = "points_used")
+    private Integer pointsUsed = 0;
+
+    @Column(name = "points_value", precision = 10, scale = 2)
+    private BigDecimal pointsValue = BigDecimal.ZERO;
+
     @Column(name = "created_at")
     private LocalDateTime createdAt;
 
@@ -73,7 +79,7 @@ public class OrderTransaction {
      * Payment method enum
      */
     public enum PaymentMethod {
-        CREDIT_CARD, DEBIT_CARD, PAYPAL, BANK_TRANSFER, CASH_ON_DELIVERY, APPLE_PAY, GOOGLE_PAY
+        CREDIT_CARD, DEBIT_CARD, POINTS, HYBRID
     }
 
     /**

@@ -9,6 +9,8 @@ import com.ecommerce.entity.ProductImage;
 import com.ecommerce.dto.OrderResponseDTO;
 import com.ecommerce.dto.OrderItemDTO;
 import com.ecommerce.dto.OrderAddressDTO;
+import com.ecommerce.dto.OrderCustomerInfoDTO;
+import com.ecommerce.dto.OrderTransactionDTO;
 import com.ecommerce.dto.SimpleProductDTO;
 import com.ecommerce.dto.CreateOrderDTO;
 import com.ecommerce.service.OrderService;
@@ -94,21 +96,43 @@ public class OrderController {
             Map<String, Object> res = new HashMap<>();
             res.put("success", false);
             res.put("message", "An unexpected error occurred while fetching orders by userId.");
-            res.put("errorCode", "INTERNAL_ERROR");
-            res.put("details", e.getMessage());
-            return ResponseEntity.internalServerError().body(res);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(res);
         }
     }
 
     @GetMapping("/id/{orderId}")
-    // @PreAuthorize("hasAnyRole('ADMIN','EMPLOYEE')")
-    @Operation(summary = "Get order by orderId", description = "Retrieve an order by its orderId (admin/employee only)", responses = {
+    @PreAuthorize("hasAnyRole('ADMIN','EMPLOYEE','CUSTOMER','DELIVERY_AGENT')")
+    @Operation(summary = "Get order by orderId", description = "Retrieve an order by its orderId (protected endpoint)", responses = {
             @ApiResponse(responseCode = "200", description = "Order found", content = @Content(schema = @Schema(implementation = OrderResponseDTO.class))),
             @ApiResponse(responseCode = "404", description = "Order not found")
     })
     public ResponseEntity<?> getOrderById(@PathVariable Long orderId) {
         try {
-            Order order = orderService.getOrderById(orderId);
+            UUID userId = getCurrentUserId();
+            if (userId == null) {
+                Map<String, Object> res = new HashMap<>();
+                res.put("success", false);
+                res.put("message", "User not authenticated");
+                res.put("errorCode", "UNAUTHORIZED");
+                res.put("details", "User ID could not be extracted from token");
+                return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(res);
+            }
+            Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+            boolean isAdminOrEmployee = auth.getAuthorities().stream()
+                    .anyMatch(grantedAuthority -> 
+                        grantedAuthority.getAuthority().equals("ROLE_ADMIN") || 
+                        grantedAuthority.getAuthority().equals("ROLE_EMPLOYEE"));
+
+            Order order;
+            if (isAdminOrEmployee) {
+                // Admins and employees can view any order
+                order = orderService.getOrderById(orderId);
+            } else {
+                // Customers can only view their own orders
+                order = ((com.ecommerce.ServiceImpl.OrderServiceImpl) orderService)
+                        .getOrderByIdWithUserValidation(orderId, userId);
+            }
+
             if (order == null) {
                 Map<String, Object> res = new HashMap<>();
                 res.put("success", false);
@@ -118,6 +142,14 @@ public class OrderController {
                 return ResponseEntity.status(HttpStatus.NOT_FOUND).body(res);
             }
             return ResponseEntity.ok(Map.of("success", true, "data", toDto(order)));
+        } catch (SecurityException e) {
+            log.warn("Access denied for order {}: {}", orderId, e.getMessage());
+            Map<String, Object> res = new HashMap<>();
+            res.put("success", false);
+            res.put("message", "Access denied");
+            res.put("errorCode", "ACCESS_DENIED");
+            res.put("details", e.getMessage());
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).body(res);
         } catch (Exception e) {
             log.error("Failed to fetch order by id", e);
             Map<String, Object> res = new HashMap<>();
@@ -221,24 +253,25 @@ public class OrderController {
     }
 
     @GetMapping("/number/{orderNumber}")
-    // @PreAuthorize("hasAnyRole('CUSTOMER','ADMIN','EMPLOYEE')")
-    @Operation(summary = "Get order by order number", description = "Retrieve an order by its order number", responses = {
+    @PreAuthorize("hasAnyRole('CUSTOMER','ADMIN','EMPLOYEE','DELIVERY_AGENT')")
+    @Operation(summary = "Get order by order number", description = "Retrieve an order by its order number (protected endpoint)", responses = {
             @ApiResponse(responseCode = "200", description = "Order found", content = @Content(schema = @Schema(implementation = OrderResponseDTO.class))),
             @ApiResponse(responseCode = "404", description = "Order not found")
     })
-    public ResponseEntity<?> getOrderByNumber(@PathVariable String orderNumber,
-            @RequestParam(name = "userId") String userId) {
+    public ResponseEntity<?> getOrderByNumber(@PathVariable String orderNumber) {
         try {
-            if (userId == null || userId.isBlank()) {
+            // Get current authenticated user
+            UUID userId = getCurrentUserId();
+            if (userId == null) {
                 Map<String, Object> response = new HashMap<>();
                 response.put("success", false);
-                response.put("message", "User ID is required as a request parameter");
-                response.put("errorCode", "VALIDATION_ERROR");
-                response.put("details", "Missing userId parameter");
-                return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(response);
+                response.put("message", "User not authenticated");
+                response.put("errorCode", "UNAUTHORIZED");
+                response.put("details", "User ID could not be extracted from token");
+                return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(response);
             }
-            UUID uuid = UUID.fromString(userId);
-            Order order = orderService.getOrderByNumber(uuid, orderNumber);
+
+            Order order = orderService.getOrderByNumber(userId, orderNumber);
             OrderResponseDTO orderResponse = toDto(order);
 
             Map<String, Object> response = new HashMap<>();
@@ -247,13 +280,6 @@ public class OrderController {
 
             return ResponseEntity.ok(response);
 
-        } catch (IllegalArgumentException e) {
-            Map<String, Object> response = new HashMap<>();
-            response.put("success", false);
-            response.put("message", "Invalid userId format");
-            response.put("errorCode", "VALIDATION_ERROR");
-            response.put("details", e.getMessage());
-            return ResponseEntity.badRequest().body(response);
         } catch (EntityNotFoundException e) {
             Map<String, Object> response = new HashMap<>();
             response.put("success", false);
@@ -477,7 +503,7 @@ public class OrderController {
         OrderInfo info = order.getOrderInfo();
         OrderAddress addr = order.getOrderAddress();
         OrderTransaction tx = order.getOrderTransaction();
-
+    
         OrderResponseDTO dto = new OrderResponseDTO();
         dto.setId(order.getOrderId() != null ? order.getOrderId().toString() : null);
         dto.setUserId(
@@ -488,7 +514,32 @@ public class OrderController {
         dto.setStatus(order.getOrderStatus() != null ? order.getOrderStatus().name() : null);
         dto.setCreatedAt(order.getCreatedAt());
         dto.setUpdatedAt(order.getUpdatedAt());
-
+    
+        if (order.getUser() != null) {
+            OrderCustomerInfoDTO customerInfo = new OrderCustomerInfoDTO();
+            customerInfo.setFirstName(order.getUser().getFirstName());
+            customerInfo.setLastName(order.getUser().getLastName());
+            customerInfo.setEmail(order.getUser().getUserEmail());
+            customerInfo.setPhoneNumber(order.getUser().getPhoneNumber());
+            
+            if (addr != null) {
+                customerInfo.setStreetAddress(addr.getStreet());
+                customerInfo.setCountry(addr.getCountry());
+                
+                if (addr.getRegions() != null && !addr.getRegions().isEmpty()) {
+                    String[] regions = addr.getRegions().split(",");
+                    if (regions.length >= 2) {
+                        customerInfo.setCity(regions[0].trim());
+                        customerInfo.setState(regions[1].trim());
+                    } else if (regions.length == 1) {
+                        customerInfo.setCity(regions[0].trim());
+                        customerInfo.setState("");
+                    }
+                }
+            }
+            dto.setCustomerInfo(customerInfo);
+        }
+    
         // Set order info
         if (info != null) {
             dto.setSubtotal(info.getTotalAmount());
@@ -498,15 +549,17 @@ public class OrderController {
             dto.setTotal(info.getFinalAmount());
             dto.setNotes(info.getNotes());
         }
-
-        // Set shipping address
+    
+        // Set shipping address with all fields including lat/lng
         if (addr != null) {
             OrderAddressDTO ad = new OrderAddressDTO();
             ad.setId(addr.getOrderAddressId() != null ? addr.getOrderAddressId().toString() : null);
             ad.setStreet(addr.getStreet());
-            ad.setZipCode(addr.getZipcode());
             ad.setCountry(addr.getCountry());
-
+            ad.setLatitude(addr.getLatitude());
+            ad.setLongitude(addr.getLongitude());
+            ad.setRoadName(addr.getRoadName());
+    
             if (addr.getRegions() != null && !addr.getRegions().isEmpty()) {
                 String[] regions = addr.getRegions().split(",");
                 if (regions.length >= 2) {
@@ -519,19 +572,35 @@ public class OrderController {
             }
             dto.setShippingAddress(ad);
         }
-
+    
         // Set payment information
         if (tx != null) {
             dto.setPaymentMethod(tx.getPaymentMethod() != null ? tx.getPaymentMethod().name() : null);
             dto.setPaymentStatus(tx.getStatus() != null ? tx.getStatus().name() : null);
         }
-
-        // Set order items with product/variant information
+    
+        if (tx != null) {
+            OrderTransactionDTO transactionDTO = new OrderTransactionDTO();
+            transactionDTO.setOrderTransactionId(tx.getOrderTransactionId() != null ? tx.getOrderTransactionId().toString() : null);
+            transactionDTO.setTransactionRef(tx.getTransactionRef());
+            transactionDTO.setPaymentMethod(tx.getPaymentMethod() != null ? tx.getPaymentMethod().name() : null);
+            transactionDTO.setStatus(tx.getStatus() != null ? tx.getStatus().name() : null);
+            transactionDTO.setOrderAmount(tx.getOrderAmount());
+            transactionDTO.setPointsUsed(tx.getPointsUsed());
+            transactionDTO.setPointsValue(tx.getPointsValue());
+            transactionDTO.setStripePaymentIntentId(tx.getStripePaymentIntentId());
+            transactionDTO.setReceiptUrl(tx.getReceiptUrl());
+            transactionDTO.setPaymentDate(tx.getPaymentDate());
+            transactionDTO.setCreatedAt(tx.getCreatedAt());
+            transactionDTO.setUpdatedAt(tx.getUpdatedAt());
+            dto.setTransaction(transactionDTO);
+        }
+    
         if (order.getOrderItems() != null && !order.getOrderItems().isEmpty()) {
             List<OrderItemDTO> itemDTOs = order.getOrderItems().stream().map(this::mapOrderItemToDTO).toList();
             dto.setItems(itemDTOs);
         }
-
+    
         return dto;
     }
 

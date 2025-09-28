@@ -80,9 +80,9 @@ public class CheckoutController {
             log.error("Error creating checkout session: {}", e.getMessage(), e);
             Map<String, Object> response = new HashMap<>();
             response.put("success", false);
-            response.put("message", "An unexpected error occurred while creating checkout session.");
+            response.put("details", "An unexpected error occurred while creating checkout session.");
             response.put("errorCode", "INTERNAL_ERROR");
-            response.put("details", e.getMessage());
+            response.put("message", e.getMessage());
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(response);
         }
     }
@@ -251,6 +251,48 @@ public class CheckoutController {
         } catch (Exception e) {
             log.error("Error calculating payment summary: {}", e.getMessage(), e);
             return ResponseEntity.status(HttpStatus.BAD_REQUEST).build();
+        }
+    }
+
+    @PostMapping("/cleanup-expired-locks")
+    @Operation(summary = "Cleanup expired batch locks", description = "Manually cleanup expired batch locks for debugging")
+    public ResponseEntity<?> cleanupExpiredLocks() {
+        try {
+            checkoutService.cleanupExpiredBatchLocks();
+
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", true);
+            response.put("message", "Expired batch locks cleaned up successfully");
+
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            log.error("Error cleaning up expired locks: {}", e.getMessage(), e);
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", false);
+            response.put("message", "Error cleaning up expired locks");
+            response.put("error", e.getMessage());
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(response);
+        }
+    }
+
+    @GetMapping("/debug/stock-locks/{sessionId}")
+    @Operation(summary = "Debug stock locks", description = "Get detailed information about stock locks for debugging")
+    public ResponseEntity<?> debugStockLocks(@PathVariable String sessionId) {
+        try {
+            Map<String, Object> lockInfo = checkoutService.getLockedStockInfo(sessionId);
+
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", true);
+            response.put("lockInfo", lockInfo);
+
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            log.error("Error getting stock lock info: {}", e.getMessage(), e);
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", false);
+            response.put("message", "Error getting stock lock info");
+            response.put("error", e.getMessage());
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(response);
         }
     }
 

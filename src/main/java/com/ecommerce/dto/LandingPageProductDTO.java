@@ -37,6 +37,11 @@ public class LandingPageProductDTO {
     private LocalDateTime discountEndDate;
     private String discountName;
     private Boolean hasActiveDiscount;
+    
+    // Variant discount fields
+    private Boolean hasVariantDiscounts;
+    private BigDecimal maxVariantDiscount;
+    private Integer discountedVariantsCount;
 
     // Helper method to calculate discount percentage
     public BigDecimal getDiscountPercentage() {

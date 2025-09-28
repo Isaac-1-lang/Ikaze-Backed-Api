@@ -53,9 +53,6 @@ public class OrderCustomerInfo {
     @Column(name = "state")
     private String state;
 
-    @Column(name = "postal_code")
-    private String postalCode;
-
     @Column(name = "country")
     private String country;
 

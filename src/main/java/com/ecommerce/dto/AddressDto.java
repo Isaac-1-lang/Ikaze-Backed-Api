@@ -7,6 +7,7 @@ public class AddressDto {
     private String streetAddress;
     private String city;
     private String state;
-    private String postalCode;
     private String country;
+    private Double latitude;
+    private Double longitude;
 }

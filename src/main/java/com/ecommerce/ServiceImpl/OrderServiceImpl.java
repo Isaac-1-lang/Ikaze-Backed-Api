@@ -11,6 +11,9 @@ import com.ecommerce.entity.ProductVariant;
 import com.ecommerce.entity.ProductImage;
 import com.ecommerce.entity.ProductVariantImage;
 import com.ecommerce.entity.User;
+import com.ecommerce.entity.OrderItemBatch;
+import com.ecommerce.entity.Warehouse;
+import com.ecommerce.entity.StockBatch;
 import com.ecommerce.repository.OrderRepository;
 import com.ecommerce.repository.ProductRepository;
 import com.ecommerce.repository.ProductVariantRepository;
@@ -26,32 +29,26 @@ import com.ecommerce.dto.SimpleProductDTO;
 import jakarta.persistence.EntityNotFoundException;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.LocalDateTime;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.stream.Collectors;
+import java.util.ArrayList;
 
 @Service
 @Slf4j
 @Transactional
 public class OrderServiceImpl implements OrderService {
-    @Override
-    public List<Order> getAllOrders() {
-        return orderRepository.findAll();
-    }
-
-    @Override
-    public Order getOrderById(Long orderId) {
-        return orderRepository.findById(orderId)
-                .orElse(null);
-    }
-
+    
     private final OrderRepository orderRepository;
     private final ProductRepository productRepository;
     private final ProductVariantRepository productVariantRepository;
@@ -71,6 +68,42 @@ public class OrderServiceImpl implements OrderService {
         this.userRepository = userRepository;
         this.readyForDeliveryGroupRepository = readyForDeliveryGroupRepository;
         this.rewardService = rewardService;
+    }
+
+    @Override
+    public List<Order> getAllOrders() {
+        return orderRepository.findAll();
+    }
+
+    @Override
+    public Page<Order> getAllOrders(Pageable pageable) {
+        return orderRepository.findAll(pageable);
+    }
+
+    @Override
+    public Order getOrderById(Long orderId) {
+        return orderRepository.findById(orderId)
+                .orElse(null);
+    }
+
+    /**
+     * Get order by ID with user ownership validation
+     * This method ensures that only the owner of the order can access it
+     */
+    public Order getOrderByIdWithUserValidation(Long orderId, UUID userId) {
+        Order order = orderRepository.findById(orderId).orElse(null);
+        if (order == null) {
+            return null;
+        }
+        
+        // Check if the requesting user is the owner of the order
+        if (order.getUser() != null && !order.getUser().getId().equals(userId)) {
+            log.warn("User {} attempted to access order {} which belongs to user {}", 
+                    userId, orderId, order.getUser().getId());
+            throw new SecurityException("Access denied: You can only view your own orders");
+        }
+        
+        return order;
     }
 
     @Override
@@ -174,7 +207,6 @@ public class OrderServiceImpl implements OrderService {
         OrderAddress orderAddress = new OrderAddress();
         orderAddress.setOrder(order);
         orderAddress.setStreet(createOrderDTO.getShippingAddress().getStreet());
-        orderAddress.setZipcode(createOrderDTO.getShippingAddress().getZipCode());
         orderAddress.setCountry(createOrderDTO.getShippingAddress().getCountry());
 
         // Store city and state in regions field (comma-separated)
@@ -392,7 +424,6 @@ public class OrderServiceImpl implements OrderService {
         return toCustomerOrderDTO(order);
     }
 
-    // Admin methods
     @Override
     @Transactional(readOnly = true)
     public List<AdminOrderDTO> getAllAdminOrders() {
@@ -400,6 +431,13 @@ public class OrderServiceImpl implements OrderService {
         return orders.stream()
                 .map(this::toAdminOrderDTO)
                 .collect(Collectors.toList());
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Page<AdminOrderDTO> getAllAdminOrdersPaginated(Pageable pageable) {
+        Page<Order> ordersPage = orderRepository.findAllWithDetailsForAdmin(pageable);
+        return ordersPage.map(this::toAdminOrderDTO);
     }
 
     @Override
@@ -508,6 +546,35 @@ public class OrderServiceImpl implements OrderService {
 
     private CustomerOrderDTO.CustomerOrderItemDTO toCustomerOrderItemDTO(OrderItem item) {
         Product product = item.getEffectiveProduct();
+        
+        // Calculate discount information by comparing with current product/variant prices
+        BigDecimal currentPrice = item.getPrice();
+        BigDecimal originalPrice = currentPrice;
+        boolean hasDiscount = false;
+        BigDecimal discountPercentage = BigDecimal.ZERO;
+        
+        // Check if item was bought at a discount by comparing with current product price
+        if (item.isVariantBased() && item.getProductVariant() != null) {
+            // For variant-based items, compare with variant price
+            BigDecimal currentVariantPrice = item.getProductVariant().getPrice();
+            if (currentVariantPrice.compareTo(currentPrice) > 0) {
+                originalPrice = currentVariantPrice;
+                hasDiscount = true;
+                discountPercentage = originalPrice.subtract(currentPrice)
+                    .multiply(BigDecimal.valueOf(100))
+                    .divide(originalPrice, 2, RoundingMode.HALF_UP);
+            }
+        } else {
+            // For regular products, compare with product price
+            BigDecimal currentProductPrice = product.getPrice();
+            if (currentProductPrice.compareTo(currentPrice) > 0) {
+                originalPrice = currentProductPrice;
+                hasDiscount = true;
+                discountPercentage = originalPrice.subtract(currentPrice)
+                    .multiply(BigDecimal.valueOf(100))
+                    .divide(originalPrice, 2, RoundingMode.HALF_UP);
+            }
+        }
 
         return CustomerOrderDTO.CustomerOrderItemDTO.builder()
                 .id(item.getOrderItemId().toString())
@@ -516,8 +583,12 @@ public class OrderServiceImpl implements OrderService {
                         ? toSimpleProductDTOWithVariant(product, item.getProductVariant())
                         : toSimpleProductDTO(product))
                 .quantity(item.getQuantity())
-                .price(item.getPrice())
-                .totalPrice(item.getPrice().multiply(BigDecimal.valueOf(item.getQuantity())))
+                .price(currentPrice)
+                .originalPrice(originalPrice)
+                .totalPrice(currentPrice.multiply(BigDecimal.valueOf(item.getQuantity())))
+                .discountPercentage(discountPercentage)
+                .discountName(hasDiscount ? "Discount Applied" : null)
+                .hasDiscount(hasDiscount)
                 .build();
     }
 
@@ -541,9 +612,10 @@ public class OrderServiceImpl implements OrderService {
                 .street(addr.getStreet())
                 .city(city)
                 .state(state)
-                .zipCode(addr.getZipcode())
                 .country(addr.getCountry())
                 .phone("") // Will be set from customer info
+                .latitude(addr.getLatitude())
+                .longitude(addr.getLongitude())
                 .build();
     }
 
@@ -578,6 +650,38 @@ public class OrderServiceImpl implements OrderService {
 
     private AdminOrderDTO.AdminOrderItemDTO toAdminOrderItemDTO(OrderItem item) {
         Product product = item.getEffectiveProduct();
+        
+        // Calculate discount information by comparing with current product/variant prices
+        BigDecimal currentPrice = item.getPrice();
+        BigDecimal originalPrice = currentPrice;
+        boolean hasDiscount = false;
+        BigDecimal discountPercentage = BigDecimal.ZERO;
+        
+        // Check if item was bought at a discount by comparing with current product price
+        if (item.isVariantBased() && item.getProductVariant() != null) {
+            // For variant-based items, compare with variant price
+            BigDecimal currentVariantPrice = item.getProductVariant().getPrice();
+            if (currentVariantPrice.compareTo(currentPrice) > 0) {
+                originalPrice = currentVariantPrice;
+                hasDiscount = true;
+                discountPercentage = originalPrice.subtract(currentPrice)
+                    .multiply(BigDecimal.valueOf(100))
+                    .divide(originalPrice, 2, RoundingMode.HALF_UP);
+            }
+        } else {
+            // For regular products, compare with product price
+            BigDecimal currentProductPrice = product.getPrice();
+            if (currentProductPrice.compareTo(currentPrice) > 0) {
+                originalPrice = currentProductPrice;
+                hasDiscount = true;
+                discountPercentage = originalPrice.subtract(currentPrice)
+                    .multiply(BigDecimal.valueOf(100))
+                    .divide(originalPrice, 2, RoundingMode.HALF_UP);
+            }
+        }
+
+        // Get warehouse and batch information
+        List<AdminOrderDTO.AdminOrderWarehouseDTO> warehouses = getWarehousesForOrderItem(item);
 
         return AdminOrderDTO.AdminOrderItemDTO.builder()
                 .id(item.getOrderItemId().toString())
@@ -587,11 +691,16 @@ public class OrderServiceImpl implements OrderService {
                         ? toSimpleProductDTOWithVariant(product, item.getProductVariant())
                         : toSimpleProductDTO(product))
                 .quantity(item.getQuantity())
-                .price(item.getPrice())
-                .totalPrice(item.getPrice().multiply(BigDecimal.valueOf(item.getQuantity())))
+                .price(currentPrice)
+                .originalPrice(originalPrice)
+                .totalPrice(currentPrice.multiply(BigDecimal.valueOf(item.getQuantity())))
+                .discountPercentage(discountPercentage)
+                .discountName(hasDiscount ? "Discount Applied" : null)
+                .hasDiscount(hasDiscount)
                 .availableStock(item.isVariantBased()
                         ? item.getProductVariant().getTotalStockQuantity()
                         : product.getTotalStockQuantity())
+                .warehouses(warehouses)
                 .build();
     }
 
@@ -608,7 +717,6 @@ public class OrderServiceImpl implements OrderService {
                         .street(customerInfo.getStreetAddress())
                         .city(customerInfo.getCity())
                         .state(customerInfo.getState())
-                        .zipCode(customerInfo.getPostalCode())
                         .country(customerInfo.getCountry())
                         .phone(customerInfo.getPhoneNumber())
                         .build();
@@ -635,9 +743,65 @@ public class OrderServiceImpl implements OrderService {
                 .street(addr.getStreet())
                 .city(city)
                 .state(state)
-                .zipCode(addr.getZipcode())
                 .country(addr.getCountry())
                 .phone(phone)
+                .latitude(addr.getLatitude())
+                .longitude(addr.getLongitude())
+                .build();
+    }
+
+    // Helper method to get warehouse and batch information for an order item
+    private List<AdminOrderDTO.AdminOrderWarehouseDTO> getWarehousesForOrderItem(OrderItem item) {
+        if (item.getOrderItemBatches() == null || item.getOrderItemBatches().isEmpty()) {
+            return new ArrayList<>();
+        }
+
+        // Group batches by warehouse
+        Map<Warehouse, List<OrderItemBatch>> warehouseBatches = item.getOrderItemBatches().stream()
+                .collect(Collectors.groupingBy(OrderItemBatch::getWarehouse));
+
+        return warehouseBatches.entrySet().stream()
+                .map(entry -> {
+                    Warehouse warehouse = entry.getKey();
+                    List<OrderItemBatch> batches = entry.getValue();
+                    
+                    // Calculate total quantity from this warehouse
+                    int totalQuantityFromWarehouse = batches.stream()
+                            .mapToInt(OrderItemBatch::getQuantityUsed)
+                            .sum();
+
+                    // Convert batches to DTOs
+                    List<AdminOrderDTO.AdminOrderBatchDTO> batchDTOs = batches.stream()
+                            .map(this::toAdminOrderBatchDTO)
+                            .collect(Collectors.toList());
+
+                    return AdminOrderDTO.AdminOrderWarehouseDTO.builder()
+                            .warehouseId(warehouse.getId().toString())
+                            .warehouseName(warehouse.getName())
+                            .warehouseLocation(warehouse.getCity() + ", " + warehouse.getState())
+                            .warehouseAddress(warehouse.getAddress())
+                            .warehousePhone(warehouse.getContactNumber())
+                            .warehouseManager("N/A") // Not available in current entity
+                            .quantityFromWarehouse(totalQuantityFromWarehouse)
+                            .batches(batchDTOs)
+                            .build();
+                })
+                .collect(Collectors.toList());
+    }
+
+    // Helper method to convert OrderItemBatch to AdminOrderBatchDTO
+    private AdminOrderDTO.AdminOrderBatchDTO toAdminOrderBatchDTO(OrderItemBatch orderItemBatch) {
+        StockBatch stockBatch = orderItemBatch.getStockBatch();
+        
+        return AdminOrderDTO.AdminOrderBatchDTO.builder()
+                .batchId(stockBatch.getId().toString())
+                .batchNumber(stockBatch.getBatchNumber())
+                .quantityFromBatch(orderItemBatch.getQuantityUsed())
+                .manufactureDate(stockBatch.getManufactureDate())
+                .expiryDate(stockBatch.getExpiryDate())
+                .batchStatus(stockBatch.getStatus().name())
+                .supplierName(stockBatch.getSupplierName())
+                .costPrice(null) // Not available in current entity
                 .build();
     }
 
@@ -731,7 +895,6 @@ public class OrderServiceImpl implements OrderService {
                 .street(addr.getStreet())
                 .city(city)
                 .state(state)
-                .zipCode(addr.getZipcode())
                 .country(addr.getCountry())
                 .build();
     }
