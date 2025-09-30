@@ -48,9 +48,43 @@ public class NotificationService {
         log.info("Sending return approval notification to customer {} for request {}", 
                 returnRequest.getCustomerId(), returnRequest.getId());
         
-        // emailService.sendReturnApprovedEmail(returnRequest);
-        
-        log.info("Return approval notification sent for request {}", returnRequest.getId());
+        try {
+            Order order = orderRepository.findById(returnRequest.getOrderId())
+                    .orElseThrow(() -> new RuntimeException("Order not found for return request: " + returnRequest.getId()));
+            
+            String customerEmail = getCustomerEmail(returnRequest, order);
+            String customerName = getCustomerName(returnRequest, order);
+            
+            if (customerEmail != null && customerName != null) {
+                String returnItems = buildReturnItemsList(returnRequest);
+                String submittedDate = returnRequest.getSubmittedAt().toLocalDate().toString();
+                String approvedDate = returnRequest.getDecisionAt() != null ? 
+                    returnRequest.getDecisionAt().toLocalDate().toString() : 
+                    java.time.LocalDate.now().toString();
+                
+                emailService.sendReturnApprovalEmail(
+                    customerEmail,
+                    customerName,
+                    returnRequest.getId(),
+                    order.getOrderCode(),
+                    returnRequest.getDecisionNotes(),
+                    returnItems,
+                    submittedDate,
+                    approvedDate
+                );
+                
+                log.info("Return approval email sent successfully to {} for request {}", 
+                        customerEmail, returnRequest.getId());
+            } else {
+                log.warn("No customer email found for return request {}, skipping email notification", 
+                        returnRequest.getId());
+            }
+            
+        } catch (Exception e) {
+            log.error("Failed to send return approval notification for request {}: {}", 
+                    returnRequest.getId(), e.getMessage(), e);
+            // Don't throw exception to avoid breaking the approval process
+        }
     }
 
     /**
@@ -60,9 +94,50 @@ public class NotificationService {
         log.info("Sending return denial notification to customer {} for request {}", 
                 returnRequest.getCustomerId(), returnRequest.getId());
         
-        // emailService.sendReturnDeniedEmail(returnRequest);
-        
-        log.info("Return denial notification sent for request {}", returnRequest.getId());
+        try {
+            Order order = orderRepository.findById(returnRequest.getOrderId())
+                    .orElseThrow(() -> new RuntimeException("Order not found for return request: " + returnRequest.getId()));
+            
+            String customerEmail = getCustomerEmail(returnRequest, order);
+            String customerName = getCustomerName(returnRequest, order);
+            
+            if (customerEmail != null && customerName != null) {
+                String returnItems = buildReturnItemsList(returnRequest);
+                String submittedDate = returnRequest.getSubmittedAt().toLocalDate().toString();
+                String deniedDate = returnRequest.getDecisionAt() != null ? 
+                    returnRequest.getDecisionAt().toLocalDate().toString() : 
+                    java.time.LocalDate.now().toString();
+                
+                boolean canAppeal = returnRequest.canBeAppealed();
+                String appealDeadline = canAppeal ? 
+                    java.time.LocalDate.now().plusDays(7).toString() : // 7 days to appeal
+                    null;
+                
+                emailService.sendReturnDenialEmail(
+                    customerEmail,
+                    customerName,
+                    returnRequest.getId(),
+                    order.getOrderCode(),
+                    returnRequest.getDecisionNotes(),
+                    returnItems,
+                    submittedDate,
+                    deniedDate,
+                    canAppeal,
+                    appealDeadline
+                );
+                
+                log.info("Return denial email sent successfully to {} for request {}", 
+                        customerEmail, returnRequest.getId());
+            } else {
+                log.warn("No customer email found for return request {}, skipping email notification", 
+                        returnRequest.getId());
+            }
+            
+        } catch (Exception e) {
+            log.error("Failed to send return denial notification for request {}: {}", 
+                    returnRequest.getId(), e.getMessage(), e);
+            // Don't throw exception to avoid breaking the denial process
+        }
     }
 
     /**
@@ -172,5 +247,76 @@ public class NotificationService {
         body.append("ShopSphere E-commerce Platform");
         
         return body.toString();
+    }
+
+    /**
+     * Get customer email from return request and order
+     */
+    private String getCustomerEmail(ReturnRequest returnRequest, Order order) {
+        // For registered customers
+        if (returnRequest.getCustomerId() != null && returnRequest.getCustomer() != null) {
+            return returnRequest.getCustomer().getUserEmail();
+        }
+        // For guest customers
+        else if (order.getOrderCustomerInfo() != null) {
+            return order.getOrderCustomerInfo().getEmail();
+        }
+        return null;
+    }
+
+    /**
+     * Get customer name from return request and order
+     */
+    private String getCustomerName(ReturnRequest returnRequest, Order order) {
+        // For registered customers
+        if (returnRequest.getCustomerId() != null && returnRequest.getCustomer() != null) {
+            return returnRequest.getCustomer().getFirstName() + " " + returnRequest.getCustomer().getLastName();
+        }
+        // For guest customers
+        else if (order.getOrderCustomerInfo() != null) {
+            return order.getOrderCustomerInfo().getFullName();
+        }
+        return "Valued Customer";
+    }
+
+    /**
+     * Build a formatted list of return items
+     */
+    private String buildReturnItemsList(ReturnRequest returnRequest) {
+        if (returnRequest.getReturnItems() == null || returnRequest.getReturnItems().isEmpty()) {
+            return "No items specified";
+        }
+
+        StringBuilder itemsList = new StringBuilder();
+        for (var item : returnRequest.getReturnItems()) {
+            try {
+                String productName = "Unknown Product";
+                String variantName = "";
+                
+                if (item.getProduct() != null) {
+                    productName = item.getProduct().getProductName();
+                } else if (item.getProductVariant() != null && item.getProductVariant().getProduct() != null) {
+                    productName = item.getProductVariant().getProduct().getProductName();
+                    variantName = " (" + item.getProductVariant().getVariantName() + ")";
+                }
+                
+                itemsList.append("• ")
+                         .append(productName)
+                         .append(variantName)
+                         .append(" - Quantity: ")
+                         .append(item.getReturnQuantity());
+                
+                if (item.getItemReason() != null && !item.getItemReason().trim().isEmpty()) {
+                    itemsList.append(" - Reason: ").append(item.getItemReason());
+                }
+                
+                itemsList.append("\n");
+            } catch (Exception e) {
+                log.warn("Error building item description for return item: {}", e.getMessage());
+                itemsList.append("• Item - Quantity: ").append(item.getReturnQuantity()).append("\n");
+            }
+        }
+        
+        return itemsList.toString();
     }
 }

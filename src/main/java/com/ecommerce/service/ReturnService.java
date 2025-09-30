@@ -501,21 +501,31 @@ public class ReturnService {
     }
 
     private void approveReturnRequest(ReturnRequest returnRequest, ReturnDecisionDTO decisionDTO) {
+        log.info("Approving return request {} with decision notes: {}", 
+                returnRequest.getId(), decisionDTO.getDecisionNotes());
+        
         returnRequest.approve(decisionDTO.getDecisionNotes());
+        
         if (decisionDTO.getRefundDetails() != null) {
             refundService.processRefund(returnRequest, decisionDTO.getRefundDetails());
         }
 
+        // Send comprehensive approval notification with HTML email
         notificationService.notifyReturnApproved(returnRequest);
+        
+        log.info("Return request {} approved successfully", returnRequest.getId());
     }
 
     private void denyReturnRequest(ReturnRequest returnRequest, ReturnDecisionDTO decisionDTO) {
+        log.info("Denying return request {} with decision notes: {}", 
+                returnRequest.getId(), decisionDTO.getDecisionNotes());
+        
         returnRequest.deny(decisionDTO.getDecisionNotes());
 
-        // Notify customer of denial (they can appeal)
+        // Send comprehensive denial notification with HTML email (customer can appeal)
         notificationService.notifyReturnDenied(returnRequest);
 
-        log.info("Return request {} denied", returnRequest.getId());
+        log.info("Return request {} denied successfully", returnRequest.getId());
     }
 
     private void processRestocking(ReturnRequest returnRequest, WarehouseAssignmentDTO assignmentDTO) {

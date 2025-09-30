@@ -65,4 +65,39 @@ public interface EmailService {
          * @param body    email body content
          */
         void sendEmail(String toEmail, String subject, String body);
+
+        /**
+         * Send return request approval email with HTML template
+         * 
+         * @param toEmail           recipient email
+         * @param customerName      customer's full name
+         * @param returnRequestId   return request ID
+         * @param orderNumber       order number
+         * @param decisionNotes     admin's decision notes
+         * @param returnItems       list of return items
+         * @param submittedDate     when the return was submitted
+         * @param approvedDate      when the return was approved
+         */
+        void sendReturnApprovalEmail(String toEmail, String customerName, Long returnRequestId, 
+                                   String orderNumber, String decisionNotes, String returnItems,
+                                   String submittedDate, String approvedDate);
+
+        /**
+         * Send return request denial email with HTML template
+         * 
+         * @param toEmail           recipient email
+         * @param customerName      customer's full name
+         * @param returnRequestId   return request ID
+         * @param orderNumber       order number
+         * @param decisionNotes     admin's decision notes
+         * @param returnItems       list of return items
+         * @param submittedDate     when the return was submitted
+         * @param deniedDate        when the return was denied
+         * @param canAppeal         whether customer can appeal this decision
+         * @param appealDeadline    deadline for submitting an appeal
+         */
+        void sendReturnDenialEmail(String toEmail, String customerName, Long returnRequestId, 
+                                 String orderNumber, String decisionNotes, String returnItems,
+                                 String submittedDate, String deniedDate, boolean canAppeal, 
+                                 String appealDeadline);
 }

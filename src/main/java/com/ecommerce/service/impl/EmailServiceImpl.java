@@ -6,9 +6,15 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.mail.SimpleMailMessage;
 import org.springframework.mail.javamail.JavaMailSender;
+import org.springframework.mail.javamail.MimeMessageHelper;
+import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
+import org.thymeleaf.TemplateEngine;
+import org.thymeleaf.context.Context;
 
-import java.time.format.DateTimeFormatter;
+import jakarta.mail.MessagingException;
+import jakarta.mail.internet.MimeMessage;
+import java.util.concurrent.CompletableFuture;
 
 @Service
 @RequiredArgsConstructor
@@ -16,6 +22,7 @@ import java.time.format.DateTimeFormatter;
 public class EmailServiceImpl implements EmailService {
 
     private final JavaMailSender mailSender;
+    private final TemplateEngine templateEngine;
 
     @Value("${spring.mail.username}")
     private String fromEmail;
@@ -114,6 +121,56 @@ public class EmailServiceImpl implements EmailService {
         message.setText(body);
 
         mailSender.send(message);
+    }
+
+    @Override
+    @Async
+    public void sendReturnApprovalEmail(String toEmail, String customerName, Long returnRequestId, 
+                                      String orderNumber, String decisionNotes, String returnItems,
+                                      String submittedDate, String approvedDate) {
+        CompletableFuture.runAsync(() -> {
+            try {
+                log.info("Sending return approval email to: {} (async)", toEmail);
+
+                String subject = String.format("Return Request Approved - Order #%s", orderNumber);
+                String htmlBody = generateReturnApprovalHtml(customerName, returnRequestId, orderNumber, 
+                                                           decisionNotes, returnItems, submittedDate, approvedDate);
+
+                sendHtmlEmailInternal(toEmail, subject, htmlBody);
+
+                log.info("Return approval email sent successfully to: {}", toEmail);
+
+            } catch (Exception e) {
+                log.error("Failed to send return approval email to: {}: {}", toEmail, e.getMessage(), e);
+                // Don't throw exception in async context to avoid breaking the approval process
+            }
+        });
+    }
+
+    @Override
+    @Async
+    public void sendReturnDenialEmail(String toEmail, String customerName, Long returnRequestId, 
+                                    String orderNumber, String decisionNotes, String returnItems,
+                                    String submittedDate, String deniedDate, boolean canAppeal, 
+                                    String appealDeadline) {
+        CompletableFuture.runAsync(() -> {
+            try {
+                log.info("Sending return denial email to: {} (async)", toEmail);
+
+                String subject = String.format("❌ Return Request Decision - Order #%s", orderNumber);
+                String htmlBody = generateReturnDenialHtml(customerName, returnRequestId, orderNumber, 
+                                                         decisionNotes, returnItems, submittedDate, deniedDate, 
+                                                         canAppeal, appealDeadline);
+
+                sendHtmlEmailInternal(toEmail, subject, htmlBody);
+
+                log.info("Return denial email sent successfully to: {}", toEmail);
+
+            } catch (Exception e) {
+                log.error("Failed to send return denial email to: {}: {}", toEmail, e.getMessage(), e);
+                // Don't throw exception in async context to avoid breaking the denial process
+            }
+        });
     }
 
     private String buildNewUserInvitationEmailBody(String firstName, String lastName,
@@ -248,5 +305,62 @@ public class EmailServiceImpl implements EmailService {
         body.append(appName).append(" Team");
 
         return body.toString();
+    }
+
+    /**
+     * Send HTML email using MimeMessage (internal method for async use)
+     */
+    private void sendHtmlEmailInternal(String toEmail, String subject, String htmlBody) throws MessagingException {
+        MimeMessage message = mailSender.createMimeMessage();
+        MimeMessageHelper helper = new MimeMessageHelper(message, true, "UTF-8");
+        
+        helper.setFrom(fromEmail);
+        helper.setTo(toEmail);
+        helper.setSubject(subject);
+        helper.setText(htmlBody, true); // true indicates HTML content
+        
+        mailSender.send(message);
+    }
+
+    /**
+     * Generate return approval email HTML using Thymeleaf template
+     */
+    private String generateReturnApprovalHtml(String customerName, Long returnRequestId, String orderNumber, 
+                                            String decisionNotes, String returnItems, String submittedDate, 
+                                            String approvedDate) {
+        Context context = new Context();
+        
+        // Set template variables
+        context.setVariable("customerName", customerName);
+        context.setVariable("returnRequestId", returnRequestId);
+        context.setVariable("orderNumber", orderNumber);
+        context.setVariable("submittedDate", submittedDate);
+        context.setVariable("approvedDate", approvedDate);
+        context.setVariable("returnItems", returnItems);
+        context.setVariable("decisionNotes", decisionNotes);
+        
+        return templateEngine.process("return-approval", context);
+    }
+
+    /**
+     * Generate return denial email HTML using Thymeleaf template
+     */
+    private String generateReturnDenialHtml(String customerName, Long returnRequestId, String orderNumber, 
+                                          String decisionNotes, String returnItems, String submittedDate, 
+                                          String deniedDate, boolean canAppeal, String appealDeadline) {
+        Context context = new Context();
+        
+        // Set template variables
+        context.setVariable("customerName", customerName);
+        context.setVariable("returnRequestId", returnRequestId);
+        context.setVariable("orderNumber", orderNumber);
+        context.setVariable("submittedDate", submittedDate);
+        context.setVariable("deniedDate", deniedDate);
+        context.setVariable("returnItems", returnItems);
+        context.setVariable("decisionNotes", decisionNotes);
+        context.setVariable("canAppeal", canAppeal);
+        context.setVariable("appealDeadline", appealDeadline);
+        
+        return templateEngine.process("return-denial", context);
     }
 }
