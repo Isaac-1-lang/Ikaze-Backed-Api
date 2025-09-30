@@ -384,6 +384,65 @@ public class EmailServiceImpl implements EmailService {
         }
     }
 
+    @Override
+    @Async
+    public void sendAppealApprovalEmail(String toEmail, String customerName, Long appealId,
+                                      Long returnRequestId, String orderNumber, String appealReason,
+                                      String decisionNotes, String submittedAt, String approvedAt,
+                                      String trackingUrl) {
+        try {
+            log.info("Sending appeal approval email to: {}", toEmail);
+
+            String subject = String.format("Great News! Your Appeal #%d Has Been Approved - %s", appealId, appName);
+
+            String emailBody = generateAppealApprovalHtml(customerName, appealId, returnRequestId,
+                    orderNumber, appealReason, decisionNotes, submittedAt, approvedAt, trackingUrl);
+
+            MimeMessage message = mailSender.createMimeMessage();
+            MimeMessageHelper helper = new MimeMessageHelper(message, true, "UTF-8");
+
+            helper.setFrom(fromEmail);
+            helper.setTo(toEmail);
+            helper.setSubject(subject);
+            helper.setText(emailBody, true);
+
+            mailSender.send(message);
+            
+            log.info("Appeal approval email sent successfully to: {}", toEmail);
+        } catch (Exception e) {
+            log.error("Failed to send appeal approval email to: {}", toEmail, e);
+        }
+    }
+
+    @Override
+    @Async
+    public void sendAppealDenialEmail(String toEmail, String customerName, Long appealId,
+                                    Long returnRequestId, String orderNumber, String appealReason,
+                                    String decisionNotes, String submittedAt, String deniedAt) {
+        try {
+            log.info("Sending appeal denial email to: {}", toEmail);
+
+            String subject = String.format("Appeal Decision Update - Appeal #%d - %s", appealId, appName);
+
+            String emailBody = generateAppealDenialHtml(customerName, appealId, returnRequestId,
+                    orderNumber, appealReason, decisionNotes, submittedAt, deniedAt);
+
+            MimeMessage message = mailSender.createMimeMessage();
+            MimeMessageHelper helper = new MimeMessageHelper(message, true, "UTF-8");
+
+            helper.setFrom(fromEmail);
+            helper.setTo(toEmail);
+            helper.setSubject(subject);
+            helper.setText(emailBody, true);
+
+            mailSender.send(message);
+            
+            log.info("Appeal denial email sent successfully to: {}", toEmail);
+        } catch (Exception e) {
+            log.error("Failed to send appeal denial email to: {}", toEmail, e);
+        }
+    }
+
     /**
      * Generate appeal confirmation email HTML using Thymeleaf template
      */
@@ -402,5 +461,48 @@ public class EmailServiceImpl implements EmailService {
         context.setVariable("trackingUrl", trackingUrl);
         
         return templateEngine.process("appeal-confirmation", context);
+    }
+
+    /**
+     * Generate appeal approval email HTML using Thymeleaf template
+     */
+    private String generateAppealApprovalHtml(String customerName, Long appealId, Long returnRequestId,
+                                            String orderNumber, String appealReason, String decisionNotes,
+                                            String submittedAt, String approvedAt, String trackingUrl) {
+        Context context = new Context();
+        
+        // Set template variables
+        context.setVariable("customerName", customerName);
+        context.setVariable("appealId", appealId);
+        context.setVariable("returnRequestId", returnRequestId);
+        context.setVariable("orderNumber", orderNumber);
+        context.setVariable("appealReason", appealReason);
+        context.setVariable("decisionNotes", decisionNotes);
+        context.setVariable("submittedAt", submittedAt);
+        context.setVariable("approvedAt", approvedAt);
+        context.setVariable("trackingUrl", trackingUrl);
+        
+        return templateEngine.process("appeal-approval", context);
+    }
+
+    /**
+     * Generate appeal denial email HTML using Thymeleaf template
+     */
+    private String generateAppealDenialHtml(String customerName, Long appealId, Long returnRequestId,
+                                          String orderNumber, String appealReason, String decisionNotes,
+                                          String submittedAt, String deniedAt) {
+        Context context = new Context();
+        
+        // Set template variables
+        context.setVariable("customerName", customerName);
+        context.setVariable("appealId", appealId);
+        context.setVariable("returnRequestId", returnRequestId);
+        context.setVariable("orderNumber", orderNumber);
+        context.setVariable("appealReason", appealReason);
+        context.setVariable("decisionNotes", decisionNotes);
+        context.setVariable("submittedAt", submittedAt);
+        context.setVariable("deniedAt", deniedAt);
+        
+        return templateEngine.process("appeal-denial", context);
     }
 }

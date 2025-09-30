@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Appeal Approved - ShopSphere</title>
+  </head>
+  <body style="margin:0; padding:20px; background-color:#f0f9ff; font-family:Arial, sans-serif; color:#1e3a8a;">
+    <table width="100%" cellspacing="0" cellpadding="0" border="0" align="center" style="max-width:650px; margin:0 auto; border-collapse:collapse;">
+      <!-- Email Container -->
+      <tr>
+        <td style="background-color:#ffffff; border-radius:16px; border:1px solid #dbeafe; padding:0; overflow:hidden;">
+          
+          <!-- Header -->
+          <table width="100%" cellspacing="0" cellpadding="0" border="0">
+            <tr>
+              <td style="background-color:#2563eb; padding:40px 30px; text-align:center; color:#ffffff;">
+                <div style="font-size:32px; font-weight:bold; margin-bottom:8px;">ShopSphere</div>
+                <div style="font-size:16px; font-weight:500; opacity:0.95;">Your Appeal Has Been Approved</div>
+                <div style="width:80px; height:80px; background-color:rgba(255,255,255,0.2); border-radius:50%; margin:20px auto; line-height:80px; font-size:40px;">✅</div>
+              </td>
+            </tr>
+          </table>
+
+          <!-- Content -->
+          <table width="100%" cellspacing="0" cellpadding="0" border="0" style="padding:40px 30px;">
+            <tr>
+              <td>
+                <div style="font-size:20px; font-weight:600; margin-bottom:20px;">Hello <span th:text="${customerName}">Customer</span>,</div>
+                <div style="font-size:16px; color:#334155; margin-bottom:30px; line-height:1.7;">
+                  Great news! We have carefully reviewed your appeal and are pleased to inform you that it has been <strong>approved</strong>. Your original return request will now be processed according to our standard return policy.
+                </div>
+
+                <!-- Appeal Details -->
+                <table width="100%" cellspacing="0" cellpadding="0" border="0" style="background-color:#eff6ff; border:1px solid #bfdbfe; border-radius:12px; padding:24px; margin:30px 0;">
+                  <tr>
+                    <td colspan="2" style="font-size:18px; font-weight:600; color:#1e40af; padding-bottom:16px;">✅ Appeal Details</td>
+                  </tr>
+                  <tr>
+                    <td style="font-weight:500; color:#64748b; font-size:14px; padding:12px 0;">Appeal ID</td>
+                    <td style="font-weight:600; color:#1e3a8a; font-size:14px; padding:12px 0; text-align:right;">#<span th:text="${appealId}">12345</span></td>
+                  </tr>
+                  <tr>
+                    <td style="font-weight:500; color:#64748b; font-size:14px; padding:12px 0;">Return Request ID</td>
+                    <td style="font-weight:600; color:#1e3a8a; font-size:14px; padding:12px 0; text-align:right;">#<span th:text="${returnRequestId}">67890</span></td>
+                  </tr>
+                  <tr>
+                    <td style="font-weight:500; color:#64748b; font-size:14px; padding:12px 0;">Order Number</td>
+                    <td style="font-weight:600; color:#1e3a8a; font-size:14px; padding:12px 0; text-align:right;"><span th:text="${orderNumber}">ORD-2024-001</span></td>
+                  </tr>
+                  <tr>
+                    <td style="font-weight:500; color:#64748b; font-size:14px; padding:12px 0;">Appeal Reason</td>
+                    <td style="font-weight:600; color:#1e3a8a; font-size:14px; padding:12px 0; text-align:right;"><span th:text="${appealReason}">Product defect</span></td>
+                  </tr>
+                  <tr>
+                    <td style="font-weight:500; color:#64748b; font-size:14px; padding:12px 0;">Submitted</td>
+                    <td style="font-weight:600; color:#1e3a8a; font-size:14px; padding:12px 0; text-align:right;"><span th:text="${submittedAt}">Jan 15, 2024</span></td>
+                  </tr>
+                  <tr>
+                    <td style="font-weight:500; color:#64748b; font-size:14px; padding:12px 0;">Approved</td>
+                    <td style="font-weight:600; color:#1e3a8a; font-size:14px; padding:12px 0; text-align:right;"><span th:text="${approvedAt}">Jan 20, 2024</span></td>
+                  </tr>
+                </table>
+
+                <!-- Decision Notes -->
+                <table width="100%" cellspacing="0" cellpadding="0" border="0" style="background-color:#dbeafe; border:1px solid #93c5fd; border-radius:8px; padding:16px; margin:20px 0;" th:if="${decisionNotes}">
+                  <tr>
+                    <td style="font-size:14px; font-weight:600; color:#1d4ed8; padding-bottom:8px;">Review Notes</td>
+                  </tr>
+                  <tr>
+                    <td style="font-size:14px; color:#1e40af; line-height:1.5;"><span th:text="${decisionNotes}">After careful review of your appeal and the provided evidence, we have determined that your return request is valid and should be processed.</span></td>
+                  </tr>
+                </table>
+
+                <!-- Next Steps -->
+                <table width="100%" cellspacing="0" cellpadding="0" border="0" style="background-color:#eff6ff; border:1px solid #bfdbfe; border-radius:12px; padding:24px; margin:30px 0;">
+                  <tr>
+                    <td style="font-size:18px; font-weight:600; color:#1e40af; padding-bottom:16px;">📋 What Happens Next?</td>
+                  </tr>
+                  <tr>
+                    <td>
+                      <ul style="margin:0; padding:0; list-style:none;">
+                        <li style="font-size:14px; color:#1d4ed8; padding:8px 0;">→ Your return request is now approved and will be processed</li>
+                        <li style="font-size:14px; color:#1d4ed8; padding:8px 0;">→ You will receive return shipping instructions within 24 hours</li>
+                        <li style="font-size:14px; color:#1d4ed8; padding:8px 0;">→ Once we receive your returned item(s), we'll process your refund</li>
+                        <li style="font-size:14px; color:#1d4ed8; padding:8px 0;">→ Refunds typically take 3-5 business days to appear in your account</li>
+                      </ul>
+                    </td>
+                  </tr>
+                </table>
+
+                <!-- Action Button -->
+                <div style="text-align:center; margin:30px 0;">
+                  <a href="#" th:href="${trackingUrl}" style="display:inline-block; background-color:#3b82f6; color:white; text-decoration:none; padding:14px 28px; border-radius:8px; font-weight:600; font-size:16px;">Track Your Return Status</a>
+                </div>
+
+                <div style="font-size:16px; color:#334155; line-height:1.7;">
+                  Thank you for your patience during the appeal process. We appreciate your business and apologize for any inconvenience caused.
+                </div>
+              </td>
+            </tr>
+          </table>
+
+          <!-- Footer -->
+          <table width="100%" cellspacing="0" cellpadding="0" border="0" style="background-color:#f0f9ff; padding:30px; text-align:center; border-top:1px solid #dbeafe;">
+            <tr>
+              <td style="font-size:14px; color:#475569; margin-bottom:16px;">
+                If you have any questions about your return or need assistance, please don't hesitate to contact our customer service team.
+              </td>
+            </tr>
+            <tr>
+              <td style="font-size:12px; color:#64748b; line-height:1.5;">
+                ShopSphere Customer Service<br />
+                Email: support@shopsphere.com | Phone: 1-800-SHOP-NOW<br />
+                Available 24/7 to assist you
+              </td>
+            </tr>
+          </table>
+
+        </td>
+      </tr>
+    </table>
+  </body>
+</html>

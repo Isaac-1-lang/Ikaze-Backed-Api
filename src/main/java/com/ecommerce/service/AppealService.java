@@ -13,12 +13,15 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -96,9 +99,6 @@ public class AppealService {
         return convertToDTO(savedAppeal);
     }
 
-    /**
-     * Review and approve/deny an appeal
-     */
     public ReturnAppealDTO reviewAppeal(AppealDecisionDTO decisionDTO) {
         log.info("Processing appeal decision for appeal {}: {}",
                 decisionDTO.getAppealId(), decisionDTO.getDecision());
@@ -121,6 +121,9 @@ public class AppealService {
         }
 
         ReturnAppeal updatedAppeal = returnAppealRepository.save(appeal);
+
+        // Send email notification to customer
+        sendAppealDecisionEmailToCustomer(updatedAppeal, decisionDTO);
 
         log.info("Appeal {} decision completed: {}",
                 updatedAppeal.getId(), decisionDTO.getDecision());
@@ -217,6 +220,14 @@ public class AppealService {
         List<ReturnAppeal> urgentAppeals = returnAppealRepository.findAppealsNeedingDecision(
                 LocalDateTime.now().minusDays(7));
         stats.setUrgentCount(urgentAppeals.size());
+
+        // Calculate approval rate
+        long totalDecided = stats.getApprovedCount() + stats.getDeniedCount();
+        if (totalDecided > 0) {
+            stats.setApprovalRate((double) stats.getApprovedCount() / totalDecided * 100);
+        } else {
+            stats.setApprovalRate(0.0);
+        }
 
         return stats;
     }
@@ -508,6 +519,149 @@ public class AppealService {
         } catch (Exception e) {
             log.error("Failed to send appeal confirmation email for appeal {}: {}", appeal.getId(), e.getMessage(), e);
             // Don't throw exception - email failure shouldn't break appeal submission
+        }
+    }
+
+    /**
+     * Get all appeals for admin with filtering and pagination
+     */
+    public Page<ReturnAppealDTO> getAllAppealsForAdmin(String status, Integer level, String customerName, 
+                                                      String orderCode, LocalDate fromDate, LocalDate toDate, 
+                                                      Pageable pageable) {
+        log.info("Retrieving appeals for admin with filters - status: {}, level: {}, customerName: {}, orderCode: {}", 
+                status, level, customerName, orderCode);
+
+        // Build dynamic query using Specification
+        Specification<ReturnAppeal> spec = Specification.where(null);
+
+        if (status != null && !status.trim().isEmpty()) {
+            spec = spec.and((root, query, cb) -> 
+                cb.equal(root.get("status"), ReturnAppeal.AppealStatus.valueOf(status.toUpperCase())));
+        }
+
+        if (level != null) {
+            spec = spec.and((root, query, cb) -> cb.equal(root.get("level"), level));
+        }
+
+        if (customerName != null && !customerName.trim().isEmpty()) {
+            spec = spec.and((root, query, cb) -> {
+                // Join with ReturnRequest and Order to search customer name
+                var returnRequestJoin = root.join("returnRequest");
+                var orderJoin = returnRequestJoin.join("order");
+                var customerInfoJoin = orderJoin.join("orderCustomerInfo");
+                
+                // Search in both firstName and lastName
+                String searchTerm = "%" + customerName.toLowerCase() + "%";
+                return cb.or(
+                    cb.like(cb.lower(customerInfoJoin.get("firstName")), searchTerm),
+                    cb.like(cb.lower(customerInfoJoin.get("lastName")), searchTerm),
+                    cb.like(cb.lower(cb.concat(cb.concat(customerInfoJoin.get("firstName"), " "), customerInfoJoin.get("lastName"))), searchTerm)
+                );
+            });
+        }
+
+        if (orderCode != null && !orderCode.trim().isEmpty()) {
+            spec = spec.and((root, query, cb) -> {
+                var returnRequestJoin = root.join("returnRequest");
+                var orderJoin = returnRequestJoin.join("order");
+                return cb.like(cb.lower(orderJoin.get("orderCode")), 
+                              "%" + orderCode.toLowerCase() + "%");
+            });
+        }
+
+        if (fromDate != null) {
+            spec = spec.and((root, query, cb) -> 
+                cb.greaterThanOrEqualTo(root.get("submittedAt"), fromDate.atStartOfDay()));
+        }
+
+        if (toDate != null) {
+            spec = spec.and((root, query, cb) -> 
+                cb.lessThanOrEqualTo(root.get("submittedAt"), toDate.atTime(23, 59, 59)));
+        }
+
+        Page<ReturnAppeal> appeals = returnAppealRepository.findAll(spec, pageable);
+        return appeals.map(this::convertToDTO);
+    }
+
+    /**
+     * Get count of pending appeals for sidebar badge
+     */
+    public Long getPendingAppealsCount() {
+        return returnAppealRepository.countByStatus(ReturnAppeal.AppealStatus.PENDING);
+    }
+
+    /**
+     * Send appeal decision email to customer using EmailService
+     */
+    private void sendAppealDecisionEmailToCustomer(ReturnAppeal appeal, AppealDecisionDTO decisionDTO) {
+        try {
+            // Get customer email from OrderCustomerInfo through ReturnRequest
+            ReturnRequest returnRequest = appeal.getReturnRequest();
+            if (returnRequest == null) {
+                log.warn("No return request found for appeal {}, skipping decision email", appeal.getId());
+                return;
+            }
+
+            Order order = orderRepository.findById(returnRequest.getOrderId())
+                    .orElseThrow(() -> new RuntimeException("Order not found: " + returnRequest.getOrderId()));
+            
+            String customerEmail = null;
+            String customerName = null;
+            
+            // Get email from OrderCustomerInfo
+            if (order.getOrderCustomerInfo() != null) {
+                customerEmail = order.getOrderCustomerInfo().getEmail();
+                customerName = order.getOrderCustomerInfo().getFullName();
+            }
+            
+            // If no email found, skip sending email
+            if (customerEmail == null || customerEmail.trim().isEmpty()) {
+                log.warn("No customer email found for appeal {}, skipping decision email", appeal.getId());
+                return;
+            }
+            
+            // Format dates
+            String formattedSubmittedAt = appeal.getSubmittedAt()
+                .format(java.time.format.DateTimeFormatter.ofPattern("MMMM dd, yyyy 'at' HH:mm"));
+            String formattedDecisionAt = appeal.getDecisionAt()
+                .format(java.time.format.DateTimeFormatter.ofPattern("MMMM dd, yyyy 'at' HH:mm"));
+            
+            // Create tracking URL for return request
+            String trackingUrl = String.format("http://localhost:3000/returns/info?returnId=%d", returnRequest.getId());
+            
+            // Send appropriate email based on decision
+            if ("APPROVED".equals(decisionDTO.getDecision())) {
+                emailService.sendAppealApprovalEmail(
+                    customerEmail,
+                    customerName != null ? customerName : "Customer",
+                    appeal.getId(),
+                    returnRequest.getId(),
+                    order.getOrderCode(),
+                    appeal.getReason(),
+                    decisionDTO.getDecisionNotes(),
+                    formattedSubmittedAt,
+                    formattedDecisionAt,
+                    trackingUrl
+                );
+                log.info("Appeal approval email sent successfully to {} for appeal {}", customerEmail, appeal.getId());
+            } else if ("DENIED".equals(decisionDTO.getDecision())) {
+                emailService.sendAppealDenialEmail(
+                    customerEmail,
+                    customerName != null ? customerName : "Customer",
+                    appeal.getId(),
+                    returnRequest.getId(),
+                    order.getOrderCode(),
+                    appeal.getReason(),
+                    decisionDTO.getDecisionNotes(),
+                    formattedSubmittedAt,
+                    formattedDecisionAt
+                );
+                log.info("Appeal denial email sent successfully to {} for appeal {}", customerEmail, appeal.getId());
+            }
+            
+        } catch (Exception e) {
+            log.error("Failed to send appeal decision email for appeal {}: {}", appeal.getId(), e.getMessage(), e);
+            // Don't throw exception - email failure shouldn't break appeal processing
         }
     }
 }

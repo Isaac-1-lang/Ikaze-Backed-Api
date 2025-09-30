@@ -4,6 +4,7 @@ import com.ecommerce.entity.ReturnAppeal;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
@@ -14,7 +15,7 @@ import java.util.Optional;
 import java.util.UUID;
 
 @Repository
-public interface ReturnAppealRepository extends JpaRepository<ReturnAppeal, Long> {
+public interface ReturnAppealRepository extends JpaRepository<ReturnAppeal, Long>, JpaSpecificationExecutor<ReturnAppeal> {
 
     /**
      * Find appeal by return request ID
@@ -140,4 +141,9 @@ public interface ReturnAppealRepository extends JpaRepository<ReturnAppeal, Long
      */
     @Query("SELECT ra FROM ReturnAppeal ra WHERE ra.status = 'PENDING' AND ra.submittedAt <= :cutoffDate ORDER BY ra.submittedAt ASC")
     List<ReturnAppeal> findAppealsNeedingDecision(@Param("cutoffDate") LocalDateTime cutoffDate);
+
+    /**
+     * Find appeals by status list (for statistics)
+     */
+    List<ReturnAppeal> findByStatusIn(List<ReturnAppeal.AppealStatus> statuses);
 }

@@ -2,7 +2,16 @@ package com.ecommerce.controller;
 
 import com.ecommerce.dto.ReturnAppealDTO;
 import com.ecommerce.dto.SubmitAppealRequestDTO;
+import com.ecommerce.dto.AppealDecisionDTO;
+import com.ecommerce.dto.AppealStatisticsDTO;
 import com.ecommerce.service.AppealService;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
+import org.springframework.format.annotation.DateTimeFormat;
+
+import java.time.LocalDate;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.media.Content;
@@ -100,5 +109,90 @@ public class AppealController {
         ReturnAppealDTO appealDTO = appealService.getAppealByReturnRequestId(returnRequestId);
 
         return ResponseEntity.ok(appealDTO);
+    }
+
+    @GetMapping
+    @PreAuthorize("hasAnyRole('ADMIN', 'EMPLOYEE')")
+    @Operation(summary = "Get all appeals with filtering and pagination", description = "Admin endpoint to retrieve appeals with various filters")
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200", description = "Appeals retrieved successfully"),
+            @ApiResponse(responseCode = "401", description = "Unauthorized"),
+            @ApiResponse(responseCode = "403", description = "Forbidden - Admin/Employee access required")
+    })
+    public ResponseEntity<Page<ReturnAppealDTO>> getAllAppeals(
+            @Parameter(description = "Appeal status filter") @RequestParam(required = false) String status,
+            @Parameter(description = "Customer name filter") @RequestParam(required = false) String customerName,
+            @Parameter(description = "Order code filter") @RequestParam(required = false) String orderCode,
+            @Parameter(description = "From date filter") @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate fromDate,
+            @Parameter(description = "To date filter") @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate toDate,
+            @Parameter(description = "Page number") @RequestParam(defaultValue = "0") int page,
+            @Parameter(description = "Page size") @RequestParam(defaultValue = "10") int size,
+            @Parameter(description = "Sort field") @RequestParam(defaultValue = "submittedAt") String sortBy,
+            @Parameter(description = "Sort direction") @RequestParam(defaultValue = "DESC") String sortDirection) {
+
+        log.info("Admin retrieving appeals with filters - status: {}, customerName: {}, orderCode: {}", 
+                status, customerName, orderCode);
+
+        Sort sort = Sort.by(Sort.Direction.fromString(sortDirection), sortBy);
+        Pageable pageable = PageRequest.of(page, size, sort);
+
+        Page<ReturnAppealDTO> appeals = appealService.getAllAppealsForAdmin(
+                status, null, customerName, orderCode, fromDate, toDate, pageable);
+
+        return ResponseEntity.ok(appeals);
+    }
+
+    @PostMapping("/review")
+    @PreAuthorize("hasAnyRole('ADMIN', 'EMPLOYEE')")
+    @Operation(summary = "Review and make decision on appeal", description = "Admin endpoint to approve or deny appeals")
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200", description = "Appeal decision submitted successfully", content = @Content(schema = @Schema(implementation = ReturnAppealDTO.class))),
+            @ApiResponse(responseCode = "400", description = "Invalid decision data"),
+            @ApiResponse(responseCode = "401", description = "Unauthorized"),
+            @ApiResponse(responseCode = "403", description = "Forbidden - Admin/Employee access required"),
+            @ApiResponse(responseCode = "404", description = "Appeal not found")
+    })
+    public ResponseEntity<ReturnAppealDTO> reviewAppeal(
+            @Parameter(description = "Appeal decision data", required = true) @Valid @RequestBody AppealDecisionDTO decisionDTO) {
+
+        log.info("Admin reviewing appeal {} with decision: {}", decisionDTO.getAppealId(), decisionDTO.getDecision());
+
+        ReturnAppealDTO appealDTO = appealService.reviewAppeal(decisionDTO);
+
+        log.info("Appeal {} decision completed: {}", appealDTO.getId(), appealDTO.getStatus());
+
+        return ResponseEntity.ok(appealDTO);
+    }
+
+    @GetMapping("/stats")
+    @PreAuthorize("hasAnyRole('ADMIN', 'EMPLOYEE')")
+    @Operation(summary = "Get appeal statistics", description = "Admin endpoint to retrieve appeal statistics")
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200", description = "Statistics retrieved successfully"),
+            @ApiResponse(responseCode = "401", description = "Unauthorized"),
+            @ApiResponse(responseCode = "403", description = "Forbidden - Admin/Employee access required")
+    })
+    public ResponseEntity<AppealStatisticsDTO> getAppealStats() {
+        log.info("Admin retrieving appeal statistics");
+
+        AppealStatisticsDTO stats = appealService.getAppealStatistics();
+
+        return ResponseEntity.ok(stats);
+    }
+
+    @GetMapping("/pending/count")
+    @PreAuthorize("hasAnyRole('ADMIN', 'EMPLOYEE')")
+    @Operation(summary = "Get pending appeals count", description = "Admin endpoint to get count of pending appeals for sidebar badge")
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200", description = "Count retrieved successfully"),
+            @ApiResponse(responseCode = "401", description = "Unauthorized"),
+            @ApiResponse(responseCode = "403", description = "Forbidden - Admin/Employee access required")
+    })
+    public ResponseEntity<Long> getPendingAppealsCount() {
+        log.info("Admin retrieving pending appeals count");
+
+        Long count = appealService.getPendingAppealsCount();
+
+        return ResponseEntity.ok(count);
     }
 }

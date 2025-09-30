@@ -116,4 +116,40 @@ public interface EmailService {
         void sendAppealConfirmationEmail(String toEmail, String customerName, Long appealId,
                                        Long returnRequestId, String orderNumber, String appealReason,
                                        String submittedAt, String trackingUrl);
+
+        /**
+         * Send appeal approval email with HTML template
+         * 
+         * @param toEmail           recipient email
+         * @param customerName      customer's full name
+         * @param appealId          appeal ID
+         * @param returnRequestId   return request ID
+         * @param orderNumber       order number
+         * @param appealReason      reason for the appeal
+         * @param decisionNotes     admin's decision notes
+         * @param submittedAt       when the appeal was submitted
+         * @param approvedAt        when the appeal was approved
+         * @param trackingUrl       URL to track return status
+         */
+        void sendAppealApprovalEmail(String toEmail, String customerName, Long appealId,
+                                   Long returnRequestId, String orderNumber, String appealReason,
+                                   String decisionNotes, String submittedAt, String approvedAt,
+                                   String trackingUrl);
+
+        /**
+         * Send appeal denial email with HTML template
+         * 
+         * @param toEmail           recipient email
+         * @param customerName      customer's full name
+         * @param appealId          appeal ID
+         * @param returnRequestId   return request ID
+         * @param orderNumber       order number
+         * @param appealReason      reason for the appeal
+         * @param decisionNotes     admin's decision notes
+         * @param submittedAt       when the appeal was submitted
+         * @param deniedAt          when the appeal was denied
+         */
+        void sendAppealDenialEmail(String toEmail, String customerName, Long appealId,
+                                 Long returnRequestId, String orderNumber, String appealReason,
+                                 String decisionNotes, String submittedAt, String deniedAt);
 }
