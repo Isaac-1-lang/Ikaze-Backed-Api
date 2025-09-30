@@ -271,29 +271,52 @@ public class ReturnService {
         }
         log.info("The basic info loaded successfully" + request);
         // Load return media separately
-        ReturnRequest requestWithMedia =
-        returnRequestRepository.findByIdWithMedia(id).orElse(null);
+        ReturnRequest requestWithMedia = returnRequestRepository.findByIdWithMedia(id).orElse(null);
         if (requestWithMedia != null && requestWithMedia.getReturnMedia() != null) {
-        request.setReturnMedia(requestWithMedia.getReturnMedia());
+            request.setReturnMedia(requestWithMedia.getReturnMedia());
         }
         log.info("The media loaded successfully" + requestWithMedia);
         // Load return items separately
-        ReturnRequest requestWithItems =
-        returnRequestRepository.findByIdWithItems(id).orElse(null);
+        ReturnRequest requestWithItems = returnRequestRepository.findByIdWithItems(id).orElse(null);
         if (requestWithItems != null && requestWithItems.getReturnItems() != null) {
-        request.setReturnItems(requestWithItems.getReturnItems());
+            request.setReturnItems(requestWithItems.getReturnItems());
         }
         log.info("The items loaded successfully" + requestWithItems);
         // Load appeal data separately if it exists
-        ReturnRequest requestWithAppeal =
-        returnRequestRepository.findByIdWithAppealData(id).orElse(null);
-        if (requestWithAppeal != null && requestWithAppeal.getReturnAppeal() != null)
-        {
-        request.setReturnAppeal(requestWithAppeal.getReturnAppeal());
+        ReturnRequest requestWithAppeal = returnRequestRepository.findByIdWithAppealData(id).orElse(null);
+        if (requestWithAppeal != null && requestWithAppeal.getReturnAppeal() != null) {
+            request.setReturnAppeal(requestWithAppeal.getReturnAppeal());
         }
         log.info("The appeal loaded successfully" + requestWithAppeal);
 
         return convertToDTO(request);
+    }
+
+    /**
+     * Get return request by order number
+     */
+    @Transactional(readOnly = true)
+    public ReturnRequestDTO getReturnRequestByOrderNumber(String orderNumber) {
+        log.info("Getting return request for order number: {}", orderNumber);
+
+        try {
+            Order order = orderRepository.findByOrderCode(orderNumber)
+                    .orElseThrow(() -> new RuntimeException("Order not found with number: " + orderNumber));
+
+            List<ReturnRequest> requests = returnRequestRepository.findByOrderId(order.getOrderId());
+            if (requests.isEmpty()) {
+                throw new RuntimeException("Return request not found for order: " + orderNumber);
+            }
+
+            ReturnRequest request = requests.get(0);
+
+            log.info("Found return request {} for order {}", request.getId(), orderNumber);
+            return convertToDTO(request);
+
+        } catch (Exception e) {
+            log.error("Error getting return request for order number {}: {}", orderNumber, e.getMessage(), e);
+            throw e;
+        }
     }
 
     /**
@@ -501,25 +524,25 @@ public class ReturnService {
     }
 
     private void approveReturnRequest(ReturnRequest returnRequest, ReturnDecisionDTO decisionDTO) {
-        log.info("Approving return request {} with decision notes: {}", 
+        log.info("Approving return request {} with decision notes: {}",
                 returnRequest.getId(), decisionDTO.getDecisionNotes());
-        
+
         returnRequest.approve(decisionDTO.getDecisionNotes());
-        
+
         if (decisionDTO.getRefundDetails() != null) {
             refundService.processRefund(returnRequest, decisionDTO.getRefundDetails());
         }
 
         // Send comprehensive approval notification with HTML email
         notificationService.notifyReturnApproved(returnRequest);
-        
+
         log.info("Return request {} approved successfully", returnRequest.getId());
     }
 
     private void denyReturnRequest(ReturnRequest returnRequest, ReturnDecisionDTO decisionDTO) {
-        log.info("Denying return request {} with decision notes: {}", 
+        log.info("Denying return request {} with decision notes: {}",
                 returnRequest.getId(), decisionDTO.getDecisionNotes());
-        
+
         returnRequest.deny(decisionDTO.getDecisionNotes());
 
         // Send comprehensive denial notification with HTML email (customer can appeal)

@@ -39,13 +39,11 @@ public class AppealService {
         UUID customerUUID = UUID.fromString(submitDTO.getCustomerId());
         ReturnRequest returnRequest = validateReturnForAppeal(submitDTO.getReturnRequestId(), customerUUID);
         
-        // Check if appeal already exists
         if (returnAppealRepository.existsByReturnRequestId(submitDTO.getReturnRequestId())) {
             throw new ReturnException.AppealAlreadyExistsException(
                 "Appeal already exists for return request " + submitDTO.getReturnRequestId());
         }
         
-        // Validate media attachments (at least one required)
         if (submitDTO.getMediaFiles() == null || submitDTO.getMediaFiles().isEmpty()) {
             throw new ReturnException.AppealNotAllowedException(
                 "At least one image or video is required for appeal submission");
@@ -61,11 +59,9 @@ public class AppealService {
         
         ReturnAppeal savedAppeal = returnAppealRepository.save(appeal);
         
-        // Process media attachments
         processAppealMediaAttachments(savedAppeal.getId(), submitDTO.getMediaFiles());
         
         
-        // Send notifications
         notificationService.notifyAppealSubmitted(savedAppeal, returnRequest);
         
         log.info("Appeal {} submitted successfully for return request {}", 

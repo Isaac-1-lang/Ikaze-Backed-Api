@@ -48,7 +48,7 @@ import java.util.ArrayList;
 @Slf4j
 @Transactional
 public class OrderServiceImpl implements OrderService {
-    
+
     private final OrderRepository orderRepository;
     private final ProductRepository productRepository;
     private final ProductVariantRepository productVariantRepository;
@@ -95,14 +95,14 @@ public class OrderServiceImpl implements OrderService {
         if (order == null) {
             return null;
         }
-        
+
         // Check if the requesting user is the owner of the order
         if (order.getUser() != null && !order.getUser().getId().equals(userId)) {
-            log.warn("User {} attempted to access order {} which belongs to user {}", 
+            log.warn("User {} attempted to access order {} which belongs to user {}",
                     userId, orderId, order.getUser().getId());
             throw new SecurityException("Access denied: You can only view your own orders");
         }
-        
+
         return order;
     }
 
@@ -550,14 +550,16 @@ public class OrderServiceImpl implements OrderService {
 
     private CustomerOrderDTO.CustomerOrderItemDTO toCustomerOrderItemDTO(OrderItem item) {
         Product product = item.getEffectiveProduct();
-        
-        // Calculate discount information by comparing with current product/variant prices
+
+        // Calculate discount information by comparing with current product/variant
+        // prices
         BigDecimal currentPrice = item.getPrice();
         BigDecimal originalPrice = currentPrice;
         boolean hasDiscount = false;
         BigDecimal discountPercentage = BigDecimal.ZERO;
-        
-        // Check if item was bought at a discount by comparing with current product price
+
+        // Check if item was bought at a discount by comparing with current product
+        // price
         if (item.isVariantBased() && item.getProductVariant() != null) {
             // For variant-based items, compare with variant price
             BigDecimal currentVariantPrice = item.getProductVariant().getPrice();
@@ -565,8 +567,8 @@ public class OrderServiceImpl implements OrderService {
                 originalPrice = currentVariantPrice;
                 hasDiscount = true;
                 discountPercentage = originalPrice.subtract(currentPrice)
-                    .multiply(BigDecimal.valueOf(100))
-                    .divide(originalPrice, 2, RoundingMode.HALF_UP);
+                        .multiply(BigDecimal.valueOf(100))
+                        .divide(originalPrice, 2, RoundingMode.HALF_UP);
             }
         } else {
             // For regular products, compare with product price
@@ -575,8 +577,8 @@ public class OrderServiceImpl implements OrderService {
                 originalPrice = currentProductPrice;
                 hasDiscount = true;
                 discountPercentage = originalPrice.subtract(currentPrice)
-                    .multiply(BigDecimal.valueOf(100))
-                    .divide(originalPrice, 2, RoundingMode.HALF_UP);
+                        .multiply(BigDecimal.valueOf(100))
+                        .divide(originalPrice, 2, RoundingMode.HALF_UP);
             }
         }
 
@@ -654,14 +656,16 @@ public class OrderServiceImpl implements OrderService {
 
     private AdminOrderDTO.AdminOrderItemDTO toAdminOrderItemDTO(OrderItem item) {
         Product product = item.getEffectiveProduct();
-        
-        // Calculate discount information by comparing with current product/variant prices
+
+        // Calculate discount information by comparing with current product/variant
+        // prices
         BigDecimal currentPrice = item.getPrice();
         BigDecimal originalPrice = currentPrice;
         boolean hasDiscount = false;
         BigDecimal discountPercentage = BigDecimal.ZERO;
-        
-        // Check if item was bought at a discount by comparing with current product price
+
+        // Check if item was bought at a discount by comparing with current product
+        // price
         if (item.isVariantBased() && item.getProductVariant() != null) {
             // For variant-based items, compare with variant price
             BigDecimal currentVariantPrice = item.getProductVariant().getPrice();
@@ -669,8 +673,8 @@ public class OrderServiceImpl implements OrderService {
                 originalPrice = currentVariantPrice;
                 hasDiscount = true;
                 discountPercentage = originalPrice.subtract(currentPrice)
-                    .multiply(BigDecimal.valueOf(100))
-                    .divide(originalPrice, 2, RoundingMode.HALF_UP);
+                        .multiply(BigDecimal.valueOf(100))
+                        .divide(originalPrice, 2, RoundingMode.HALF_UP);
             }
         } else {
             // For regular products, compare with product price
@@ -679,8 +683,8 @@ public class OrderServiceImpl implements OrderService {
                 originalPrice = currentProductPrice;
                 hasDiscount = true;
                 discountPercentage = originalPrice.subtract(currentPrice)
-                    .multiply(BigDecimal.valueOf(100))
-                    .divide(originalPrice, 2, RoundingMode.HALF_UP);
+                        .multiply(BigDecimal.valueOf(100))
+                        .divide(originalPrice, 2, RoundingMode.HALF_UP);
             }
         }
 
@@ -768,7 +772,7 @@ public class OrderServiceImpl implements OrderService {
                 .map(entry -> {
                     Warehouse warehouse = entry.getKey();
                     List<OrderItemBatch> batches = entry.getValue();
-                    
+
                     // Calculate total quantity from this warehouse
                     int totalQuantityFromWarehouse = batches.stream()
                             .mapToInt(OrderItemBatch::getQuantityUsed)
@@ -796,7 +800,7 @@ public class OrderServiceImpl implements OrderService {
     // Helper method to convert OrderItemBatch to AdminOrderBatchDTO
     private AdminOrderDTO.AdminOrderBatchDTO toAdminOrderBatchDTO(OrderItemBatch orderItemBatch) {
         StockBatch stockBatch = orderItemBatch.getStockBatch();
-        
+
         return AdminOrderDTO.AdminOrderBatchDTO.builder()
                 .batchId(stockBatch.getId().toString())
                 .batchNumber(stockBatch.getBatchNumber())

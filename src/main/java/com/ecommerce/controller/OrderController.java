@@ -654,57 +654,57 @@ public class OrderController {
         return dto;
     }
 
-private void calculateReturnEligibility(OrderItemDTO dto, OrderItem item) {
-    Order order = item.getOrder();
-    Integer defaultReturnDays = 15;
+    private void calculateReturnEligibility(OrderItemDTO dto, OrderItem item) {
+        Order order = item.getOrder();
+        Integer defaultReturnDays = 15;
 
-    // Get return days from product, with null safety
-    if (item.getProduct() != null) {
-        Integer productReturnDays = item.getProduct().getMaximumDaysForReturn();
-        if (productReturnDays != null && productReturnDays > 0) {
-            defaultReturnDays = productReturnDays;
-        }
-    }
-    
-    // Get return days from product variant, with null safety
-    if (item.getProductVariant() != null) {
-        Product effectiveProduct = item.getEffectiveProduct();
-        if (effectiveProduct != null) {
-            Integer variantReturnDays = effectiveProduct.getMaximumDaysForReturn();
-            if (variantReturnDays != null && variantReturnDays > 0) {
-                defaultReturnDays = variantReturnDays;
+        // Get return days from product, with null safety
+        if (item.getProduct() != null) {
+            Integer productReturnDays = item.getProduct().getMaximumDaysForReturn();
+            if (productReturnDays != null && productReturnDays > 0) {
+                defaultReturnDays = productReturnDays;
             }
         }
-    }
-    
-    // Ensure we have a valid return days value
-    if (defaultReturnDays == null || defaultReturnDays <= 0) {
-        defaultReturnDays = 15; // Fallback to 15 days
-    }
-    
-    dto.setMaxReturnDays(defaultReturnDays);
-    dto.setDeliveredAt(order.getDeliveredAt());
-    
-    if (order.getOrderStatus() == Order.OrderStatus.DELIVERED && order.getDeliveredAt() != null) {
-        LocalDateTime deliveredAt = order.getDeliveredAt();
-        LocalDateTime returnDeadline = deliveredAt.plusDays(defaultReturnDays);
-        LocalDateTime now = LocalDateTime.now();
-        
-        boolean isEligible = now.isBefore(returnDeadline);
-        dto.setIsReturnEligible(isEligible);
-        
-        if (isEligible) {
-            long daysRemaining = java.time.temporal.ChronoUnit.DAYS.between(now, returnDeadline);
-            dto.setDaysRemainingForReturn((int) Math.max(0, daysRemaining));
+
+        // Get return days from product variant, with null safety
+        if (item.getProductVariant() != null) {
+            Product effectiveProduct = item.getEffectiveProduct();
+            if (effectiveProduct != null) {
+                Integer variantReturnDays = effectiveProduct.getMaximumDaysForReturn();
+                if (variantReturnDays != null && variantReturnDays > 0) {
+                    defaultReturnDays = variantReturnDays;
+                }
+            }
+        }
+
+        // Ensure we have a valid return days value
+        if (defaultReturnDays == null || defaultReturnDays <= 0) {
+            defaultReturnDays = 15; // Fallback to 15 days
+        }
+
+        dto.setMaxReturnDays(defaultReturnDays);
+        dto.setDeliveredAt(order.getDeliveredAt());
+
+        if (order.getOrderStatus() == Order.OrderStatus.DELIVERED && order.getDeliveredAt() != null) {
+            LocalDateTime deliveredAt = order.getDeliveredAt();
+            LocalDateTime returnDeadline = deliveredAt.plusDays(defaultReturnDays);
+            LocalDateTime now = LocalDateTime.now();
+
+            boolean isEligible = now.isBefore(returnDeadline);
+            dto.setIsReturnEligible(isEligible);
+
+            if (isEligible) {
+                long daysRemaining = java.time.temporal.ChronoUnit.DAYS.between(now, returnDeadline);
+                dto.setDaysRemainingForReturn((int) Math.max(0, daysRemaining));
+            } else {
+                dto.setDaysRemainingForReturn(0);
+            }
         } else {
+            // Order not delivered yet, not eligible for return
+            dto.setIsReturnEligible(false);
             dto.setDaysRemainingForReturn(0);
         }
-    } else {
-        // Order not delivered yet, not eligible for return
-        dto.setIsReturnEligible(false);
-        dto.setDaysRemainingForReturn(0);
     }
-}
 
     /**
      * Track order by order number (public endpoint)
