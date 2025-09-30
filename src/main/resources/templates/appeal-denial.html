@@ -4,320 +4,36 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Appeal Decision - ShopSphere</title>
-    <style>
-      @import url("https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap");
-
-      /* Base Styles */
-      body {
-        font-family: "Inter", sans-serif;
-        line-height: 1.6;
-        color: #1f2937;
-        max-width: 650px;
-        margin: 0 auto;
-        padding: 20px;
-        background-color: #f3f4f6;
-      }
-
-      .email-container {
-        background-color: #ffffff;
-        border-radius: 16px;
-        overflow: hidden;
-        border: 1px solid #e5e7eb;
-        box-shadow: 0 10px 20px rgba(0, 0, 0, 0.05);
-      }
-
-      /* Header */
-      .header {
-        background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%); /* red gradient */
-        color: white;
-        padding: 40px 30px;
-        text-align: center;
-      }
-
-      .logo {
-        font-size: 32px;
-        font-weight: 700;
-        margin-bottom: 8px;
-      }
-
-      .header-subtitle {
-        font-size: 16px;
-        font-weight: 500;
-        opacity: 0.9;
-      }
-
-      /* Decision Icon */
-      .decision-icon {
-        width: 80px;
-        height: 80px;
-        background-color: rgba(255, 255, 255, 0.2);
-        border-radius: 50%;
-        margin: 20px auto;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        font-size: 40px;
-      }
-
-      /* Content */
-      .content {
-        padding: 40px 30px;
-      }
-
-      .greeting {
-        font-size: 20px;
-        font-weight: 600;
-        color: #1f2937;
-        margin-bottom: 20px;
-      }
-
-      .main-message {
-        font-size: 16px;
-        color: #4b5563;
-        margin-bottom: 30px;
-        line-height: 1.7;
-      }
-
-      /* Appeal Details Card */
-      .appeal-details {
-        background-color: #f9fafb;
-        border: 1px solid #e5e7eb;
-        border-radius: 12px;
-        padding: 24px;
-        margin: 30px 0;
-      }
-
-      .appeal-details h3 {
-        font-size: 18px;
-        font-weight: 600;
-        color: #1f2937;
-        margin-bottom: 16px;
-        display: flex;
-        align-items: center;
-      }
-
-      .appeal-details h3::before {
-        content: "📋";
-        margin-right: 8px;
-        font-size: 20px;
-      }
-
-      .detail-row {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        padding: 12px 0;
-        border-bottom: 1px solid #e5e7eb;
-      }
-
-      .detail-row:last-child {
-        border-bottom: none;
-      }
-
-      .detail-label {
-        font-weight: 500;
-        color: #6b7280;
-        font-size: 14px;
-      }
-
-      .detail-value {
-        font-weight: 600;
-        color: #1f2937;
-        font-size: 14px;
-        text-align: right;
-      }
-
-      /* Decision Notes */
-      .decision-notes {
-        background-color: #fef2f2;
-        border: 1px solid #fecaca;
-        border-radius: 8px;
-        padding: 16px;
-        margin: 20px 0;
-      }
-
-      .decision-notes h4 {
-        font-size: 14px;
-        font-weight: 600;
-        color: #991b1b;
-        margin-bottom: 8px;
-      }
-
-      .decision-notes p {
-        font-size: 14px;
-        color: #dc2626;
-        margin: 0;
-        line-height: 1.5;
-      }
-
-      /* Understanding Section */
-      .understanding-section {
-        background-color: #fffbeb;
-        border: 1px solid #fed7aa;
-        border-radius: 12px;
-        padding: 24px;
-        margin: 30px 0;
-      }
-
-      .understanding-section h3 {
-        font-size: 18px;
-        font-weight: 600;
-        color: #92400e;
-        margin-bottom: 16px;
-        display: flex;
-        align-items: center;
-      }
-
-      .understanding-section h3::before {
-        content: "💡";
-        margin-right: 8px;
-        font-size: 20px;
-      }
-
-      .understanding-list {
-        list-style: none;
-        padding: 0;
-        margin: 0;
-      }
-
-      .understanding-list li {
-        padding: 8px 0;
-        font-size: 14px;
-        color: #92400e;
-        display: flex;
-        align-items: flex-start;
-      }
-
-      .understanding-list li::before {
-        content: "•";
-        margin-right: 8px;
-        font-weight: 600;
-        color: #d97706;
-      }
-
-      /* Support Section */
-      .support-section {
-        background-color: #f0f9ff;
-        border: 1px solid #bae6fd;
-        border-radius: 12px;
-        padding: 24px;
-        margin: 30px 0;
-      }
-
-      .support-section h3 {
-        font-size: 18px;
-        font-weight: 600;
-        color: #0369a1;
-        margin-bottom: 16px;
-        display: flex;
-        align-items: center;
-      }
-
-      .support-section h3::before {
-        content: "🤝";
-        margin-right: 8px;
-        font-size: 20px;
-      }
-
-      .support-text {
-        font-size: 14px;
-        color: #0369a1;
-        line-height: 1.6;
-      }
-
-      /* Action Button */
-      .action-button {
-        text-align: center;
-        margin: 30px 0;
-      }
-
-      .btn {
-        display: inline-block;
-        background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
-        color: white;
-        text-decoration: none;
-        padding: 14px 28px;
-        border-radius: 8px;
-        font-weight: 600;
-        font-size: 16px;
-        transition: all 0.3s ease;
-      }
-
-      .btn:hover {
-        transform: translateY(-2px);
-        box-shadow: 0 8px 20px rgba(59, 130, 246, 0.3);
-      }
-
-      /* Footer */
-      .footer {
-        background-color: #f9fafb;
-        padding: 30px;
-        text-align: center;
-        border-top: 1px solid #e5e7eb;
-      }
-
-      .footer-text {
-        font-size: 14px;
-        color: #6b7280;
-        margin-bottom: 16px;
-      }
-
-      .contact-info {
-        font-size: 12px;
-        color: #9ca3af;
-        line-height: 1.5;
-      }
-
-      /* Responsive */
-      @media (max-width: 600px) {
-        body {
-          padding: 10px;
-        }
-        
-        .content,
-        .header,
-        .footer {
-          padding: 20px;
-        }
-        
-        .detail-row {
-          flex-direction: column;
-          align-items: flex-start;
-          gap: 4px;
-        }
-        
-        .detail-value {
-          text-align: left;
-        }
-      }
-    </style>
   </head>
-  <body>
-    <div class="email-container">
-      <!-- Header -->
-      <div class="header">
-        <div class="logo">ShopSphere</div>
-        <div class="header-subtitle">Appeal Decision Update</div>
-        <div class="decision-icon">📋</div>
-      </div>
+  <body style="margin:0; padding:20px; background-color:#f3f4f6; font-family:Arial, sans-serif; color:#1f2937;">
+    <table width="100%" cellspacing="0" cellpadding="0" border="0" align="center" style="max-width:650px; margin:0 auto; border-collapse:collapse;">
+      <!-- Email Container -->
+      <tr>
+        <td style="background-color:#ffffff; border-radius:16px; border:1px solid #e5e7eb; padding:0; overflow:hidden;">
+          
+          <!-- Header -->
+          <table width="100%" cellspacing="0" cellpadding="0" border="0">
+            <tr>
+              <td style="background-color:#ef4444; padding:40px 30px; text-align:center; color:#ffffff;">
+                <div style="font-size:32px; font-weight:bold; margin-bottom:8px;">ShopSphere</div>
+                <div style="font-size:16px; font-weight:500; opacity:0.9;">Appeal Decision Update</div>
+                <div style="width:80px; height:80px; background-color:rgba(255,255,255,0.2); border-radius:50%; margin:20px auto; line-height:80px; font-size:40px;">📋</div>
+              </td>
+          </table>
 
-      <!-- Content -->
-      <div class="content">
-        <div class="greeting">
-          Hello <span th:text="${customerName}">Customer</span>,
-        </div>
-
-        <div class="main-message">
-          Thank you for taking the time to submit your appeal. We have carefully reviewed your case, 
-          including all the information and evidence you provided. After thorough consideration, 
-          we must respectfully <strong>maintain our original decision</strong> regarding your return request.
-        </div>
+          <!-- Content -->
+          <table width="100%" cellspacing="0" cellpadding="0" border="0" style="padding:40px 30px;">
+            <tr>
+              <td>
+                <div style="font-size:20px; font-weight:600; margin-bottom:20px;">Hello <span th:text="${customerName}">Customer</span>,</div>
+                <div style="font-size:16px; color:#4b5563; margin-bottom:30px; line-height:1.7;">
+                  Thank you for taking the time to submit your appeal. We have carefully reviewed your case, including all the information and evidence you provided. After thorough consideration, we must respectfully <strong>maintain our original decision</strong> regarding your return request.
+                </div>
 
         <!-- Appeal Details -->
         <div class="appeal-details">
           <h3>Appeal Details</h3>
           <div class="detail-row">
-            <span class="detail-label">Appeal ID</span>
             <span class="detail-value">#<span th:text="${appealId}">12345</span></span>
           </div>
           <div class="detail-row">

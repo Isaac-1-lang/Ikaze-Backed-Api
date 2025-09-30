@@ -484,10 +484,7 @@ public class EmailServiceImpl implements EmailService {
         
         return templateEngine.process("appeal-approval", context);
     }
-
-    /**
-     * Generate appeal denial email HTML using Thymeleaf template
-     */
+    
     private String generateAppealDenialHtml(String customerName, Long appealId, Long returnRequestId,
                                           String orderNumber, String appealReason, String decisionNotes,
                                           String submittedAt, String deniedAt) {

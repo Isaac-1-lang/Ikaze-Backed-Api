@@ -1,6 +1,7 @@
 package com.ecommerce.repository;
 
 import com.ecommerce.entity.ReturnRequest;
+import com.ecommerce.entity.ReturnRequest.DeliveryStatus;
 import com.ecommerce.entity.User;
 
 import org.springframework.data.domain.Page;
@@ -202,4 +203,106 @@ public interface ReturnRequestRepository extends JpaRepository<ReturnRequest, Lo
                      "LEFT JOIN FETCH o.orderCustomerInfo oci " +
                      "LEFT JOIN FETCH rr.customer u")
        Page<ReturnRequest> findAllWithDetails(Pageable pageable);
+
+       // ===== DELIVERY ASSIGNMENT METHODS =====
+
+       /**
+        * Find return requests by delivery agent ID
+        */
+       Page<ReturnRequest> findByDeliveryAgentId(UUID deliveryAgentId, Pageable pageable);
+
+       /**
+        * Find return requests by delivery status
+        */
+       Page<ReturnRequest> findByDeliveryStatus(DeliveryStatus deliveryStatus, Pageable pageable);
+
+       /**
+        * Find return requests that can be assigned to delivery agents
+        * (approved returns that are not yet assigned)
+        */
+       @Query("SELECT rr FROM ReturnRequest rr WHERE rr.status = 'APPROVED' AND " +
+              "(rr.deliveryStatus = 'NOT_ASSIGNED' OR rr.deliveryStatus = 'CANCELLED' OR rr.deliveryStatus = 'PICKUP_FAILED')")
+       Page<ReturnRequest> findAssignableReturnRequests(Pageable pageable);
+
+       /**
+        * Count return requests by delivery agent ID
+        */
+       int countByDeliveryAgentId(UUID deliveryAgentId);
+
+       /**
+        * Count return requests by delivery agent ID and delivery status
+        */
+       int countByDeliveryAgentIdAndDeliveryStatus(UUID deliveryAgentId, DeliveryStatus deliveryStatus);
+
+       /**
+        * Count return requests by delivery agent ID, delivery status and pickup completed after date
+        */
+       int countByDeliveryAgentIdAndDeliveryStatusAndPickupCompletedAtAfter(UUID deliveryAgentId, 
+                                                                           DeliveryStatus deliveryStatus, 
+                                                                           LocalDateTime date);
+
+       /**
+        * Count return requests by delivery agent ID, delivery status and pickup started after date
+        */
+       int countByDeliveryAgentIdAndDeliveryStatusAndPickupStartedAtAfter(UUID deliveryAgentId, 
+                                                                         DeliveryStatus deliveryStatus, 
+                                                                         LocalDateTime date);
+
+       /**
+        * Count return requests by delivery status
+        */
+       long countByDeliveryStatus(DeliveryStatus deliveryStatus);
+
+       /**
+        * Count return requests where delivery agent is not null
+        */
+       long countByDeliveryAgentIdIsNotNull();
+
+       /**
+        * Count return requests by pickup started after date
+        */
+       long countByPickupStartedAtAfter(LocalDateTime date);
+
+       /**
+        * Count return requests by pickup completed after date
+        */
+       long countByPickupCompletedAtAfter(LocalDateTime date);
+
+       /**
+        * Count return requests by delivery status and pickup started after date
+        */
+       long countByDeliveryStatusAndPickupStartedAtAfter(DeliveryStatus deliveryStatus, LocalDateTime date);
+
+       /**
+        * Find return requests with delivery agent details
+        */
+       @Query("SELECT DISTINCT rr FROM ReturnRequest rr " +
+              "LEFT JOIN FETCH rr.deliveryAgent da " +
+              "LEFT JOIN FETCH rr.assignedByUser abu " +
+              "LEFT JOIN FETCH rr.order o " +
+              "LEFT JOIN FETCH rr.customer c " +
+              "WHERE rr.id = :id")
+       Optional<ReturnRequest> findByIdWithDeliveryDetails(@Param("id") Long id);
+
+       /**
+        * Find return requests assigned to delivery agent with details
+        */
+       @Query("SELECT DISTINCT rr FROM ReturnRequest rr " +
+              "LEFT JOIN FETCH rr.deliveryAgent da " +
+              "LEFT JOIN FETCH rr.order o " +
+              "LEFT JOIN FETCH rr.customer c " +
+              "WHERE rr.deliveryAgentId = :deliveryAgentId")
+       Page<ReturnRequest> findByDeliveryAgentIdWithDetails(@Param("deliveryAgentId") UUID deliveryAgentId, 
+                                                           Pageable pageable);
+
+       /**
+        * Find return requests by delivery status with details
+        */
+       @Query("SELECT DISTINCT rr FROM ReturnRequest rr " +
+              "LEFT JOIN FETCH rr.deliveryAgent da " +
+              "LEFT JOIN FETCH rr.order o " +
+              "LEFT JOIN FETCH rr.customer c " +
+              "WHERE rr.deliveryStatus = :deliveryStatus")
+       Page<ReturnRequest> findByDeliveryStatusWithDetails(@Param("deliveryStatus") DeliveryStatus deliveryStatus, 
+                                                          Pageable pageable);
 }
