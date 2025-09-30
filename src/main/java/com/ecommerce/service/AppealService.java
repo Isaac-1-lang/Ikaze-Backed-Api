@@ -1,18 +1,26 @@
 package com.ecommerce.service;
 
-import com.ecommerce.Exception.ReturnException;
 import com.ecommerce.dto.*;
 import com.ecommerce.entity.*;
-import com.ecommerce.repository.*;
+import com.ecommerce.repository.AppealMediaRepository;
+import com.ecommerce.repository.ReturnAppealRepository;
+import com.ecommerce.repository.ReturnRequestRepository;
+import com.ecommerce.repository.OrderRepository;
+import com.ecommerce.service.CloudinaryService;
+import com.ecommerce.service.NotificationService;
+import com.ecommerce.service.EmailService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.multipart.MultipartFile;
 
+import java.io.IOException;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 @Service
@@ -24,49 +32,67 @@ public class AppealService {
     private final ReturnAppealRepository returnAppealRepository;
     private final AppealMediaRepository appealMediaRepository;
     private final ReturnRequestRepository returnRequestRepository;
-    
+    private final OrderRepository orderRepository;
+    private final CloudinaryService cloudinaryService;
+
     // Notification and audit services
     private final NotificationService notificationService;
+    private final EmailService emailService;
+
+    private static final int DEFAULT_RETURN_DAYS = 15;
+    private static final int MAX_IMAGES = 5;
+    private static final int MAX_VIDEOS = 1;
 
     /**
-     * Submit an appeal for a denied return request
+     * Submit an appeal for a denied return request with media files
      */
-    public ReturnAppealDTO submitAppeal(SubmitAppealDTO submitDTO) {
-        log.info("Processing appeal submission for return request {} by customer {}", 
+    public ReturnAppealDTO submitAppeal(SubmitAppealRequestDTO submitDTO, MultipartFile[] mediaFiles) {
+        log.info("Processing appeal submission for return request {} by customer {}",
                 submitDTO.getReturnRequestId(), submitDTO.getCustomerId());
-        
-        // Validate return request exists and can be appealed
-        UUID customerUUID = UUID.fromString(submitDTO.getCustomerId());
-        ReturnRequest returnRequest = validateReturnForAppeal(submitDTO.getReturnRequestId(), customerUUID);
-        
+
+        ReturnRequest returnRequest = validateReturnForAppeal(submitDTO.getReturnRequestId(),
+                submitDTO.getCustomerId());
+
         if (returnAppealRepository.existsByReturnRequestId(submitDTO.getReturnRequestId())) {
-            throw new ReturnException.AppealAlreadyExistsException(
-                "Appeal already exists for return request " + submitDTO.getReturnRequestId());
+            throw new com.ecommerce.Exception.ReturnException.AppealAlreadyExistsException(
+                    "Appeal already exists for return request " + submitDTO.getReturnRequestId());
         }
-        
-        if (submitDTO.getMediaFiles() == null || submitDTO.getMediaFiles().isEmpty()) {
-            throw new ReturnException.AppealNotAllowedException(
-                "At least one image or video is required for appeal submission");
+
+        validateAppealEligibility(returnRequest);
+
+        if (mediaFiles != null && mediaFiles.length > 0) {
+            validateMediaFiles(mediaFiles);
         }
-        
+
         // Create appeal
         ReturnAppeal appeal = new ReturnAppeal();
         appeal.setReturnRequestId(submitDTO.getReturnRequestId());
-        appeal.setLevel(1); // Always 1 since only one appeal allowed
-        appeal.setAppealText(submitDTO.getAppealText());
+        appeal.setCustomerId(submitDTO.getCustomerId()); // This can be null for guest customers
+        appeal.setLevel(1); 
+        appeal.setReason(submitDTO.getReason());
+        appeal.setDescription(submitDTO.getDescription());
         appeal.setStatus(ReturnAppeal.AppealStatus.PENDING);
         appeal.setSubmittedAt(LocalDateTime.now());
-        
+
+        log.debug("Creating appeal with customerId: {} for return request: {}", 
+                submitDTO.getCustomerId(), submitDTO.getReturnRequestId());
+
         ReturnAppeal savedAppeal = returnAppealRepository.save(appeal);
-        
-        processAppealMediaAttachments(savedAppeal.getId(), submitDTO.getMediaFiles());
-        
-        
-        notificationService.notifyAppealSubmitted(savedAppeal, returnRequest);
-        
-        log.info("Appeal {} submitted successfully for return request {}", 
+        if (mediaFiles != null && mediaFiles.length > 0) {
+            try {
+                processAppealMediaAttachments(savedAppeal.getId(), mediaFiles);
+            } catch (IOException e) {
+                log.error("Failed to process media attachments for appeal {}: {}",
+                        savedAppeal.getId(), e.getMessage(), e);
+                throw new RuntimeException("Failed to upload media files", e);
+            }
+        }
+
+        sendAppealConfirmationEmailToCustomer(savedAppeal, returnRequest);
+
+        log.info("Appeal {} submitted successfully for return request {}",
                 savedAppeal.getId(), submitDTO.getReturnRequestId());
-        
+
         return convertToDTO(savedAppeal);
     }
 
@@ -74,18 +100,18 @@ public class AppealService {
      * Review and approve/deny an appeal
      */
     public ReturnAppealDTO reviewAppeal(AppealDecisionDTO decisionDTO) {
-        log.info("Processing appeal decision for appeal {}: {}", 
+        log.info("Processing appeal decision for appeal {}: {}",
                 decisionDTO.getAppealId(), decisionDTO.getDecision());
-        
+
         ReturnAppeal appeal = returnAppealRepository.findByIdWithReturnRequest(decisionDTO.getAppealId())
-                .orElseThrow(() -> new ReturnException.ReturnNotFoundException(
+                .orElseThrow(() -> new com.ecommerce.Exception.ReturnException.ReturnNotFoundException(
                         "Appeal not found: " + decisionDTO.getAppealId()));
-        
+
         if (appeal.getStatus() != ReturnAppeal.AppealStatus.PENDING) {
-            throw new ReturnException.InvalidReturnStatusException(
+            throw new com.ecommerce.Exception.ReturnException.InvalidReturnStatusException(
                     "Appeal is not in pending status");
         }
-        
+
         if ("APPROVED".equals(decisionDTO.getDecision())) {
             approveAppeal(appeal, decisionDTO);
         } else if ("DENIED".equals(decisionDTO.getDecision())) {
@@ -93,12 +119,12 @@ public class AppealService {
         } else {
             throw new IllegalArgumentException("Invalid decision: " + decisionDTO.getDecision());
         }
-        
+
         ReturnAppeal updatedAppeal = returnAppealRepository.save(appeal);
 
-        log.info("Appeal {} decision completed: {}", 
+        log.info("Appeal {} decision completed: {}",
                 updatedAppeal.getId(), decisionDTO.getDecision());
-        
+
         return convertToDTO(updatedAppeal);
     }
 
@@ -107,17 +133,17 @@ public class AppealService {
      */
     public ReturnAppealDTO escalateAppeal(Long appealId, String escalationReason, String escalatedBy) {
         log.info("Escalating appeal {} for higher level review", appealId);
-        
+
         ReturnAppeal appeal = returnAppealRepository.findById(appealId)
-                .orElseThrow(() -> new ReturnException.ReturnNotFoundException(
+                .orElseThrow(() -> new com.ecommerce.Exception.ReturnException.ReturnNotFoundException(
                         "Appeal not found: " + appealId));
-        
+
         if (appeal.getStatus() != ReturnAppeal.AppealStatus.PENDING) {
-            throw new ReturnException.InvalidReturnStatusException(
+            throw new com.ecommerce.Exception.ReturnException.InvalidReturnStatusException(
                     "Only pending appeals can be escalated");
         }
         log.info("Appeal {} escalated successfully", appealId);
-        
+
         return convertToDTO(appeal);
     }
 
@@ -145,8 +171,19 @@ public class AppealService {
     @Transactional(readOnly = true)
     public ReturnAppealDTO getAppealById(Long id) {
         ReturnAppeal appeal = returnAppealRepository.findByIdWithAllData(id)
-                .orElseThrow(() -> new ReturnException.ReturnNotFoundException(
+                .orElseThrow(() -> new com.ecommerce.Exception.ReturnException.ReturnNotFoundException(
                         "Appeal not found: " + id));
+        return convertToDTO(appeal);
+    }
+
+    /**
+     * Get appeal by return request ID
+     */
+    @Transactional(readOnly = true)
+    public ReturnAppealDTO getAppealByReturnRequestId(Long returnRequestId) {
+        ReturnAppeal appeal = returnAppealRepository.findByReturnRequestId(returnRequestId)
+                .orElseThrow(() -> new com.ecommerce.Exception.ReturnException.ReturnNotFoundException(
+                        "Appeal not found for return request: " + returnRequestId));
         return convertToDTO(appeal);
     }
 
@@ -166,21 +203,21 @@ public class AppealService {
     @Transactional(readOnly = true)
     public AppealStatisticsDTO getAppealStatistics() {
         AppealStatisticsDTO stats = new AppealStatisticsDTO();
-        
+
         stats.setPendingCount(returnAppealRepository.countByStatus(ReturnAppeal.AppealStatus.PENDING));
         stats.setApprovedCount(returnAppealRepository.countByStatus(ReturnAppeal.AppealStatus.APPROVED));
         stats.setDeniedCount(returnAppealRepository.countByStatus(ReturnAppeal.AppealStatus.DENIED));
-        
+
         // Recent appeals (last 30 days)
         LocalDateTime thirtyDaysAgo = LocalDateTime.now().minusDays(30);
         List<ReturnAppeal> recentAppeals = returnAppealRepository.findRecentAppeals(thirtyDaysAgo);
         stats.setRecentCount(recentAppeals.size());
-        
+
         // Appeals needing urgent attention (pending for more than 7 days)
         List<ReturnAppeal> urgentAppeals = returnAppealRepository.findAppealsNeedingDecision(
                 LocalDateTime.now().minusDays(7));
         stats.setUrgentCount(urgentAppeals.size());
-        
+
         return stats;
     }
 
@@ -188,71 +225,203 @@ public class AppealService {
 
     private ReturnRequest validateReturnForAppeal(Long returnRequestId, UUID customerId) {
         ReturnRequest returnRequest = returnRequestRepository.findById(returnRequestId)
-                .orElseThrow(() -> new ReturnException.ReturnNotFoundException(
+                .orElseThrow(() -> new com.ecommerce.Exception.ReturnException.ReturnNotFoundException(
                         "Return request not found: " + returnRequestId));
-        
-        if (!customerId.equals(returnRequest.getCustomerId())) {
-            throw new ReturnException.AppealNotAllowedException(
-                    "Return request does not belong to customer");
-        }
-        
+
         if (returnRequest.getStatus() != ReturnRequest.ReturnStatus.DENIED) {
-            throw new ReturnException.AppealNotAllowedException(
+            throw new com.ecommerce.Exception.ReturnException.AppealNotAllowedException(
                     "Only denied return requests can be appealed");
         }
-        
-        if (!returnRequest.canBeAppealed()) {
-            throw new ReturnException.AppealNotAllowedException(
-                    "Return request cannot be appealed (appeal may already exist)");
-        }
-        
+
+        // For guest customers, customerId might be null, so we skip customer validation
+        // The return request itself contains the customer information we need
+
         return returnRequest;
     }
 
-    private void processAppealMediaAttachments(Long appealId, List<SubmitAppealDTO.MediaUploadDTO> mediaFiles) {
-        for (SubmitAppealDTO.MediaUploadDTO mediaFile : mediaFiles) {
+    /**
+     * Validate appeal eligibility based on product delivery days (similar to return
+     * validation)
+     */
+    private void validateAppealEligibility(ReturnRequest returnRequest) {
+        Order order = orderRepository.findById(returnRequest.getOrderId())
+                .orElseThrow(() -> new RuntimeException("Order not found: " + returnRequest.getOrderId()));
+
+        LocalDateTime deliveryDate = order.getDeliveredAt();
+        if (deliveryDate == null) {
+            throw new RuntimeException("Order delivery date not found");
+        }
+
+        List<ReturnItem> returnItems = returnRequest.getReturnItems();
+
+        for (ReturnItem returnItem : returnItems) {
+            OrderItem orderItem = returnItem.getOrderItem();
+            if (orderItem == null) {
+                throw new RuntimeException("Order item not found for return item: " + returnItem.getId());
+            }
+
+            Product product = returnItem.getEffectiveProduct();
+
+            Integer productReturnDays = product.getMaximumDaysForReturn();
+            if (productReturnDays == null || productReturnDays <= 0) {
+                productReturnDays = DEFAULT_RETURN_DAYS;
+            }
+
+            // Calculate return deadline for this specific item
+            LocalDateTime returnDeadline = deliveryDate.plusDays(productReturnDays);
+
+            if (LocalDateTime.now().isAfter(returnDeadline)) {
+                String itemName = getItemDisplayName(returnItem);
+                throw new IllegalArgumentException(
+                        String.format(
+                                "Appeal period has expired for %s. Appeals must be submitted within %d days of delivery (deadline was %s).",
+                                itemName,
+                                productReturnDays,
+                                returnDeadline.toLocalDate()));
+            }
+        }
+    }
+
+    /**
+     * Get display name for a return item
+     */
+    private String getItemDisplayName(ReturnItem returnItem) {
+        if (returnItem.isVariantBased()) {
+            return returnItem.getEffectiveProduct().getProductName() + " ("
+                    + returnItem.getProductVariant().getVariantName() + ")";
+        } else {
+            return returnItem.getEffectiveProduct().getProductName();
+        }
+    }
+
+    /**
+     * Validate media files for appeal submission
+     */
+    private void validateMediaFiles(MultipartFile[] mediaFiles) {
+        if (mediaFiles.length > (MAX_IMAGES + MAX_VIDEOS)) {
+            throw new IllegalArgumentException(
+                    String.format("Too many files. Maximum allowed: %d images and %d video",
+                            MAX_IMAGES, MAX_VIDEOS));
+        }
+
+        int imageCount = 0;
+        int videoCount = 0;
+
+        for (MultipartFile file : mediaFiles) {
+            if (file.isEmpty()) {
+                continue;
+            }
+
+            String contentType = file.getContentType();
+            if (contentType == null) {
+                throw new IllegalArgumentException("File content type is required");
+            }
+
+            if (contentType.startsWith("image/")) {
+                imageCount++;
+                if (imageCount > MAX_IMAGES) {
+                    throw new IllegalArgumentException("Maximum " + MAX_IMAGES + " images allowed");
+                }
+
+                // Validate image size (10MB limit)
+                if (file.getSize() > 10 * 1024 * 1024) {
+                    throw new IllegalArgumentException("Image file size must be less than 10MB");
+                }
+            } else if (contentType.startsWith("video/")) {
+                videoCount++;
+                if (videoCount > MAX_VIDEOS) {
+                    throw new IllegalArgumentException("Maximum " + MAX_VIDEOS + " video allowed");
+                }
+
+                // Validate video size (50MB limit)
+                if (file.getSize() > 50 * 1024 * 1024) {
+                    throw new IllegalArgumentException("Video file size must be less than 50MB");
+                }
+            } else {
+                throw new IllegalArgumentException("Only image and video files are allowed");
+            }
+        }
+    }
+
+    /**
+     * Process and upload media attachments to Cloudinary for appeal
+     */
+    private void processAppealMediaAttachments(Long appealId, MultipartFile[] mediaFiles) throws IOException {
+        for (MultipartFile file : mediaFiles) {
+            if (file.isEmpty()) {
+                continue;
+            }
+
+            String contentType = file.getContentType();
+            AppealMedia.FileType fileType;
+            String cloudinaryUrl;
+
+            if (contentType != null && contentType.startsWith("image/")) {
+                fileType = AppealMedia.FileType.IMAGE;
+                Map<String, String> uploadResult = cloudinaryService.uploadImage(file);
+                cloudinaryUrl = uploadResult.get("secure_url");
+                if (cloudinaryUrl == null) {
+                    cloudinaryUrl = uploadResult.get("url");
+                }
+            } else if (contentType != null && contentType.startsWith("video/")) {
+                fileType = AppealMedia.FileType.VIDEO;
+                Map<String, String> uploadResult = cloudinaryService.uploadVideo(file);
+                cloudinaryUrl = uploadResult.get("secure_url");
+                if (cloudinaryUrl == null) {
+                    cloudinaryUrl = uploadResult.get("url");
+                }
+            } else {
+                log.warn("Skipping unsupported file type: {}", contentType);
+                continue;
+            }
+
+            if (cloudinaryUrl == null) {
+                log.error("Failed to get URL from Cloudinary upload result for file: {}", file.getOriginalFilename());
+                throw new IOException("Failed to upload file to Cloudinary: " + file.getOriginalFilename());
+            }
+
             AppealMedia media = new AppealMedia();
             media.setAppealId(appealId);
-            media.setFileUrl(mediaFile.getFileUrl());
-            media.setFileType(AppealMedia.FileType.valueOf(mediaFile.getFileType()));
+            media.setFileUrl(cloudinaryUrl);
+            media.setFileType(fileType);
             media.setUploadedAt(LocalDateTime.now());
-            
+
             appealMediaRepository.save(media);
+
+            log.info("Uploaded {} file to Cloudinary for appeal {}: {}",
+                    fileType.name().toLowerCase(), appealId, cloudinaryUrl);
         }
-        
-        log.info("Processed {} media attachments for appeal {}", 
-                mediaFiles.size(), appealId);
+
+        log.info("Processed {} media attachments for appeal {}",
+                mediaFiles.length, appealId);
     }
 
     private void approveAppeal(ReturnAppeal appeal, AppealDecisionDTO decisionDTO) {
         appeal.approve(decisionDTO.getDecisionNotes());
-        
+
         // When appeal is approved, the original return request should also be approved
         ReturnRequest returnRequest = appeal.getReturnRequest();
         if (returnRequest != null) {
             returnRequest.approve("Appeal approved: " + decisionDTO.getDecisionNotes());
             returnRequestRepository.save(returnRequest);
-            
+
             // Process refund if specified
             if (decisionDTO.getRefundDetails() != null) {
                 // Integrate with refund service
                 log.info("Processing refund for approved appeal {}", appeal.getId());
             }
         }
-        
+
         // Send notifications
         notificationService.notifyAppealApproved(appeal, returnRequest);
-        
+
         log.info("Appeal {} approved", appeal.getId());
     }
 
     private void denyAppeal(ReturnAppeal appeal, AppealDecisionDTO decisionDTO) {
         appeal.deny(decisionDTO.getDecisionNotes());
-        
-        // Appeal is final - no further appeals allowed
-        // Send final notification to customer
         notificationService.notifyAppealDenied(appeal, appeal.getReturnRequest());
-        
+
         log.info("Appeal {} denied - final decision", appeal.getId());
     }
 
@@ -260,20 +429,22 @@ public class AppealService {
         ReturnAppealDTO dto = new ReturnAppealDTO();
         dto.setId(appeal.getId());
         dto.setReturnRequestId(appeal.getReturnRequestId());
+        dto.setCustomerId(appeal.getCustomerId());
         dto.setLevel(appeal.getLevel());
-        dto.setAppealText(appeal.getAppealText());
+        dto.setReason(appeal.getReason());
+        dto.setDescription(appeal.getDescription());
         dto.setStatus(appeal.getStatus());
         dto.setSubmittedAt(appeal.getSubmittedAt());
         dto.setDecisionAt(appeal.getDecisionAt());
         dto.setDecisionNotes(appeal.getDecisionNotes());
-        
+
         // Add media if loaded
         if (appeal.getAppealMedia() != null && !appeal.getAppealMedia().isEmpty()) {
             dto.setAppealMedia(appeal.getAppealMedia().stream()
                     .map(media -> convertAppealMediaToDTO(media))
                     .toList());
         }
-        
+
         return dto;
     }
 
@@ -291,5 +462,52 @@ public class AppealService {
         dto.setUpdatedAt(media.getUpdatedAt());
         return dto;
     }
-}
 
+    /**
+     * Send appeal confirmation email to customer using EmailService
+     */
+    private void sendAppealConfirmationEmailToCustomer(ReturnAppeal appeal, ReturnRequest returnRequest) {
+        try {
+            // Get customer email from OrderCustomerInfo
+            Order order = orderRepository.findById(returnRequest.getOrderId())
+                    .orElseThrow(() -> new RuntimeException("Order not found: " + returnRequest.getOrderId()));
+            
+            String customerEmail = null;
+            String customerName = null;
+            
+            // Try to get email from OrderCustomerInfo first (for both guest and registered users)
+            if (order.getOrderCustomerInfo() != null) {
+                customerEmail = order.getOrderCustomerInfo().getEmail();
+                customerName = order.getOrderCustomerInfo().getFullName();
+            }
+            
+            // If no email found, skip sending email
+            if (customerEmail == null || customerEmail.trim().isEmpty()) {
+                log.warn("No customer email found for appeal {}, skipping confirmation email", appeal.getId());
+                return;
+            }
+            
+            String trackingUrl = String.format("http://localhost:3000/returns/info?returnId=%d", returnRequest.getId());
+            
+            String formattedSubmittedAt = appeal.getSubmittedAt()
+                .format(java.time.format.DateTimeFormatter.ofPattern("MMMM dd, yyyy 'at' HH:mm"));
+            
+            emailService.sendAppealConfirmationEmail(
+                customerEmail,
+                customerName != null ? customerName : "Customer",
+                appeal.getId(),
+                returnRequest.getId(),
+                order.getOrderCode(),
+                appeal.getReason(),
+                formattedSubmittedAt,
+                trackingUrl
+            );
+            
+            log.info("Appeal confirmation email sent successfully to {} for appeal {}", customerEmail, appeal.getId());
+            
+        } catch (Exception e) {
+            log.error("Failed to send appeal confirmation email for appeal {}: {}", appeal.getId(), e.getMessage(), e);
+            // Don't throw exception - email failure shouldn't break appeal submission
+        }
+    }
+}

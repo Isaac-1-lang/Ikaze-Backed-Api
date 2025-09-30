@@ -816,7 +816,7 @@ public class ReturnService {
         dto.setId(appeal.getId());
         dto.setReturnRequestId(appeal.getReturnRequestId());
         dto.setLevel(appeal.getLevel());
-        dto.setAppealText(appeal.getAppealText());
+        dto.setDescription(appeal.getDescription());
         dto.setStatus(appeal.getStatus());
         dto.setSubmittedAt(appeal.getSubmittedAt());
         dto.setDecisionAt(appeal.getDecisionAt());

@@ -363,4 +363,44 @@ public class EmailServiceImpl implements EmailService {
         
         return templateEngine.process("return-denial", context);
     }
+
+    @Override
+    @Async
+    public void sendAppealConfirmationEmail(String toEmail, String customerName, Long appealId,
+                                          Long returnRequestId, String orderNumber, String appealReason,
+                                          String submittedAt, String trackingUrl) {
+        try {
+            log.info("Sending appeal confirmation email to: {}", toEmail);
+
+            String subject = "Appeal Submitted Successfully - " + appName;
+            String htmlBody = generateAppealConfirmationHtml(customerName, appealId, returnRequestId, 
+                                                           orderNumber, appealReason, submittedAt, trackingUrl);
+
+            sendHtmlEmailInternal(toEmail, subject, htmlBody);
+            
+            log.info("Appeal confirmation email sent successfully to: {}", toEmail);
+        } catch (Exception e) {
+            log.error("Failed to send appeal confirmation email to: {}", toEmail, e);
+        }
+    }
+
+    /**
+     * Generate appeal confirmation email HTML using Thymeleaf template
+     */
+    private String generateAppealConfirmationHtml(String customerName, Long appealId, Long returnRequestId,
+                                                String orderNumber, String appealReason, String submittedAt,
+                                                String trackingUrl) {
+        Context context = new Context();
+        
+        // Set template variables
+        context.setVariable("customerName", customerName);
+        context.setVariable("appealId", appealId);
+        context.setVariable("returnRequestId", returnRequestId);
+        context.setVariable("orderNumber", orderNumber);
+        context.setVariable("appealReason", appealReason);
+        context.setVariable("submittedAt", submittedAt);
+        context.setVariable("trackingUrl", trackingUrl);
+        
+        return templateEngine.process("appeal-confirmation", context);
+    }
 }

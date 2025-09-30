@@ -1,6 +1,7 @@
 package com.ecommerce.entity;
 
 import jakarta.persistence.*;
+import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import lombok.AllArgsConstructor;
 import lombok.Data;
@@ -10,6 +11,7 @@ import lombok.NoArgsConstructor;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.UUID;
 
 @Entity
 @Table(name = "return_appeals")
@@ -28,12 +30,19 @@ public class ReturnAppeal {
     @Column(name = "return_request_id", nullable = false)
     private Long returnRequestId;
 
+    @Column(name = "customer_id", nullable = true)
+    private UUID customerId;
+
     @NotNull(message = "Appeal level is required")
     @Column(name = "level", nullable = false)
     private Integer level = 1;  
 
-    @Column(name = "appeal_text", length = 1000)
-    private String appealText;
+    @NotBlank(message = "Appeal reason is required")
+    @Column(name = "reason", nullable = false, length = 255)
+    private String reason;
+
+    @Column(name = "description", length = 1000)
+    private String description;
 
     @Enumerated(EnumType.STRING)
     @Column(name = "status", nullable = false)

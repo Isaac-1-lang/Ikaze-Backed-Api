@@ -100,4 +100,20 @@ public interface EmailService {
                                  String orderNumber, String decisionNotes, String returnItems,
                                  String submittedDate, String deniedDate, boolean canAppeal, 
                                  String appealDeadline);
+
+        /**
+         * Send appeal confirmation email with HTML template
+         * 
+         * @param toEmail           recipient email
+         * @param customerName      customer's full name
+         * @param appealId          appeal ID
+         * @param returnRequestId   return request ID
+         * @param orderNumber       order number
+         * @param appealReason      reason for the appeal
+         * @param submittedAt       when the appeal was submitted
+         * @param trackingUrl       URL to track appeal status
+         */
+        void sendAppealConfirmationEmail(String toEmail, String customerName, Long appealId,
+                                       Long returnRequestId, String orderNumber, String appealReason,
+                                       String submittedAt, String trackingUrl);
 }

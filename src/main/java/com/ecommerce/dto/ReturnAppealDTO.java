@@ -7,6 +7,7 @@ import com.ecommerce.entity.ReturnAppeal;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.UUID;
 
 /**
  * DTO for return appeals
@@ -18,8 +19,10 @@ public class ReturnAppealDTO {
     
     private Long id;
     private Long returnRequestId;
+    private UUID customerId;
     private Integer level;
-    private String appealText;
+    private String reason;
+    private String description;
     private ReturnAppeal.AppealStatus status;
     private LocalDateTime submittedAt;
     private LocalDateTime decisionAt;

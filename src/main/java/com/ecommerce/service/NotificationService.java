@@ -152,17 +152,6 @@ public class NotificationService {
         log.info("Return received notification sent for request {}", returnRequest.getId());
     }
 
-    /**
-     * Notify customer that appeal has been submitted
-     */
-    public void notifyAppealSubmitted(ReturnAppeal appeal, ReturnRequest returnRequest) {
-        log.info("Sending appeal submission notification to customer {} for appeal {}", 
-                returnRequest.getCustomerId(), appeal.getId());
-        
-        // emailService.sendAppealSubmittedEmail(appeal, returnRequest);
-        
-        log.info("Appeal submission notification sent for appeal {}", appeal.getId());
-    }
 
   
     public void notifyAppealApproved(ReturnAppeal appeal, ReturnRequest returnRequest) {

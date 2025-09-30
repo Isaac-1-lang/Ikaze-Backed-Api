@@ -219,7 +219,7 @@ public class ReturnController {
      * Get specific return request details
      */
     @GetMapping("/{returnRequestId}")
-    @PreAuthorize("hasAnyRole('CUSTOMER', 'ADMIN', 'EMPLOYEE')")
+    // @PreAuthorize("hasAnyRole('CUSTOMER', 'ADMIN', 'EMPLOYEE')")
     @Operation(summary = "Get return request details", description = "Get detailed information about a specific return request", security = @SecurityRequirement(name = "bearerAuth"))
     @ApiResponses(value = {
             @ApiResponse(responseCode = "200", description = "Return request details retrieved successfully", content = @Content(schema = @Schema(implementation = ReturnRequestDTO.class))),
