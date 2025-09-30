@@ -13,6 +13,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.UUID;
 
 @Service
 @RequiredArgsConstructor
@@ -35,7 +36,8 @@ public class AppealService {
                 submitDTO.getReturnRequestId(), submitDTO.getCustomerId());
         
         // Validate return request exists and can be appealed
-        ReturnRequest returnRequest = validateReturnForAppeal(submitDTO.getReturnRequestId(), submitDTO.getCustomerId());
+        UUID customerUUID = UUID.fromString(submitDTO.getCustomerId());
+        ReturnRequest returnRequest = validateReturnForAppeal(submitDTO.getReturnRequestId(), customerUUID);
         
         // Check if appeal already exists
         if (returnAppealRepository.existsByReturnRequestId(submitDTO.getReturnRequestId())) {
@@ -127,7 +129,7 @@ public class AppealService {
      * Get appeals by customer with pagination
      */
     @Transactional(readOnly = true)
-    public Page<ReturnAppealDTO> getAppealsByCustomer(String customerId, Pageable pageable) {
+    public Page<ReturnAppealDTO> getAppealsByCustomer(UUID customerId, Pageable pageable) {
         Page<ReturnAppeal> appeals = returnAppealRepository.findByCustomerId(customerId, pageable);
         return appeals.map(this::convertToDTO);
     }
@@ -188,7 +190,7 @@ public class AppealService {
 
     // Private helper methods
 
-    private ReturnRequest validateReturnForAppeal(Long returnRequestId, String customerId) {
+    private ReturnRequest validateReturnForAppeal(Long returnRequestId, UUID customerId) {
         ReturnRequest returnRequest = returnRequestRepository.findById(returnRequestId)
                 .orElseThrow(() -> new ReturnException.ReturnNotFoundException(
                         "Return request not found: " + returnRequestId));

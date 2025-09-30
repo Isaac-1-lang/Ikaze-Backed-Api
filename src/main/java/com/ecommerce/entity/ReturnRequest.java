@@ -7,6 +7,7 @@ import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 import lombok.NoArgsConstructor;
+import lombok.ToString;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
@@ -16,9 +17,10 @@ import java.util.UUID;
 @Entity
 @Table(name = "return_requests")
 @Data
+@ToString(exclude = {"returnMedia", "returnItems", "returnAppeal", "order", "customer"})
 @NoArgsConstructor
 @AllArgsConstructor
-@EqualsAndHashCode(exclude = {"returnMedia", "returnItems", "returnAppeal"})
+@EqualsAndHashCode(exclude = {"returnMedia", "returnItems", "returnAppeal", "order", "customer"})
 public class ReturnRequest {
 
     @Id
@@ -71,7 +73,7 @@ public class ReturnRequest {
     private Order order;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "customer_id", insertable = false, updatable = false)
+    @JoinColumn(name = "customer_id", referencedColumnName = "id", insertable = false, updatable = false)
     private User customer;
 
     @PrePersist

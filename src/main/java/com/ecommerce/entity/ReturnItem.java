@@ -7,6 +7,7 @@ import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 import lombok.NoArgsConstructor;
+import lombok.ToString;
 
 import java.time.LocalDateTime;
 import java.util.UUID;
@@ -17,6 +18,7 @@ import java.util.UUID;
 @Entity
 @Table(name = "return_items")
 @Data
+@ToString(exclude = { "returnRequest", "orderItem", "product", "productVariant" })
 @NoArgsConstructor
 @AllArgsConstructor
 @EqualsAndHashCode(exclude = { "returnRequest", "orderItem", "product", "productVariant" })

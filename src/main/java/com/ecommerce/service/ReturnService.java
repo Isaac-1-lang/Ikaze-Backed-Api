@@ -44,14 +44,14 @@ public class ReturnService {
      * Submit a new return request for authenticated users with media files
      */
     public ReturnRequestDTO submitReturnRequest(SubmitReturnRequestDTO submitDTO, MultipartFile[] mediaFiles) {
-        log.info("Processing authenticated return request for customer {} and order {}", 
+        log.info("Processing authenticated return request for customer {} and order {}",
                 submitDTO.getCustomerId(), submitDTO.getOrderId());
-        
+
         // Validate that this is an authenticated user request
         if (submitDTO.getCustomerId() == null) {
             throw new IllegalArgumentException("Customer ID is required for authenticated return requests");
         }
-        
+
         Order order = validateOrderForAuthenticatedUser(submitDTO.getOrderId(), submitDTO.getCustomerId());
 
         if (returnRequestRepository.existsByOrderIdAndCustomerId(submitDTO.getOrderId(),
@@ -99,7 +99,7 @@ public class ReturnService {
             MultipartFile[] mediaFiles) {
         log.info("Processing GUEST return request submission for order number {} with pickup token",
                 submitDTO.getOrderNumber());
-        
+
         // Validate that this is a guest user request
         if (submitDTO.getOrderNumber() == null || submitDTO.getOrderNumber().trim().isEmpty()) {
             throw new IllegalArgumentException("Order number is required for guest return requests");
@@ -110,7 +110,8 @@ public class ReturnService {
 
         Order order = validateOrderForGuestUser(submitDTO.getOrderNumber(), submitDTO.getPickupToken());
 
-        // Check if return request already exists for this order (guest users have customerId = null)
+        // Check if return request already exists for this order (guest users have
+        // customerId = null)
         if (returnRequestRepository.existsByOrderIdAndCustomerId(order.getOrderId(), null)) {
             throw new RuntimeException("Return request already exists for order " + submitDTO.getOrderNumber());
         }
@@ -129,7 +130,7 @@ public class ReturnService {
         returnRequest.setReason(submitDTO.getReason());
         returnRequest.setStatus(ReturnRequest.ReturnStatus.PENDING);
         returnRequest.setSubmittedAt(LocalDateTime.now());
-        
+
         log.info("Creating guest return request with customerId=null for order {}", order.getOrderId());
 
         ReturnRequest savedRequest = returnRequestRepository.save(returnRequest);
@@ -260,8 +261,38 @@ public class ReturnService {
      */
     @Transactional(readOnly = true)
     public ReturnRequestDTO getReturnRequestById(Long id) {
-        ReturnRequest request = returnRequestRepository.findByIdWithAllData(id)
+        ReturnRequest request = returnRequestRepository.findByIdWithBasicData(id)
                 .orElseThrow(() -> new RuntimeException("Return request not found: " + id));
+
+        User requestOwner = returnRequestRepository.findCustomerByReturnRequestId(id).orElse(null);
+        if (requestOwner != null) {
+            request.setCustomer(requestOwner);
+            request.setCustomerId(requestOwner.getId());
+        }
+        log.info("The basic info loaded successfully" + request);
+        // Load return media separately
+        ReturnRequest requestWithMedia =
+        returnRequestRepository.findByIdWithMedia(id).orElse(null);
+        if (requestWithMedia != null && requestWithMedia.getReturnMedia() != null) {
+        request.setReturnMedia(requestWithMedia.getReturnMedia());
+        }
+        log.info("The media loaded successfully" + requestWithMedia);
+        // Load return items separately
+        ReturnRequest requestWithItems =
+        returnRequestRepository.findByIdWithItems(id).orElse(null);
+        if (requestWithItems != null && requestWithItems.getReturnItems() != null) {
+        request.setReturnItems(requestWithItems.getReturnItems());
+        }
+        log.info("The items loaded successfully" + requestWithItems);
+        // Load appeal data separately if it exists
+        ReturnRequest requestWithAppeal =
+        returnRequestRepository.findByIdWithAppealData(id).orElse(null);
+        if (requestWithAppeal != null && requestWithAppeal.getReturnAppeal() != null)
+        {
+        request.setReturnAppeal(requestWithAppeal.getReturnAppeal());
+        }
+        log.info("The appeal loaded successfully" + requestWithAppeal);
+
         return convertToDTO(request);
     }
 
@@ -285,13 +316,13 @@ public class ReturnService {
             String dateFrom,
             String dateTo,
             Pageable pageable) {
-        
-        log.info("Retrieving return requests with filters - status: {}, customerType: {}, search: {}", 
+
+        log.info("Retrieving return requests with filters - status: {}, customerType: {}, search: {}",
                 status, customerType, search);
 
         // Get all return requests using standard findAll to avoid query issues
         List<ReturnRequest> allRequestsList = returnRequestRepository.findAll();
-        
+
         // Apply filtering in Java
         List<ReturnRequest> filteredRequests = allRequestsList.stream()
                 .filter(rr -> {
@@ -299,7 +330,7 @@ public class ReturnService {
                     if (status != null && !rr.getStatus().equals(status)) {
                         return false;
                     }
-                    
+
                     // Customer type filter
                     if (customerType != null && !"ALL".equals(customerType)) {
                         if ("REGISTERED".equals(customerType) && rr.getCustomerId() == null) {
@@ -309,12 +340,12 @@ public class ReturnService {
                             return false;
                         }
                     }
-                    
+
                     // Search filter
                     if (search != null && !search.trim().isEmpty()) {
                         String searchLower = search.toLowerCase();
                         boolean matches = false;
-                        
+
                         // Search in order code (with safe access)
                         try {
                             if (rr.getOrder() != null && rr.getOrder().getOrderCode() != null) {
@@ -323,41 +354,41 @@ public class ReturnService {
                         } catch (Exception e) {
                             // Ignore lazy loading exceptions for search
                         }
-                        
+
                         // Search in customer info (with safe access)
                         try {
                             if (rr.getCustomer() != null) {
-                                matches |= (rr.getCustomer().getFirstName() != null && 
-                                           rr.getCustomer().getFirstName().toLowerCase().contains(searchLower));
-                                matches |= (rr.getCustomer().getLastName() != null && 
-                                           rr.getCustomer().getLastName().toLowerCase().contains(searchLower));
-                                matches |= (rr.getCustomer().getUserEmail() != null && 
-                                           rr.getCustomer().getUserEmail().toLowerCase().contains(searchLower));
+                                matches |= (rr.getCustomer().getFirstName() != null &&
+                                        rr.getCustomer().getFirstName().toLowerCase().contains(searchLower));
+                                matches |= (rr.getCustomer().getLastName() != null &&
+                                        rr.getCustomer().getLastName().toLowerCase().contains(searchLower));
+                                matches |= (rr.getCustomer().getUserEmail() != null &&
+                                        rr.getCustomer().getUserEmail().toLowerCase().contains(searchLower));
                             }
                         } catch (Exception e) {
                             // Ignore lazy loading exceptions for search
                         }
-                        
+
                         // Search in guest customer info (with safe access)
                         try {
                             if (rr.getOrder() != null && rr.getOrder().getOrderCustomerInfo() != null) {
                                 var guestInfo = rr.getOrder().getOrderCustomerInfo();
-                                matches |= (guestInfo.getEmail() != null && 
-                                           guestInfo.getEmail().toLowerCase().contains(searchLower));
-                                matches |= (guestInfo.getFirstName() != null && 
-                                           guestInfo.getFirstName().toLowerCase().contains(searchLower));
-                                matches |= (guestInfo.getLastName() != null && 
-                                           guestInfo.getLastName().toLowerCase().contains(searchLower));
+                                matches |= (guestInfo.getEmail() != null &&
+                                        guestInfo.getEmail().toLowerCase().contains(searchLower));
+                                matches |= (guestInfo.getFirstName() != null &&
+                                        guestInfo.getFirstName().toLowerCase().contains(searchLower));
+                                matches |= (guestInfo.getLastName() != null &&
+                                        guestInfo.getLastName().toLowerCase().contains(searchLower));
                             }
                         } catch (Exception e) {
                             // Ignore lazy loading exceptions for search
                         }
-                        
+
                         if (!matches) {
                             return false;
                         }
                     }
-                    
+
                     return true;
                 })
                 .sorted((rr1, rr2) -> {
@@ -369,15 +400,15 @@ public class ReturnService {
                     return rr2.getSubmittedAt().compareTo(rr1.getSubmittedAt());
                 })
                 .collect(Collectors.toList());
-        
+
         // Create a new Page with filtered results
         int start = Math.min((int) pageable.getOffset(), filteredRequests.size());
         int end = Math.min((start + pageable.getPageSize()), filteredRequests.size());
-        List<ReturnRequest> pageContent = start < filteredRequests.size() ? 
-                filteredRequests.subList(start, end) : new ArrayList<>();
-        
+        List<ReturnRequest> pageContent = start < filteredRequests.size() ? filteredRequests.subList(start, end)
+                : new ArrayList<>();
+
         Page<ReturnRequest> filteredPage = new PageImpl<>(pageContent, pageable, filteredRequests.size());
-        
+
         return filteredPage.map(this::convertToDTO);
     }
 
@@ -409,11 +440,11 @@ public class ReturnService {
         if (order.getOrderStatus() != Order.OrderStatus.DELIVERED) {
             throw new RuntimeException("Order must be delivered to be eligible for return");
         }
-        if(order.getOrderStatus() == Order.OrderStatus.RETURNED) {
+        if (order.getOrderStatus() == Order.OrderStatus.RETURNED) {
             throw new RuntimeException("Order is already returned");
         }
 
-        if(order.getOrderTransaction().getStatus() != OrderTransaction.TransactionStatus.COMPLETED) {
+        if (order.getOrderTransaction().getStatus() != OrderTransaction.TransactionStatus.COMPLETED) {
             throw new RuntimeException("Order transaction is not completed");
         }
         return order;
@@ -449,7 +480,8 @@ public class ReturnService {
         if (deliveryDate == null) {
             throw new RuntimeException("Order delivery date not found");
         }
-        // Note: Individual item return period validation is now handled in validateReturnItemsEligibility()
+        // Note: Individual item return period validation is now handled in
+        // validateReturnItemsEligibility()
     }
 
     private int getReturnDaysForOrder(Order order) {
@@ -636,7 +668,7 @@ public class ReturnService {
         ReturnRequestDTO dto = new ReturnRequestDTO();
         dto.setId(returnRequest.getId());
         dto.setOrderId(returnRequest.getOrderId());
-        if(returnRequest.getCustomerId() != null){
+        if (returnRequest.getCustomerId() != null) {
             dto.setCustomerId(returnRequest.getCustomerId());
         }
         dto.setReason(returnRequest.getReason());
@@ -683,21 +715,24 @@ public class ReturnService {
         try {
             if (returnRequest.getOrder() != null) {
                 dto.setOrderNumber(returnRequest.getOrder().getOrderCode());
-                
+
                 // For registered customers
                 if (returnRequest.getCustomerId() != null && returnRequest.getCustomer() != null) {
-                    dto.setCustomerName(returnRequest.getCustomer().getFirstName() + " " + returnRequest.getCustomer().getLastName());
+                    dto.setCustomerName(returnRequest.getCustomer().getFirstName() + " "
+                            + returnRequest.getCustomer().getLastName());
                     dto.setCustomerEmail(returnRequest.getCustomer().getUserEmail());
-                } 
+                }
                 // For guest customers - get info from OrderCustomerInfo
-                else if (returnRequest.getCustomerId() == null && returnRequest.getOrder().getOrderCustomerInfo() != null) {
+                else if (returnRequest.getCustomerId() == null
+                        && returnRequest.getOrder().getOrderCustomerInfo() != null) {
                     OrderCustomerInfo customerInfo = returnRequest.getOrder().getOrderCustomerInfo();
                     dto.setCustomerName(customerInfo.getFullName());
                     dto.setCustomerEmail(customerInfo.getEmail());
                 }
             }
         } catch (Exception e) {
-            log.warn("Could not load order/customer information for return request {}: {}", returnRequest.getId(), e.getMessage());
+            log.warn("Could not load order/customer information for return request {}: {}", returnRequest.getId(),
+                    e.getMessage());
             // Set basic info if available
             dto.setOrderNumber("Order #" + returnRequest.getOrderId());
         }
@@ -803,7 +838,7 @@ public class ReturnService {
         Set<Long> orderItemIds = returnItems.stream()
                 .map(ReturnItemDTO::getOrderItemId)
                 .collect(Collectors.toSet());
-        
+
         if (orderItemIds.size() != returnItems.size()) {
             throw new IllegalArgumentException("Duplicate items found in return request");
         }
@@ -818,7 +853,7 @@ public class ReturnService {
                 .filter(oi -> oi.getOrderItemId().equals(returnItemDTO.getOrderItemId()))
                 .findFirst()
                 .orElseThrow(() -> new IllegalArgumentException(
-                    "Order item with ID " + returnItemDTO.getOrderItemId() + " not found in this order"));
+                        "Order item with ID " + returnItemDTO.getOrderItemId() + " not found in this order"));
 
         // Validate return quantity
         if (returnItemDTO.getReturnQuantity() <= 0) {
@@ -827,10 +862,10 @@ public class ReturnService {
 
         if (returnItemDTO.getReturnQuantity() > orderItem.getQuantity()) {
             throw new IllegalArgumentException(
-                String.format("Cannot return %d items of %s. Only %d were ordered.",
-                    returnItemDTO.getReturnQuantity(),
-                    getItemDisplayName(orderItem),
-                    orderItem.getQuantity()));
+                    String.format("Cannot return %d items of %s. Only %d were ordered.",
+                            returnItemDTO.getReturnQuantity(),
+                            getItemDisplayName(orderItem),
+                            orderItem.getQuantity()));
         }
 
         // Check if there are already existing returns for this order item
@@ -839,11 +874,11 @@ public class ReturnService {
 
         if (returnItemDTO.getReturnQuantity() > availableForReturn) {
             throw new IllegalArgumentException(
-                String.format("Cannot return %d items of %s. Only %d available for return (already returned: %d).",
-                    returnItemDTO.getReturnQuantity(),
-                    getItemDisplayName(orderItem),
-                    availableForReturn,
-                    alreadyReturned));
+                    String.format("Cannot return %d items of %s. Only %d available for return (already returned: %d).",
+                            returnItemDTO.getReturnQuantity(),
+                            getItemDisplayName(orderItem),
+                            availableForReturn,
+                            alreadyReturned));
         }
 
         // Populate additional info for validation response
@@ -851,7 +886,8 @@ public class ReturnService {
         returnItemDTO.setVariantId(orderItem.isVariantBased() ? orderItem.getProductVariant().getId() : null);
         returnItemDTO.setMaxQuantity(availableForReturn);
         returnItemDTO.setProductName(orderItem.getEffectiveProduct().getProductName());
-        returnItemDTO.setVariantName(orderItem.isVariantBased() ? orderItem.getProductVariant().getVariantName() : null);
+        returnItemDTO
+                .setVariantName(orderItem.isVariantBased() ? orderItem.getProductVariant().getVariantName() : null);
     }
 
     /**
@@ -875,31 +911,32 @@ public class ReturnService {
             returnItem.setItemReason(returnItemDTO.getItemReason());
 
             // Debug logging to understand the order item structure
-            log.info("Processing return item for order item {}: isVariantBased={}, hasProduct={}, hasVariant={}", 
-                    orderItem.getOrderItemId(), 
+            log.info("Processing return item for order item {}: isVariantBased={}, hasProduct={}, hasVariant={}",
+                    orderItem.getOrderItemId(),
                     orderItem.isVariantBased(),
                     orderItem.getProduct() != null,
                     orderItem.getProductVariant() != null);
 
             // Set product or variant reference to exactly match order item structure
             if (orderItem.isVariantBased()) {
-                // For variant-based items, set only the variant (product should be null to match order item)
+                // For variant-based items, set only the variant (product should be null to
+                // match order item)
                 returnItem.setProductVariant(orderItem.getProductVariant());
                 returnItem.setProduct(null);
-                log.info("Set return item as variant-based: variant={}, product=null", 
+                log.info("Set return item as variant-based: variant={}, product=null",
                         orderItem.getProductVariant().getId());
             } else {
                 // For non-variant items, set only the product (variant should be null)
                 returnItem.setProduct(orderItem.getProduct());
                 returnItem.setProductVariant(null);
-                log.info("Set return item as product-based: product={}, variant=null", 
+                log.info("Set return item as product-based: product={}, variant=null",
                         orderItem.getProduct().getProductId());
             }
 
             returnItemRepository.save(returnItem);
         }
 
-        log.info("Created {} return items for return request {}", 
+        log.info("Created {} return items for return request {}",
                 returnItemDTOs.size(), returnRequest.getId());
     }
 
@@ -913,7 +950,7 @@ public class ReturnService {
         }
 
         List<OrderItem> orderItems = order.getOrderItems();
-        
+
         for (ReturnItemDTO returnItemDTO : returnItems) {
             // Find the corresponding order item
             OrderItem orderItem = orderItems.stream()
@@ -923,26 +960,27 @@ public class ReturnService {
 
             // Get the product (either direct product or variant's parent product)
             Product product = orderItem.getEffectiveProduct();
-            
+
             // Get return days for this specific product
             Integer productReturnDays = product.getMaximumDaysForReturn();
             if (productReturnDays == null || productReturnDays <= 0) {
-                productReturnDays = DEFAULT_RETURN_DAYS; 
+                productReturnDays = DEFAULT_RETURN_DAYS;
             }
 
             // Calculate return deadline for this specific item
             LocalDateTime returnDeadline = deliveryDate.plusDays(productReturnDays);
-            
+
             if (LocalDateTime.now().isAfter(returnDeadline)) {
                 String itemName = getItemDisplayName(orderItem);
                 throw new IllegalArgumentException(
-                    String.format("Return period has expired for %s. Returns must be submitted within %d days of delivery (deadline was %s).",
-                        itemName,
-                        productReturnDays,
-                        returnDeadline.toLocalDate()));
+                        String.format(
+                                "Return period has expired for %s. Returns must be submitted within %d days of delivery (deadline was %s).",
+                                itemName,
+                                productReturnDays,
+                                returnDeadline.toLocalDate()));
             }
         }
-        
+
     }
 
     /**
@@ -950,7 +988,8 @@ public class ReturnService {
      */
     private String getItemDisplayName(OrderItem orderItem) {
         if (orderItem.isVariantBased()) {
-            return orderItem.getEffectiveProduct().getProductName() + " (" + orderItem.getProductVariant().getVariantName() + ")";
+            return orderItem.getEffectiveProduct().getProductName() + " ("
+                    + orderItem.getProductVariant().getVariantName() + ")";
         }
         return orderItem.getEffectiveProduct().getProductName();
     }
