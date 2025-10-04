@@ -2,6 +2,7 @@ package com.ecommerce.controller;
 
 import com.ecommerce.dto.ReturnRequestDTO;
 import com.ecommerce.dto.DeliveryAgentReturnTableDTO;
+import com.ecommerce.dto.DeliveryAgentReturnDetailsDTO;
 import com.ecommerce.entity.ReturnRequest;
 import com.ecommerce.entity.User;
 import com.ecommerce.repository.UserRepository;
@@ -100,6 +101,26 @@ public class DeliveryAgentReturnController {
         } catch (Exception e) {
             log.error("Error retrieving return request {}: {}", returnRequestId, e.getMessage(), e);
             throw new RuntimeException("Failed to retrieve return request: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Get comprehensive return request details for delivery agent
+     */
+    @GetMapping("/{returnRequestId}/details")
+    public ResponseEntity<DeliveryAgentReturnDetailsDTO> getReturnRequestDetails(@PathVariable Long returnRequestId) {
+        try {
+            UUID deliveryAgentId = getCurrentUserId();
+            
+            DeliveryAgentReturnDetailsDTO returnRequestDetails = deliveryAgentReturnService.getReturnRequestDetails(
+                returnRequestId, deliveryAgentId
+            );
+            
+            return ResponseEntity.ok(returnRequestDetails);
+            
+        } catch (Exception e) {
+            log.error("Error retrieving return request details {}: {}", returnRequestId, e.getMessage(), e);
+            throw new RuntimeException("Failed to retrieve return request details: " + e.getMessage());
         }
     }
 

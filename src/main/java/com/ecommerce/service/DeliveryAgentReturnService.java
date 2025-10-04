@@ -2,6 +2,7 @@ package com.ecommerce.service;
 
 import com.ecommerce.dto.ReturnRequestDTO;
 import com.ecommerce.dto.DeliveryAgentReturnTableDTO;
+import com.ecommerce.dto.DeliveryAgentReturnDetailsDTO;
 import com.ecommerce.entity.ReturnRequest;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -29,6 +30,11 @@ public interface DeliveryAgentReturnService {
      * Get return request by ID if assigned to the delivery agent
      */
     ReturnRequestDTO getReturnRequestById(Long returnRequestId, UUID deliveryAgentId);
+
+    /**
+     * Get comprehensive return request details for delivery agent
+     */
+    DeliveryAgentReturnDetailsDTO getReturnRequestDetails(Long returnRequestId, UUID deliveryAgentId);
 
     /**
      * Update delivery status of a return request

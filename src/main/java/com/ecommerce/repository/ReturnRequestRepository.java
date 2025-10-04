@@ -306,4 +306,25 @@ public interface ReturnRequestRepository extends JpaRepository<ReturnRequest, Lo
               "WHERE rr.deliveryStatus = :deliveryStatus")
        Page<ReturnRequest> findByDeliveryStatusWithDetails(@Param("deliveryStatus") DeliveryStatus deliveryStatus, 
                                                           Pageable pageable);
+
+       /**
+        * Find return request with all delivery details including OrderAddress and OrderCustomerInfo
+        */
+       @Query("SELECT DISTINCT rr FROM ReturnRequest rr " +
+              "LEFT JOIN FETCH rr.deliveryAgent da " +
+              "LEFT JOIN FETCH rr.order o " +
+              "LEFT JOIN FETCH o.orderAddress oa " +
+              "LEFT JOIN FETCH o.orderCustomerInfo oci " +
+              "LEFT JOIN FETCH rr.customer c " +
+              "WHERE rr.id = :id")
+       Optional<ReturnRequest> findByIdWithCompleteDeliveryDetails(@Param("id") Long id);
+
+       /**
+        * Check if OrderAddress exists for a specific return request's order
+        */
+       @Query("SELECT COUNT(oa) > 0 FROM ReturnRequest rr " +
+              "JOIN rr.order o " +
+              "JOIN o.orderAddress oa " +
+              "WHERE rr.id = :returnRequestId")
+       boolean hasOrderAddressForReturnRequest(@Param("returnRequestId") Long returnRequestId);
 }
