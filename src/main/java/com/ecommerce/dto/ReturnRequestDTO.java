@@ -7,9 +7,11 @@ import lombok.NoArgsConstructor;
 
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.UUID;
+import com.ecommerce.entity.OrderAddress;
 
 @Data
 @NoArgsConstructor
@@ -32,6 +34,7 @@ public class ReturnRequestDTO {
     private String decisionNotes;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
+    private ReturnRequest.DeliveryStatus deliveryStatus;
     
     // Related data
     private List<ReturnMediaDTO> returnMedia;
@@ -39,7 +42,15 @@ public class ReturnRequestDTO {
     private ReturnAppealDTO returnAppeal;
     private String customerName;
     private String customerEmail;
+    private String customerPhone;
     private String orderNumber;
+    private LocalDateTime orderDate;
+    private BigDecimal totalAmount;
+    private OrderAddress shippingAddress;
+    
+    // Delivery agent information
+    private UUID deliveryAgentId;
+    private String deliveryAgentName;
     
     // Helper fields
     private boolean canBeAppealed;
