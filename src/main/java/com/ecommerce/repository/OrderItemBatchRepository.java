@@ -22,4 +22,22 @@ public interface OrderItemBatchRepository extends JpaRepository<OrderItemBatch, 
 
     @Query("SELECT SUM(oib.quantityUsed) FROM OrderItemBatch oib WHERE oib.stockBatch.id = :stockBatchId")
     Integer getTotalQuantityUsedFromBatch(@Param("stockBatchId") Long stockBatchId);
+
+    /**
+     * Find all batches used for a specific return item (via OrderItem)
+     */
+    @Query("SELECT oib FROM OrderItemBatch oib " +
+           "JOIN oib.orderItem oi " +
+           "JOIN ReturnItem ri ON ri.orderItem.orderItemId = oi.orderItemId " +
+           "WHERE ri.id = :returnItemId")
+    List<OrderItemBatch> findByReturnItemId(@Param("returnItemId") Long returnItemId);
+
+    /**
+     * Find batches for multiple return items
+     */
+    @Query("SELECT oib FROM OrderItemBatch oib " +
+           "JOIN oib.orderItem oi " +
+           "JOIN ReturnItem ri ON ri.orderItem.orderItemId = oi.orderItemId " +
+           "WHERE ri.id IN :returnItemIds")
+    List<OrderItemBatch> findByReturnItemIds(@Param("returnItemIds") List<Long> returnItemIds);
 }

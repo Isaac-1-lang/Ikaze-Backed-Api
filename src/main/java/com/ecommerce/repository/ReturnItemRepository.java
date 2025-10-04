@@ -46,4 +46,9 @@ public interface ReturnItemRepository extends JpaRepository<ReturnItem, Long> {
      */
     @Query("SELECT ri FROM ReturnItem ri WHERE ri.productVariant.id = :variantId")
     List<ReturnItem> findByVariantId(@Param("variantId") Long variantId);
+
+    /**
+     * Find all return items for a specific return request (alternative method name)
+     */
+    List<ReturnItem> findByReturnRequest_Id(Long returnRequestId);
 }
