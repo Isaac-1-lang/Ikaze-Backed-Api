@@ -7,7 +7,6 @@ import com.ecommerce.entity.OrderItem;
 import com.ecommerce.entity.OrderTransaction;
 import com.ecommerce.entity.Product;
 import com.ecommerce.entity.ProductImage;
-import com.ecommerce.entity.ProductVariant;
 import com.ecommerce.dto.OrderResponseDTO;
 import com.ecommerce.dto.OrderItemDTO;
 import com.ecommerce.dto.OrderAddressDTO;
@@ -15,7 +14,11 @@ import com.ecommerce.dto.OrderCustomerInfoDTO;
 import com.ecommerce.dto.OrderTransactionDTO;
 import com.ecommerce.dto.SimpleProductDTO;
 import com.ecommerce.dto.CreateOrderDTO;
+import com.ecommerce.dto.OrderTrackingRequestDTO;
+import com.ecommerce.dto.OrderTrackingResponseDTO;
+import com.ecommerce.dto.OrderSummaryDTO;
 import com.ecommerce.service.OrderService;
+import com.ecommerce.service.OrderTrackingService;
 import java.time.LocalDateTime;
 import com.ecommerce.repository.UserRepository;
 import io.swagger.v3.oas.annotations.Operation;
@@ -30,6 +33,9 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 import org.springframework.web.bind.annotation.*;
 import jakarta.validation.Valid;
 import jakarta.persistence.EntityNotFoundException;
@@ -165,6 +171,7 @@ public class OrderController {
     }
 
     private final OrderService orderService;
+    private final OrderTrackingService orderTrackingService;
     private final UserRepository userRepository;
 
     @GetMapping
@@ -508,7 +515,7 @@ public class OrderController {
         OrderTransaction tx = order.getOrderTransaction();
 
         OrderResponseDTO dto = new OrderResponseDTO();
-        dto.setId(order.getOrderId() != null ? order.getOrderId().toString() : null);
+        dto.setId(order.getOrderId());
         dto.setUserId(
                 order.getUser() != null && order.getUser().getId() != null ? order.getUser().getId().toString() : null);
         dto.setOrderNumber(order.getOrderCode());
@@ -519,27 +526,10 @@ public class OrderController {
         dto.setUpdatedAt(order.getUpdatedAt());
 
         if (order.getUser() != null) {
-            OrderCustomerInfoDTO customerInfo = new OrderCustomerInfoDTO();
-            customerInfo.setFirstName(order.getUser().getFirstName());
-            customerInfo.setLastName(order.getUser().getLastName());
+            OrderResponseDTO.CustomerInfo customerInfo = new OrderResponseDTO.CustomerInfo();
+            customerInfo.setName(order.getUser().getFirstName() + " " + order.getUser().getLastName());
             customerInfo.setEmail(order.getUser().getUserEmail());
-            customerInfo.setPhoneNumber(order.getUser().getPhoneNumber());
-
-            if (addr != null) {
-                customerInfo.setStreetAddress(addr.getStreet());
-                customerInfo.setCountry(addr.getCountry());
-
-                if (addr.getRegions() != null && !addr.getRegions().isEmpty()) {
-                    String[] regions = addr.getRegions().split(",");
-                    if (regions.length >= 2) {
-                        customerInfo.setCity(regions[0].trim());
-                        customerInfo.setState(regions[1].trim());
-                    } else if (regions.length == 1) {
-                        customerInfo.setCity(regions[0].trim());
-                        customerInfo.setState("");
-                    }
-                }
-            }
+            customerInfo.setPhone(order.getUser().getPhoneNumber());
             dto.setCustomerInfo(customerInfo);
         }
 
@@ -553,27 +543,23 @@ public class OrderController {
             dto.setNotes(info.getNotes());
         }
 
-        // Set shipping address with all fields including lat/lng
+        // Set shipping address
         if (addr != null) {
-            OrderAddressDTO ad = new OrderAddressDTO();
-            ad.setId(addr.getOrderAddressId() != null ? addr.getOrderAddressId().toString() : null);
-            ad.setStreet(addr.getStreet());
-            ad.setCountry(addr.getCountry());
-            ad.setLatitude(addr.getLatitude());
-            ad.setLongitude(addr.getLongitude());
-            ad.setRoadName(addr.getRoadName());
+            OrderResponseDTO.ShippingAddress shippingAddress = new OrderResponseDTO.ShippingAddress();
+            shippingAddress.setStreet(addr.getStreet());
+            shippingAddress.setCountry(addr.getCountry());
 
             if (addr.getRegions() != null && !addr.getRegions().isEmpty()) {
                 String[] regions = addr.getRegions().split(",");
                 if (regions.length >= 2) {
-                    ad.setCity(regions[0].trim());
-                    ad.setState(regions[1].trim());
+                    shippingAddress.setCity(regions[0].trim());
+                    shippingAddress.setState(regions[1].trim());
                 } else if (regions.length == 1) {
-                    ad.setCity(regions[0].trim());
-                    ad.setState("");
+                    shippingAddress.setCity(regions[0].trim());
+                    shippingAddress.setState("");
                 }
             }
-            dto.setShippingAddress(ad);
+            dto.setShippingAddress(shippingAddress);
         }
 
         // Set payment information
@@ -601,7 +587,7 @@ public class OrderController {
         }
 
         if (order.getOrderItems() != null && !order.getOrderItems().isEmpty()) {
-            List<OrderItemDTO> itemDTOs = order.getOrderItems().stream().map(this::mapOrderItemToDTO).toList();
+            List<OrderResponseDTO.OrderItem> itemDTOs = order.getOrderItems().stream().map(this::mapOrderItemToResponseDTO).toList();
             dto.setItems(itemDTOs);
         }
 
@@ -651,6 +637,37 @@ public class OrderController {
         }
         calculateReturnEligibility(dto, item);
 
+        return dto;
+    }
+
+    private OrderResponseDTO.OrderItem mapOrderItemToResponseDTO(OrderItem item) {
+        OrderResponseDTO.OrderItem dto = new OrderResponseDTO.OrderItem();
+        dto.setId(item.getOrderItemId());
+        dto.setQuantity(item.getQuantity());
+        dto.setPrice(item.getPrice());
+        dto.setTotalPrice(item.getSubtotal());
+        
+        // Set product info
+        if (item.getProduct() != null) {
+            OrderResponseDTO.Product product = new OrderResponseDTO.Product();
+            product.setId(item.getProduct().getProductId());
+            product.setName(item.getProduct().getProductName());
+            dto.setProduct(product);
+        }
+        
+        // Set variant info if available
+        if (item.getProductVariant() != null) {
+            OrderResponseDTO.Variant variant = new OrderResponseDTO.Variant();
+            variant.setId(item.getProductVariant().getId());
+            variant.setName(item.getProductVariant().getVariantName());
+            dto.setVariant(variant);
+        }
+        
+        // Set return eligibility (placeholder)
+        dto.setReturnEligible(true);
+        dto.setMaxReturnDays(30);
+        dto.setDaysRemainingForReturn(25);
+        
         return dto;
     }
 
@@ -707,75 +724,113 @@ public class OrderController {
     }
 
     /**
-     * Track order by order number (public endpoint)
+     * Request secure tracking access via email (public endpoint)
      */
-    @GetMapping("/track/{orderNumber}")
-    @Operation(summary = "Track order by order number", description = "Public endpoint to track order status by order number", responses = {
-            @ApiResponse(responseCode = "200", description = "Order found", content = @Content(schema = @Schema(implementation = OrderResponseDTO.class))),
-            @ApiResponse(responseCode = "404", description = "Order not found"),
+    @PostMapping("/track/request-access")
+    @Operation(summary = "Request tracking access", description = "Request secure tracking access via email verification", responses = {
+            @ApiResponse(responseCode = "200", description = "Access request processed"),
+            @ApiResponse(responseCode = "400", description = "Invalid request"),
             @ApiResponse(responseCode = "500", description = "Internal server error")
     })
-    public ResponseEntity<?> trackOrderByNumber(@PathVariable String orderNumber) {
+    public ResponseEntity<?> requestTrackingAccess(@Valid @RequestBody OrderTrackingRequestDTO request) {
         try {
-            Order order = orderService.getOrderByOrderCode(orderNumber);
-            if (order == null) {
-                Map<String, Object> response = new HashMap<>();
-                response.put("success", false);
-                response.put("message", "Order not found");
-                response.put("errorCode", "NOT_FOUND");
-                response.put("details", "No order found with order number: " + orderNumber);
-                return ResponseEntity.status(HttpStatus.NOT_FOUND).body(response);
+            OrderTrackingResponseDTO response = orderTrackingService.requestTrackingAccess(request);
+            
+            Map<String, Object> responseMap = new HashMap<>();
+            responseMap.put("success", response.isSuccess());
+            responseMap.put("message", response.getMessage());
+            
+            if (response.isSuccess()) {
+                responseMap.put("expiresAt", response.getExpiresAt());
+                responseMap.put("trackingUrl", response.getTrackingUrl());
             }
-
-            OrderResponseDTO orderResponse = toDto(order);
-            Map<String, Object> response = new HashMap<>();
-            response.put("success", true);
-            response.put("data", orderResponse);
-            return ResponseEntity.ok(response);
+            
+            return ResponseEntity.ok(responseMap);
         } catch (Exception e) {
-            log.error("Failed to track order by number: {}", orderNumber, e);
+            log.error("Failed to process tracking access request", e);
             Map<String, Object> response = new HashMap<>();
             response.put("success", false);
-            response.put("message", "An unexpected error occurred while tracking order.");
-            response.put("errorCode", "INTERNAL_ERROR");
-            response.put("details", e.getMessage());
+            response.put("message", "Failed to process tracking request. Please try again later.");
             return ResponseEntity.internalServerError().body(response);
         }
     }
 
     /**
-     * Track order by pickup token (public endpoint)
+     * Get orders by tracking token (public endpoint)
      */
-    @GetMapping("/track/token/{pickupToken}")
-    @Operation(summary = "Track order by pickup token", description = "Public endpoint to track order status by pickup token", responses = {
-            @ApiResponse(responseCode = "200", description = "Order found", content = @Content(schema = @Schema(implementation = OrderResponseDTO.class))),
+    @GetMapping("/track/orders")
+    @Operation(summary = "Get orders by token", description = "Get paginated list of orders using tracking token", responses = {
+            @ApiResponse(responseCode = "200", description = "Orders retrieved successfully"),
+            @ApiResponse(responseCode = "401", description = "Invalid or expired token"),
+            @ApiResponse(responseCode = "500", description = "Internal server error")
+    })
+    public ResponseEntity<?> getOrdersByToken(
+            @RequestParam String token,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "10") int size) {
+        try {
+            Pageable pageable = PageRequest.of(page, size);
+            Page<OrderSummaryDTO> orders = orderTrackingService.getOrdersByToken(token, pageable);
+            
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", true);
+            response.put("data", orders.getContent());
+            response.put("totalElements", orders.getTotalElements());
+            response.put("totalPages", orders.getTotalPages());
+            response.put("currentPage", orders.getNumber());
+            response.put("pageSize", orders.getSize());
+            
+            return ResponseEntity.ok(response);
+        } catch (IllegalArgumentException e) {
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", false);
+            response.put("message", e.getMessage());
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(response);
+        } catch (Exception e) {
+            log.error("Failed to get orders by token", e);
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", false);
+            response.put("message", "Failed to retrieve orders. Please try again later.");
+            return ResponseEntity.internalServerError().body(response);
+        }
+    }
+
+    /**
+     * Get specific order by tracking token and order ID (public endpoint)
+     */
+    @GetMapping("/track/order/{orderId}")
+    @Operation(summary = "Get order by token and ID", description = "Get specific order details using tracking token and order ID", responses = {
+            @ApiResponse(responseCode = "200", description = "Order retrieved successfully"),
+            @ApiResponse(responseCode = "401", description = "Invalid or expired token"),
             @ApiResponse(responseCode = "404", description = "Order not found"),
             @ApiResponse(responseCode = "500", description = "Internal server error")
     })
-    public ResponseEntity<?> trackOrderByToken(@PathVariable String pickupToken) {
+    public ResponseEntity<?> getOrderByTokenAndId(
+            @PathVariable Long orderId,
+            @RequestParam String token) {
         try {
-            Order order = orderService.getOrderByPickupToken(pickupToken);
-            if (order == null) {
-                Map<String, Object> response = new HashMap<>();
-                response.put("success", false);
-                response.put("message", "Order not found");
-                response.put("errorCode", "NOT_FOUND");
-                response.put("details", "No order found with pickup token: " + pickupToken);
-                return ResponseEntity.status(HttpStatus.NOT_FOUND).body(response);
-            }
-
-            OrderResponseDTO orderResponse = toDto(order);
+            OrderResponseDTO order = orderTrackingService.getOrderByTokenAndId(token, orderId);
+            
             Map<String, Object> response = new HashMap<>();
             response.put("success", true);
-            response.put("data", orderResponse);
+            response.put("data", order);
+            
             return ResponseEntity.ok(response);
-        } catch (Exception e) {
-            log.error("Failed to track order by token: {}", pickupToken, e);
+        } catch (IllegalArgumentException e) {
             Map<String, Object> response = new HashMap<>();
             response.put("success", false);
-            response.put("message", "An unexpected error occurred while tracking order.");
-            response.put("errorCode", "INTERNAL_ERROR");
-            response.put("details", e.getMessage());
+            response.put("message", e.getMessage());
+            
+            if (e.getMessage().contains("Invalid or expired")) {
+                return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(response);
+            } else {
+                return ResponseEntity.status(HttpStatus.NOT_FOUND).body(response);
+            }
+        } catch (Exception e) {
+            log.error("Failed to get order by token and ID: {}", orderId, e);
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", false);
+            response.put("message", "Failed to retrieve order details. Please try again later.");
             return ResponseEntity.internalServerError().body(response);
         }
     }

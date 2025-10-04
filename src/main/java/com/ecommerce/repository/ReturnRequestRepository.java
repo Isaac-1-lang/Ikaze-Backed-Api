@@ -327,4 +327,10 @@ public interface ReturnRequestRepository extends JpaRepository<ReturnRequest, Lo
               "JOIN o.orderAddress oa " +
               "WHERE rr.id = :returnRequestId")
        boolean hasOrderAddressForReturnRequest(@Param("returnRequestId") Long returnRequestId);
+
+       /**
+        * Find return request by order number
+        */
+       @Query("SELECT rr FROM ReturnRequest rr JOIN rr.order o WHERE o.orderCode = :orderNumber")
+       Optional<ReturnRequest> findByOrderNumber(@Param("orderNumber") String orderNumber);
 }

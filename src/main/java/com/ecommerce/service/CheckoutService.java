@@ -918,7 +918,7 @@ public class CheckoutService {
         OrderTransaction tx = order.getOrderTransaction();
 
         OrderResponseDTO dto = new OrderResponseDTO();
-        dto.setId(order.getOrderId() != null ? order.getOrderId().toString() : null);
+        dto.setId(order.getOrderId());
         dto.setUserId(
                 order.getUser() != null && order.getUser().getId() != null ? order.getUser().getId().toString() : null);
         dto.setOrderNumber(order.getOrderCode());
@@ -930,15 +930,10 @@ public class CheckoutService {
 
         // Set customer information from OrderCustomerInfo entity
         if (order.getOrderCustomerInfo() != null) {
-            OrderCustomerInfoDTO customerInfo = new OrderCustomerInfoDTO();
-            customerInfo.setFirstName(order.getOrderCustomerInfo().getFirstName());
-            customerInfo.setLastName(order.getOrderCustomerInfo().getLastName());
+            OrderResponseDTO.CustomerInfo customerInfo = new OrderResponseDTO.CustomerInfo();
+            customerInfo.setName(order.getOrderCustomerInfo().getFirstName() + " " + order.getOrderCustomerInfo().getLastName());
             customerInfo.setEmail(order.getOrderCustomerInfo().getEmail());
-            customerInfo.setPhoneNumber(order.getOrderCustomerInfo().getPhoneNumber());
-            customerInfo.setStreetAddress(order.getOrderCustomerInfo().getStreetAddress());
-            customerInfo.setCity(order.getOrderCustomerInfo().getCity());
-            customerInfo.setState(order.getOrderCustomerInfo().getState());
-            customerInfo.setCountry(order.getOrderCustomerInfo().getCountry());
+            customerInfo.setPhone(order.getOrderCustomerInfo().getPhoneNumber());
             dto.setCustomerInfo(customerInfo);
             log.info("The customer info are: " + customerInfo);
         }
@@ -954,25 +949,21 @@ public class CheckoutService {
         }
 
         if (addr != null) {
-            OrderAddressDTO ad = new OrderAddressDTO();
-            ad.setId(addr.getOrderAddressId() != null ? addr.getOrderAddressId().toString() : null);
-            ad.setStreet(addr.getStreet());
-            ad.setCountry(addr.getCountry());
-            ad.setLatitude(addr.getLatitude());
-            ad.setLongitude(addr.getLongitude());
-            ad.setRoadName(addr.getRoadName());
+            OrderResponseDTO.ShippingAddress shippingAddress = new OrderResponseDTO.ShippingAddress();
+            shippingAddress.setStreet(addr.getStreet());
+            shippingAddress.setCountry(addr.getCountry());
 
             if (addr.getRegions() != null && !addr.getRegions().isEmpty()) {
                 String[] regions = addr.getRegions().split(",");
                 if (regions.length >= 2) {
-                    ad.setCity(regions[0].trim());
-                    ad.setState(regions[1].trim());
+                    shippingAddress.setCity(regions[0].trim());
+                    shippingAddress.setState(regions[1].trim());
                 } else if (regions.length == 1) {
-                    ad.setCity(regions[0].trim());
-                    ad.setState("");
+                    shippingAddress.setCity(regions[0].trim());
+                    shippingAddress.setState("");
                 }
             }
-            dto.setShippingAddress(ad);
+            dto.setShippingAddress(shippingAddress);
         }
 
         // Set payment information
@@ -1001,7 +992,7 @@ public class CheckoutService {
 
         // Set order items with product/variant information
         if (order.getOrderItems() != null && !order.getOrderItems().isEmpty()) {
-            List<OrderItemDTO> itemDTOs = order.getOrderItems().stream().map(this::mapOrderItemToDTO).toList();
+            List<OrderResponseDTO.OrderItem> itemDTOs = order.getOrderItems().stream().map(this::mapOrderItemToResponseDTO).toList();
             dto.setItems(itemDTOs);
         }
 
@@ -1095,6 +1086,37 @@ public class CheckoutService {
             dto.setVariant(variantDto);
         }
 
+        return dto;
+    }
+
+    private OrderResponseDTO.OrderItem mapOrderItemToResponseDTO(OrderItem item) {
+        OrderResponseDTO.OrderItem dto = new OrderResponseDTO.OrderItem();
+        dto.setId(item.getOrderItemId());
+        dto.setQuantity(item.getQuantity());
+        dto.setPrice(item.getPrice());
+        dto.setTotalPrice(item.getSubtotal());
+        
+        // Set product info
+        if (item.getProduct() != null) {
+            OrderResponseDTO.Product product = new OrderResponseDTO.Product();
+            product.setId(item.getProduct().getProductId());
+            product.setName(item.getProduct().getProductName());
+            dto.setProduct(product);
+        }
+        
+        // Set variant info if available
+        if (item.getProductVariant() != null) {
+            OrderResponseDTO.Variant variant = new OrderResponseDTO.Variant();
+            variant.setId(item.getProductVariant().getId());
+            variant.setName(item.getProductVariant().getVariantName());
+            dto.setVariant(variant);
+        }
+        
+        // Set return eligibility (placeholder)
+        dto.setReturnEligible(true);
+        dto.setMaxReturnDays(30);
+        dto.setDaysRemainingForReturn(25);
+        
         return dto;
     }
 

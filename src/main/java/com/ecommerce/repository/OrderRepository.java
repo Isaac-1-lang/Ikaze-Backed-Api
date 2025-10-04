@@ -222,4 +222,16 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
                "AND o.createdAt < :cutoffTime")
         boolean isOrderAbandoned(@Param("orderId") Long orderId, @Param("cutoffTime") LocalDateTime cutoffTime);
 
+        /**
+         * Find orders by customer email
+         */
+        @Query("SELECT o FROM Order o JOIN o.orderCustomerInfo ci WHERE LOWER(ci.email) = LOWER(:email)")
+        List<Order> findByCustomerInfoEmail(@Param("email") String email);
+
+        /**
+         * Find orders by customer email with pagination
+         */
+        @Query("SELECT o FROM Order o JOIN o.orderCustomerInfo ci WHERE LOWER(ci.email) = LOWER(:email) ORDER BY o.createdAt DESC")
+        Page<Order> findByCustomerInfoEmailWithPagination(@Param("email") String email, Pageable pageable);
+
 }
