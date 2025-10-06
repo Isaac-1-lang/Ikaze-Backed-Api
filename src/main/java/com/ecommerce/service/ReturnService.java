@@ -17,6 +17,7 @@ import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -34,6 +35,7 @@ public class ReturnService {
     private final NotificationService notificationService;
     private final RefundService refundService;
     private final CloudinaryService cloudinaryService;
+    private final OrderTrackingTokenRepository orderTrackingTokenRepository;
 
     private static final int DEFAULT_RETURN_DAYS = 15;
     private static final int MAX_IMAGES = 5;
@@ -95,23 +97,39 @@ public class ReturnService {
         return convertToDTO(savedRequest);
     }
 
-    public ReturnRequestDTO submitGuestReturnRequest(SubmitGuestReturnRequestDTO submitDTO,
-            MultipartFile[] mediaFiles) {
-        log.info("Processing GUEST return request submission for order number {} with pickup token",
+    /**
+     * Submit a return request using tracking token (for guest users with email verification)
+     */
+    public ReturnRequestDTO submitTokenizedReturnRequest(TokenizedReturnRequestDTO submitDTO, MultipartFile[] mediaFiles) {
+        log.info("Processing tokenized return request for order number {} with tracking token",
                 submitDTO.getOrderNumber());
 
-        // Validate that this is a guest user request
+        // Validate that this is a tokenized request
         if (submitDTO.getOrderNumber() == null || submitDTO.getOrderNumber().trim().isEmpty()) {
-            throw new IllegalArgumentException("Order number is required for guest return requests");
+            throw new IllegalArgumentException("Order number is required for tokenized return requests");
         }
-        if (submitDTO.getPickupToken() == null || submitDTO.getPickupToken().trim().isEmpty()) {
-            throw new IllegalArgumentException("Pickup token is required for guest return requests");
+        if (submitDTO.getTrackingToken() == null || submitDTO.getTrackingToken().trim().isEmpty()) {
+            throw new IllegalArgumentException("Tracking token is required for tokenized return requests");
         }
 
-        Order order = validateOrderForGuestUser(submitDTO.getOrderNumber(), submitDTO.getPickupToken());
+        // Validate tracking token and get associated email
+        String email = validateTrackingToken(submitDTO.getTrackingToken());
+        
+        // Find order by order number
+        Order order = orderRepository.findByOrderCode(submitDTO.getOrderNumber())
+                .orElseThrow(() -> new RuntimeException("Order not found with order number: " + submitDTO.getOrderNumber()));
 
-        // Check if return request already exists for this order (guest users have
-        // customerId = null)
+        // Verify the order belongs to the email associated with the token
+        if (order.getOrderCustomerInfo() == null || 
+            !email.equalsIgnoreCase(order.getOrderCustomerInfo().getEmail())) {
+            throw new RuntimeException("Order does not belong to the email associated with this tracking token");
+        }
+
+        // Ensure this is actually a guest order (no associated user)
+        if (order.getUser() != null) {
+            throw new RuntimeException("This order belongs to a registered user and cannot be returned using tracking token");
+        }
+
         if (returnRequestRepository.existsByOrderIdAndCustomerId(order.getOrderId(), null)) {
             throw new RuntimeException("Return request already exists for order " + submitDTO.getOrderNumber());
         }
@@ -123,15 +141,14 @@ public class ReturnService {
             validateMediaFiles(mediaFiles);
         }
 
-        // Create return request for GUEST USER (customerId = null)
         ReturnRequest returnRequest = new ReturnRequest();
         returnRequest.setOrderId(order.getOrderId());
-        returnRequest.setCustomerId(null); // IMPORTANT: Guest users have NULL customer_id
+        returnRequest.setCustomerId(null);
         returnRequest.setReason(submitDTO.getReason());
         returnRequest.setStatus(ReturnRequest.ReturnStatus.PENDING);
         returnRequest.setSubmittedAt(LocalDateTime.now());
 
-        log.info("Creating guest return request with customerId=null for order {}", order.getOrderId());
+        log.info("Creating tokenized return request with customerId=null for order {}", order.getOrderId());
 
         ReturnRequest savedRequest = returnRequestRepository.save(returnRequest);
 
@@ -141,14 +158,14 @@ public class ReturnService {
             try {
                 processMediaAttachments(savedRequest.getId(), mediaFiles);
             } catch (IOException e) {
-                log.error("Failed to process media attachments for guest return request {}: {}",
+                log.error("Failed to process media attachments for tokenized return request {}: {}",
                         savedRequest.getId(), e.getMessage(), e);
                 throw new RuntimeException("Failed to upload media files", e);
             }
         }
 
         notificationService.notifyReturnSubmitted(savedRequest);
-        log.info("Guest return request {} submitted successfully for order {}",
+        log.info("Tokenized return request {} submitted successfully for order {}",
                 savedRequest.getId(), submitDTO.getOrderNumber());
 
         return convertToDTO(savedRequest);
@@ -292,32 +309,6 @@ public class ReturnService {
         return convertToDTO(request);
     }
 
-    /**
-     * Get return request by order number
-     */
-    @Transactional(readOnly = true)
-    public ReturnRequestDTO getReturnRequestByOrderNumber(String orderNumber) {
-        log.info("Getting return request for order number: {}", orderNumber);
-
-        try {
-            Order order = orderRepository.findByOrderCode(orderNumber)
-                    .orElseThrow(() -> new RuntimeException("Order not found with number: " + orderNumber));
-
-            List<ReturnRequest> requests = returnRequestRepository.findByOrderId(order.getOrderId());
-            if (requests.isEmpty()) {
-                throw new RuntimeException("Return request not found for order: " + orderNumber);
-            }
-
-            ReturnRequest request = requests.get(0);
-
-            log.info("Found return request {} for order {}", request.getId(), orderNumber);
-            return convertToDTO(request);
-
-        } catch (Exception e) {
-            log.error("Error getting return request for order number {}: {}", orderNumber, e.getMessage(), e);
-            throw e;
-        }
-    }
 
     /**
      * Get all return requests with pagination (Admin use only)
@@ -445,6 +436,27 @@ public class ReturnService {
     // Private helper methods
 
     /**
+     * Validate tracking token and return associated email
+     */
+    private String validateTrackingToken(String trackingToken) {
+        log.info("Validating tracking token for return request submission");
+        
+        // Find valid token
+        Optional<OrderTrackingToken> tokenOpt = orderTrackingTokenRepository
+                .findValidToken(trackingToken, LocalDateTime.now());
+        
+        if (tokenOpt.isEmpty()) {
+            throw new IllegalArgumentException("Invalid or expired tracking token");
+        }
+        
+        OrderTrackingToken token = tokenOpt.get();
+        String email = token.getEmail();
+        
+        log.info("Tracking token validated successfully for email: {}", email);
+        return email;
+    }
+
+    /**
      * Validate order for authenticated user using orderId and userId
      */
     private Order validateOrderForAuthenticatedUser(Long orderId, UUID customerId) {
@@ -473,30 +485,6 @@ public class ReturnService {
         return order;
     }
 
-    /**
-     * Validate order for guest user using order number and pickup token
-     */
-    private Order validateOrderForGuestUser(String orderNumber, String pickupToken) {
-        // Find order by order code (order number)
-        Order order = orderRepository.findByOrderCode(orderNumber)
-                .orElseThrow(() -> new RuntimeException("Order not found with order number: " + orderNumber));
-
-        // Verify pickup token matches
-        if (!pickupToken.equals(order.getPickupToken())) {
-            throw new RuntimeException("Invalid pickup token for order: " + orderNumber);
-        }
-
-        // Ensure this is actually a guest order (no associated user)
-        if (order.getUser() != null) {
-            throw new RuntimeException("This order belongs to a registered user and cannot be returned as guest");
-        }
-
-        if (order.getOrderStatus() != Order.OrderStatus.DELIVERED) {
-            throw new RuntimeException("Order must be delivered to be eligible for return");
-        }
-
-        return order;
-    }
 
     private void validateReturnEligibility(Order order) {
         LocalDateTime deliveryDate = order.getDeliveredAt();

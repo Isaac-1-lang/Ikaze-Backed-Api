@@ -447,7 +447,6 @@ public class OrderTrackingServiceImpl implements OrderTrackingService {
     @Override
     @Transactional(readOnly = true)
     public OrderResponseDTO getOrderByNumberWithToken(String orderNumber, String token) {
-        // Validate token
         Optional<OrderTrackingToken> trackingToken = tokenRepository
             .findValidToken(token, LocalDateTime.now());
         

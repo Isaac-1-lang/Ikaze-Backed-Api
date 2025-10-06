@@ -100,55 +100,6 @@ public class ReturnController {
         }
     }
 
-    /**
-     * Submit a return request for guest users
-     */
-    @PostMapping(value = "/submit/guest", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    @Operation(summary = "Submit return request (Guest)", description = "Submit a return request for guest users using order number and pickup token")
-    @ApiResponses(value = {
-            @ApiResponse(responseCode = "201", description = "Return request submitted successfully", content = @Content(schema = @Schema(implementation = ReturnRequestDTO.class))),
-            @ApiResponse(responseCode = "400", description = "Invalid request data"),
-            @ApiResponse(responseCode = "404", description = "Order not found or invalid pickup token"),
-            @ApiResponse(responseCode = "409", description = "Return request already exists for this order"),
-            @ApiResponse(responseCode = "422", description = "Order not eligible for return")
-    })
-    public ResponseEntity<?> submitGuestReturnRequest(
-            @Valid @RequestPart("returnRequest") SubmitGuestReturnRequestDTO submitDTO,
-            @RequestPart(value = "mediaFiles", required = false) MultipartFile[] mediaFiles) {
-
-        try {
-            log.info("Processing guest return request submission for order number {}",
-                    submitDTO.getOrderNumber());
-
-            ReturnRequestDTO result = returnService.submitGuestReturnRequest(submitDTO, mediaFiles);
-
-            log.info("Guest return request {} submitted successfully for order {}",
-                    result.getId(), submitDTO.getOrderNumber());
-
-            return ResponseEntity.status(HttpStatus.CREATED).body(result);
-
-        } catch (IllegalArgumentException e) {
-            log.warn("Invalid guest return request data: {}", e.getMessage());
-            return ResponseEntity.badRequest().body(createErrorResponse("INVALID_REQUEST", e.getMessage()));
-        } catch (RuntimeException e) {
-            log.error("Error processing guest return request for order {}: {}",
-                    submitDTO.getOrderNumber(), e.getMessage(), e);
-
-            if (e.getMessage().contains("not found") || e.getMessage().contains("invalid")) {
-                return ResponseEntity.status(HttpStatus.NOT_FOUND)
-                        .body(createErrorResponse("ORDER_NOT_FOUND", e.getMessage()));
-            } else if (e.getMessage().contains("already exists")) {
-                return ResponseEntity.status(HttpStatus.CONFLICT)
-                        .body(createErrorResponse("RETURN_EXISTS", e.getMessage()));
-            } else if (e.getMessage().contains("not eligible") || e.getMessage().contains("expired")) {
-                return ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY)
-                        .body(createErrorResponse("NOT_ELIGIBLE", e.getMessage()));
-            }
-
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body(createErrorResponse("RETURN_ERROR", "Failed to process return request"));
-        }
-    }
 
     /**
      * Get return requests for authenticated customer
@@ -183,39 +134,6 @@ public class ReturnController {
         }
     }
 
-    /**
-     * Get return request by order number
-     */
-    @GetMapping("/order-number/{orderNumber}")
-    @Operation(summary = "Get return request by order number", description = "Get return request information using order number (for both authenticated and guest users)")
-    @ApiResponses(value = {
-            @ApiResponse(responseCode = "200", description = "Return request retrieved successfully", content = @Content(schema = @Schema(implementation = ReturnRequestDTO.class))),
-            @ApiResponse(responseCode = "404", description = "Return request not found for this order number")
-    })
-    public ResponseEntity<?> getReturnRequestByOrderNumber(
-            @Parameter(description = "Order number") @PathVariable String orderNumber) {
-
-        try {
-            log.info("Retrieving return request for order number {}", orderNumber);
-
-            ReturnRequestDTO returnRequest = returnService.getReturnRequestByOrderNumber(orderNumber);
-
-            log.info("Return request for order {} retrieved successfully", orderNumber);
-
-            return ResponseEntity.ok(returnRequest);
-
-        } catch (RuntimeException e) {
-            log.error("Error retrieving return request for order {}: {}", orderNumber, e.getMessage(), e);
-
-            if (e.getMessage().contains("not found")) {
-                return ResponseEntity.status(HttpStatus.NOT_FOUND)
-                        .body(createErrorResponse("RETURN_NOT_FOUND", e.getMessage()));
-            }
-
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body(createErrorResponse("RETRIEVAL_ERROR", "Failed to retrieve return request"));
-        }
-    }
 
     /**
      * Get specific return request details
