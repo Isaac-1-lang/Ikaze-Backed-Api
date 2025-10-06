@@ -16,7 +16,7 @@ public class ReturnDecisionDTO {
     private Long returnRequestId;
     
     @NotBlank(message = "Decision is required")
-    private String decision; // APPROVED or DENIED
+    private String decision;
     
     private String decisionNotes;
     
@@ -27,7 +27,7 @@ public class ReturnDecisionDTO {
     @NoArgsConstructor
     @AllArgsConstructor
     public static class RefundDetailsDTO {
-        private String refundMethod; // ORIGINAL_PAYMENT, STORE_CREDIT, WALLET
+        private String refundMethod;
         private Double refundAmount;
         private String refundReason;
     }

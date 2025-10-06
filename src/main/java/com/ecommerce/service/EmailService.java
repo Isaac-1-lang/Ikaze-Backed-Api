@@ -152,4 +152,14 @@ public interface EmailService {
         void sendAppealDenialEmail(String toEmail, String customerName, Long appealId,
                                  Long returnRequestId, String orderNumber, String appealReason,
                                  String decisionNotes, String submittedAt, String deniedAt);
+
+        /**
+         * Send order tracking access email with HTML template
+         * 
+         * @param toEmail           recipient email
+         * @param token             secure access token
+         * @param trackingUrl       direct tracking URL with token
+         * @param expiresAt         when the token expires
+         */
+        void sendOrderTrackingEmail(String toEmail, String token, String trackingUrl, String expiresAt);
 }

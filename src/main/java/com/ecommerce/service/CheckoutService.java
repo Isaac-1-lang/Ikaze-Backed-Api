@@ -7,6 +7,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 import org.springframework.stereotype.Service;
 
@@ -952,6 +953,8 @@ public class CheckoutService {
             OrderResponseDTO.ShippingAddress shippingAddress = new OrderResponseDTO.ShippingAddress();
             shippingAddress.setStreet(addr.getStreet());
             shippingAddress.setCountry(addr.getCountry());
+            shippingAddress.setLatitude(addr.getLatitude());
+            shippingAddress.setLongitude(addr.getLongitude());
 
             if (addr.getRegions() != null && !addr.getRegions().isEmpty()) {
                 String[] regions = addr.getRegions().split(",");
@@ -1101,6 +1104,23 @@ public class CheckoutService {
             OrderResponseDTO.Product product = new OrderResponseDTO.Product();
             product.setId(item.getProduct().getProductId());
             product.setName(item.getProduct().getProductName());
+            
+            // Add product images if available
+            if (item.getProduct().getImages() != null && !item.getProduct().getImages().isEmpty()) {
+                List<String> imageUrls = item.getProduct().getImages().stream()
+                    .sorted((img1, img2) -> {
+                        if (img1.isPrimary() && !img2.isPrimary()) return -1;
+                        if (!img1.isPrimary() && img2.isPrimary()) return 1;
+                        int sortOrder1 = img1.getSortOrder() != null ? img1.getSortOrder() : 0;
+                        int sortOrder2 = img2.getSortOrder() != null ? img2.getSortOrder() : 0;
+                        return Integer.compare(sortOrder1, sortOrder2);
+                    })
+                    .map(img -> img.getImageUrl())
+                    .filter(url -> url != null && !url.trim().isEmpty())
+                    .collect(Collectors.toList());
+                product.setImages(imageUrls);
+            }
+            
             dto.setProduct(product);
         }
         
@@ -1109,6 +1129,23 @@ public class CheckoutService {
             OrderResponseDTO.Variant variant = new OrderResponseDTO.Variant();
             variant.setId(item.getProductVariant().getId());
             variant.setName(item.getProductVariant().getVariantName());
+            
+            // Add variant images if available
+            if (item.getProductVariant().getImages() != null && !item.getProductVariant().getImages().isEmpty()) {
+                List<String> variantImageUrls = item.getProductVariant().getImages().stream()
+                    .sorted((img1, img2) -> {
+                        if (img1.isPrimary() && !img2.isPrimary()) return -1;
+                        if (!img1.isPrimary() && img2.isPrimary()) return 1;
+                        int sortOrder1 = img1.getSortOrder() != null ? img1.getSortOrder() : 0;
+                        int sortOrder2 = img2.getSortOrder() != null ? img2.getSortOrder() : 0;
+                        return Integer.compare(sortOrder1, sortOrder2);
+                    })
+                    .map(img -> img.getImageUrl())
+                    .filter(url -> url != null && !url.trim().isEmpty())
+                    .collect(Collectors.toList());
+                variant.setImages(variantImageUrls);
+            }
+            
             dto.setVariant(variant);
         }
         

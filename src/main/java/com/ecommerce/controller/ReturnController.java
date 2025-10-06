@@ -2,6 +2,7 @@ package com.ecommerce.controller;
 
 import com.ecommerce.dto.*;
 import com.ecommerce.entity.ReturnRequest;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.ecommerce.service.ReturnService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -41,6 +42,7 @@ import java.util.UUID;
 public class ReturnController {
 
     private final ReturnService returnService;
+    private final ObjectMapper objectMapper;
 
     // ==================== CUSTOMER ENDPOINTS ====================
 
@@ -497,6 +499,48 @@ public class ReturnController {
         error.put("message", message);
         error.put("timestamp", System.currentTimeMillis());
         return error;
+    }
+
+    /**
+     * Submit return request using tracking token (secure endpoint)
+     */
+    @PostMapping(value = "/submit/tokenized", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    @Operation(summary = "Submit return request with tracking token", 
+               description = "Submit a return request using a valid tracking token for secure access")
+    @ApiResponses(value = {
+        @ApiResponse(responseCode = "200", description = "Return request submitted successfully"),
+        @ApiResponse(responseCode = "400", description = "Invalid request data or expired token"),
+        @ApiResponse(responseCode = "500", description = "Internal server error")
+    })
+    public ResponseEntity<Map<String, Object>> submitTokenizedReturnRequest(
+            @Parameter(description = "Return request data as JSON")
+            @RequestPart("returnRequest") String returnRequestJson,
+            @Parameter(description = "Optional media files (images/videos)")
+            @RequestPart(value = "mediaFiles", required = false) MultipartFile[] mediaFiles) {
+        
+        try {
+            log.info("Processing tokenized return request");
+            
+            // Parse the JSON request
+            TokenizedReturnRequestDTO returnRequest = objectMapper.readValue(returnRequestJson, TokenizedReturnRequestDTO.class);
+            
+            // Submit the return request
+            ReturnRequestDTO response = returnService.submitTokenizedReturnRequest(returnRequest, mediaFiles);
+            
+            Map<String, Object> successResponse = createSuccessResponse("Return request submitted successfully");
+            successResponse.put("data", response);
+            
+            return ResponseEntity.ok(successResponse);
+            
+        } catch (IllegalArgumentException e) {
+            log.warn("Invalid tokenized return request: {}", e.getMessage());
+            return ResponseEntity.badRequest()
+                .body(createErrorResponse("INVALID_REQUEST", "Invalid request: " + e.getMessage()));
+        } catch (Exception e) {
+            log.error("Error processing tokenized return request", e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                .body(createErrorResponse("INTERNAL_ERROR", "Failed to process return request"));
+        }
     }
 
     /**

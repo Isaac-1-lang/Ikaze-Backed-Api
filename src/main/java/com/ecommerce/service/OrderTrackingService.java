@@ -30,6 +30,11 @@ public interface OrderTrackingService {
     OrderResponseDTO getOrderByTokenAndId(String token, Long orderId);
     
     /**
+     * Get specific order details by token and order number
+     */
+    OrderResponseDTO getOrderByNumberWithToken(String orderNumber, String token);
+    
+    /**
      * Validate tracking token
      */
     boolean isValidToken(String token);
@@ -38,6 +43,11 @@ public interface OrderTrackingService {
      * Get email associated with token
      */
     String getEmailByToken(String token);
+    
+    /**
+     * Get email from token (alternative method name for compatibility)
+     */
+    String getEmailFromToken(String token);
     
     /**
      * Clean up expired tokens

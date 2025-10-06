@@ -484,7 +484,36 @@ public class EmailServiceImpl implements EmailService {
         
         return templateEngine.process("appeal-approval", context);
     }
-    
+
+    @Override
+    @Async
+    public void sendOrderTrackingEmail(String toEmail, String token, String trackingUrl, String expiresAt) {
+        try {
+            log.info("Sending order tracking email to: {}", toEmail);
+
+            String subject = "Track Your Orders - Secure Access Link";
+            
+            Context context = new Context();
+            context.setVariable("token", token);
+            context.setVariable("trackingUrl", trackingUrl);
+            context.setVariable("expiryTime", expiresAt);
+            context.setVariable("websiteUrl", frontendUrl);
+            context.setVariable("supportUrl", frontendUrl + "/support");
+            
+            String htmlBody = templateEngine.process("order-tracking-email", context);
+
+            sendHtmlEmailInternal(toEmail, subject, htmlBody);
+            
+            log.info("Order tracking email sent successfully to: {}", toEmail);
+        } catch (Exception e) {
+            log.error("Failed to send order tracking email to: {}", toEmail, e);
+            throw new RuntimeException("Failed to send order tracking email", e);
+        }
+    }
+
+    /**
+     * Generate appeal denial email HTML using Thymeleaf template
+     */
     private String generateAppealDenialHtml(String customerName, Long appealId, Long returnRequestId,
                                           String orderNumber, String appealReason, String decisionNotes,
                                           String submittedAt, String deniedAt) {
