@@ -2,6 +2,7 @@ package com.ecommerce.controller;
 
 import com.ecommerce.dto.ReturnAppealDTO;
 import com.ecommerce.dto.SubmitAppealRequestDTO;
+import com.ecommerce.dto.TokenizedAppealRequestDTO;
 import com.ecommerce.dto.AppealDecisionDTO;
 import com.ecommerce.dto.AppealStatisticsDTO;
 import com.ecommerce.service.AppealService;
@@ -72,6 +73,42 @@ public class AppealController {
         ReturnAppealDTO appealDTO = appealService.submitAppeal(submitDTO, mediaFiles);
 
         log.info("Appeal {} submitted successfully for return request {}",
+                appealDTO.getId(), returnRequestId);
+
+        return ResponseEntity.status(HttpStatus.CREATED).body(appealDTO);
+    }
+
+    @PostMapping(value = "/submit/tokenized", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    @Operation(summary = "Submit an appeal using tracking token (for guest users)", description = "Submit an appeal with tracking token for guest users who don't have accounts")
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "201", description = "Appeal submitted successfully", content = @Content(schema = @Schema(implementation = ReturnAppealDTO.class))),
+            @ApiResponse(responseCode = "400", description = "Invalid request data, expired token, or appeal not allowed"),
+            @ApiResponse(responseCode = "404", description = "Return request not found"),
+            @ApiResponse(responseCode = "409", description = "Appeal already exists for this return request")
+    })
+    public ResponseEntity<ReturnAppealDTO> submitTokenizedAppeal(
+            @Parameter(description = "Return request ID", required = true) @RequestParam Long returnRequestId,
+
+            @Parameter(description = "Tracking token for guest access", required = true) @RequestParam String trackingToken,
+
+            @Parameter(description = "Appeal reason", required = true) @RequestParam String reason,
+
+            @Parameter(description = "Detailed appeal description") @RequestParam(required = false) String description,
+
+            @Parameter(description = "Media files (images and videos) to support the appeal") @RequestParam(value = "mediaFiles", required = false) MultipartFile[] mediaFiles) {
+
+        log.info("Received tokenized appeal submission request for return request {} with token",
+                returnRequestId);
+
+        TokenizedAppealRequestDTO submitDTO = new TokenizedAppealRequestDTO();
+        submitDTO.setReturnRequestId(returnRequestId);
+        submitDTO.setTrackingToken(trackingToken);
+        submitDTO.setReason(reason);
+        submitDTO.setDescription(description);
+
+        ReturnAppealDTO appealDTO = appealService.submitTokenizedAppeal(submitDTO, mediaFiles);
+
+        log.info("Tokenized appeal {} submitted successfully for return request {}",
                 appealDTO.getId(), returnRequestId);
 
         return ResponseEntity.status(HttpStatus.CREATED).body(appealDTO);

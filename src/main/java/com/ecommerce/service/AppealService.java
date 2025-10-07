@@ -6,6 +6,7 @@ import com.ecommerce.repository.AppealMediaRepository;
 import com.ecommerce.repository.ReturnAppealRepository;
 import com.ecommerce.repository.ReturnRequestRepository;
 import com.ecommerce.repository.OrderRepository;
+import com.ecommerce.repository.OrderTrackingTokenRepository;
 import com.ecommerce.service.NotificationService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -21,6 +22,7 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 
 @Service
@@ -34,6 +36,7 @@ public class AppealService {
     private final ReturnRequestRepository returnRequestRepository;
     private final OrderRepository orderRepository;
     private final CloudinaryService cloudinaryService;
+    private final OrderTrackingTokenRepository orderTrackingTokenRepository;
 
     // Notification and audit services
     private final NotificationService notificationService;
@@ -91,6 +94,62 @@ public class AppealService {
         sendAppealConfirmationEmailToCustomer(savedAppeal, returnRequest);
 
         log.info("Appeal {} submitted successfully for return request {}",
+                savedAppeal.getId(), submitDTO.getReturnRequestId());
+
+        return convertToDTO(savedAppeal);
+    }
+
+    /**
+     * Submit an appeal for a denied return request using tracking token (for guest users)
+     */
+    public ReturnAppealDTO submitTokenizedAppeal(TokenizedAppealRequestDTO submitDTO, MultipartFile[] mediaFiles) {
+        log.info("Processing tokenized appeal submission for return request {} with token",
+                submitDTO.getReturnRequestId());
+
+        // Validate tracking token first
+        String customerEmail = validateTrackingToken(submitDTO.getTrackingToken());
+        
+        ReturnRequest returnRequest = validateReturnForTokenizedAppeal(submitDTO.getReturnRequestId(), customerEmail);
+
+        if (returnAppealRepository.existsByReturnRequestId(submitDTO.getReturnRequestId())) {
+            throw new com.ecommerce.Exception.ReturnException.AppealAlreadyExistsException(
+                    "Appeal already exists for return request " + submitDTO.getReturnRequestId());
+        }
+
+        validateAppealEligibility(returnRequest);
+
+        if (mediaFiles != null && mediaFiles.length > 0) {
+            validateMediaFiles(mediaFiles);
+        }
+
+        // Create appeal (customerId will be null for guest users)
+        ReturnAppeal appeal = new ReturnAppeal();
+        appeal.setReturnRequestId(submitDTO.getReturnRequestId());
+        appeal.setCustomerId(null); // Guest users don't have customerId
+        appeal.setLevel(1); 
+        appeal.setReason(submitDTO.getReason());
+        appeal.setDescription(submitDTO.getDescription());
+        appeal.setStatus(ReturnAppeal.AppealStatus.PENDING);
+        appeal.setSubmittedAt(LocalDateTime.now());
+
+        log.debug("Creating tokenized appeal for return request: {} by email: {}", 
+                submitDTO.getReturnRequestId(), customerEmail);
+
+        ReturnAppeal savedAppeal = returnAppealRepository.save(appeal);
+        
+        if (mediaFiles != null && mediaFiles.length > 0) {
+            try {
+                processAppealMediaAttachments(savedAppeal.getId(), mediaFiles);
+            } catch (IOException e) {
+                log.error("Failed to process media attachments for tokenized appeal {}: {}",
+                        savedAppeal.getId(), e.getMessage(), e);
+                throw new RuntimeException("Failed to upload media files", e);
+            }
+        }
+
+        sendAppealConfirmationEmailToCustomer(savedAppeal, returnRequest);
+
+        log.info("Tokenized appeal {} submitted successfully for return request {}",
                 savedAppeal.getId(), submitDTO.getReturnRequestId());
 
         return convertToDTO(savedAppeal);
@@ -243,6 +302,52 @@ public class AppealService {
 
         // For guest customers, customerId might be null, so we skip customer validation
         // The return request itself contains the customer information we need
+
+        return returnRequest;
+    }
+
+    /**
+     * Validate tracking token and return associated email
+     */
+    private String validateTrackingToken(String trackingToken) {
+        Optional<OrderTrackingToken> tokenOpt = orderTrackingTokenRepository
+                .findValidToken(trackingToken, LocalDateTime.now());
+        
+        if (tokenOpt.isEmpty()) {
+            throw new IllegalArgumentException("Invalid or expired tracking token");
+        }
+        
+        return tokenOpt.get().getEmail();
+    }
+
+    /**
+     * Validate return request for tokenized appeal (guest users)
+     */
+    private ReturnRequest validateReturnForTokenizedAppeal(Long returnRequestId, String customerEmail) {
+        ReturnRequest returnRequest = returnRequestRepository.findById(returnRequestId)
+                .orElseThrow(() -> new com.ecommerce.Exception.ReturnException.ReturnNotFoundException(
+                        "Return request not found: " + returnRequestId));
+
+        if (returnRequest.getStatus() != ReturnRequest.ReturnStatus.DENIED) {
+            throw new com.ecommerce.Exception.ReturnException.AppealNotAllowedException(
+                    "Only denied return requests can be appealed");
+        }
+
+        // Validate that the order belongs to the email associated with the token
+        Order order = orderRepository.findById(returnRequest.getOrderId())
+                .orElseThrow(() -> new RuntimeException("Order not found: " + returnRequest.getOrderId()));
+        
+        if (order.getOrderCustomerInfo() == null || 
+            !customerEmail.equalsIgnoreCase(order.getOrderCustomerInfo().getEmail())) {
+            throw new com.ecommerce.Exception.ReturnException.AppealNotAllowedException(
+                    "Token does not match the order's customer email");
+        }
+
+        // Ensure this is actually a guest order (no registered customer)
+        if (order.getUser() != null) {
+            throw new com.ecommerce.Exception.ReturnException.AppealNotAllowedException(
+                    "This order belongs to a registered customer. Please log in to submit an appeal.");
+        }
 
         return returnRequest;
     }

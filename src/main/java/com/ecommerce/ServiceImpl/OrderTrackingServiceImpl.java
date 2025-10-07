@@ -39,7 +39,7 @@ public class OrderTrackingServiceImpl implements OrderTrackingService {
     @Value("${app.frontend.url:http://localhost:3000}")
     private String frontendUrl;
     
-    private static final int TOKEN_EXPIRY_MINUTES = 30;
+    private static final int TOKEN_EXPIRY_MINUTES = 60;
     private static final SecureRandom secureRandom = new SecureRandom();
     
     @Override
