@@ -13,14 +13,17 @@ import java.util.UUID;
 @NoArgsConstructor
 @AllArgsConstructor
 public class WarehouseProductDTO {
-    private Long stockId;
     private UUID productId;
     private String productName;
     private String productSku;
-    private Long variantId;
-    private String variantSku;
-    private Integer quantity;
-    private Integer lowStockThreshold;
-    private Boolean isVariant;
+    private Integer totalQuantity; // Total quantity from all active batches for this product
+    private Integer activeBatchCount; // Number of active batches for this product
+    private Integer expiredBatchCount; // Number of expired batches for this product
+    private Integer recalledBatchCount; // Number of recalled batches for this product
+    private Integer lowStockThreshold; // Minimum threshold across all stock entries
+    private Boolean isLowStock; // Whether the product is below threshold
+    private Boolean isOutOfStock; // Whether the product has no active stock
     private List<String> productImages;
+    private String productDescription;
+    private Double productPrice;
 }

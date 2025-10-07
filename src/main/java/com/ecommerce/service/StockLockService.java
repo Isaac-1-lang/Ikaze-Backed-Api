@@ -49,7 +49,6 @@ public class StockLockService {
             stockLocks.computeIfAbsent(sessionId, k -> new ConcurrentHashMap<>())
                     .put(warehouseId, quantity);
 
-            stock.setQuantity(stock.getQuantity() - quantity);
             stockRepository.save(stock);
 
             log.info("Locked {} units of product {} variant {} in warehouse {}", quantity, productId, variantId,

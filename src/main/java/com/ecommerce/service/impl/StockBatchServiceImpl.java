@@ -33,14 +33,17 @@ public class StockBatchServiceImpl implements StockBatchService {
         private final ProductRepository productRepository;
 
         @Override
-        public StockBatchDTO createStockBatchForVariant(Long variantId, Long warehouseId, CreateVariantBatchRequest request) {
+        public StockBatchDTO createStockBatchForVariant(Long variantId, Long warehouseId,
+                        CreateVariantBatchRequest request) {
                 log.info("Creating stock batch for variant ID: {} and warehouse ID: {}", variantId, warehouseId);
 
                 // Find or create stock entry for this variant and warehouse
-                Stock stock = stockRepository.findByProductVariantVariantIdAndWarehouseWarehouseId(variantId, warehouseId)
+                Stock stock = stockRepository
+                                .findByProductVariantVariantIdAndWarehouseWarehouseId(variantId, warehouseId)
                                 .orElseThrow(() -> new IllegalArgumentException(
-                                                "No stock entry found for variant ID: " + variantId + " and warehouse ID: " + warehouseId + 
-                                                ". Please ensure the variant is assigned to this warehouse first."));
+                                                "No stock entry found for variant ID: " + variantId
+                                                                + " and warehouse ID: " + warehouseId +
+                                                                ". Please ensure the variant is assigned to this warehouse first."));
 
                 // Check if batch number already exists for this stock
                 if (stockBatchRepository.findByStockAndBatchNumber(stock, request.getBatchNumber()).isPresent()) {
@@ -61,12 +64,8 @@ public class StockBatchServiceImpl implements StockBatchService {
 
                 // Save the batch
                 StockBatch savedBatch = stockBatchRepository.save(stockBatch);
-
-                // Update stock quantity
-                updateStockQuantity(stock);
-
-                log.info("Successfully created stock batch with ID: {} for variant: {} and warehouse: {}", 
-                        savedBatch.getId(), variantId, warehouseId);
+                log.info("Successfully created stock batch with ID: {} for variant: {} and warehouse: {}",
+                                savedBatch.getId(), variantId, warehouseId);
                 return mapToDTO(savedBatch);
         }
 
@@ -98,9 +97,6 @@ public class StockBatchServiceImpl implements StockBatchService {
 
                 // Save the batch
                 StockBatch savedBatch = stockBatchRepository.save(stockBatch);
-
-                // Update stock quantity
-                updateStockQuantity(stock);
 
                 log.info("Successfully created stock batch with ID: {}", savedBatch.getId());
                 return mapToDTO(savedBatch);
@@ -198,9 +194,6 @@ public class StockBatchServiceImpl implements StockBatchService {
                 // Save the updated batch
                 StockBatch savedBatch = stockBatchRepository.save(stockBatch);
 
-                // Update stock quantity
-                updateStockQuantity(stockBatch.getStock());
-
                 log.info("Successfully updated stock batch with ID: {}", savedBatch.getId());
                 return mapToDTO(savedBatch);
         }
@@ -218,9 +211,6 @@ public class StockBatchServiceImpl implements StockBatchService {
                 // Delete the batch
                 stockBatchRepository.delete(stockBatch);
 
-                // Update stock quantity
-                updateStockQuantity(stock);
-
                 log.info("Successfully deleted stock batch with ID: {}", batchId);
         }
 
@@ -237,9 +227,6 @@ public class StockBatchServiceImpl implements StockBatchService {
 
                 // Save the updated batch
                 StockBatch savedBatch = stockBatchRepository.save(stockBatch);
-
-                // Update stock quantity
-                updateStockQuantity(stockBatch.getStock());
 
                 log.info("Successfully recalled stock batch with ID: {}", savedBatch.getId());
                 return mapToDTO(savedBatch);
@@ -261,15 +248,6 @@ public class StockBatchServiceImpl implements StockBatchService {
                                 .collect(Collectors.toList());
         }
 
-        /**
-         * Update the stock quantity based on active batches
-         */
-        private void updateStockQuantity(Stock stock) {
-                Integer totalActiveQuantity = stockBatchRepository.getTotalActiveQuantityByStock(stock);
-                stock.setQuantity(totalActiveQuantity != null ? totalActiveQuantity : 0);
-                stockRepository.save(stock);
-                log.debug("Updated stock quantity for stock ID {} to {}", stock.getId(), stock.getQuantity());
-        }
 
         /**
          * Map StockBatch entity to StockBatchDTO

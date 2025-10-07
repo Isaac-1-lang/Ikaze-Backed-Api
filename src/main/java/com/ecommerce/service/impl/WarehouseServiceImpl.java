@@ -1,11 +1,26 @@
 package com.ecommerce.service.impl;
 
 import com.ecommerce.dto.CreateWarehouseDTO;
+import com.ecommerce.dto.ProductVariantWarehouseDTO;
 import com.ecommerce.dto.UpdateWarehouseDTO;
 import com.ecommerce.dto.WarehouseDTO;
 import com.ecommerce.dto.WarehouseProductDTO;
-import com.ecommerce.entity.*;
-import com.ecommerce.repository.*;
+import com.ecommerce.entity.Warehouse;
+import com.ecommerce.entity.WarehouseImage;
+import com.ecommerce.entity.Product;
+import com.ecommerce.entity.ProductVariant;
+import com.ecommerce.entity.Stock;
+import com.ecommerce.entity.StockBatch;
+import com.ecommerce.entity.ProductVariantImage;
+import com.ecommerce.entity.ProductImage;
+import com.ecommerce.entity.OrderItemBatch;
+import com.ecommerce.repository.WarehouseRepository;
+import com.ecommerce.repository.WarehouseImageRepository;
+import com.ecommerce.repository.StockRepository;
+import com.ecommerce.repository.StockBatchRepository;
+import com.ecommerce.repository.ProductRepository;
+import com.ecommerce.repository.ProductVariantRepository;
+import com.ecommerce.repository.OrderItemBatchRepository;
 import com.ecommerce.service.CloudinaryService;
 import com.ecommerce.service.WarehouseService;
 import jakarta.persistence.EntityNotFoundException;
@@ -18,7 +33,6 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -35,8 +49,10 @@ public class WarehouseServiceImpl implements WarehouseService {
     private final WarehouseRepository warehouseRepository;
     private final WarehouseImageRepository warehouseImageRepository;
     private final StockRepository stockRepository;
+    private final StockBatchRepository stockBatchRepository;
     private final ProductRepository productRepository;
     private final ProductVariantRepository productVariantRepository;
+    private final OrderItemBatchRepository orderItemBatchRepository;
     private final CloudinaryService cloudinaryService;
 
     @Override
@@ -191,44 +207,122 @@ public class WarehouseServiceImpl implements WarehouseService {
 
     @Override
     public Page<WarehouseProductDTO> getProductsInWarehouse(Long warehouseId, Pageable pageable) {
+        log.info("Getting products for warehouse ID: {}", warehouseId);
+        
         Warehouse warehouse = warehouseRepository.findById(warehouseId)
                 .orElseThrow(() -> new EntityNotFoundException("Warehouse not found with ID: " + warehouseId));
 
-        Page<Stock> stockPage = stockRepository.findByWarehouse(warehouse, pageable);
+        // Get all stocks for this warehouse
+        List<Stock> allStocks = stockRepository.findByWarehouse(warehouse);
+        
+        // Group stocks by main product (ignoring variants)
+        Map<UUID, List<Stock>> stocksByProduct = allStocks.stream()
+                .collect(Collectors.groupingBy(stock -> {
+                    if (stock.getProduct() != null) {
+                        return stock.getProduct().getProductId();
+                    } else if (stock.getProductVariant() != null) {
+                        return stock.getProductVariant().getProduct().getProductId();
+                    }
+                    throw new IllegalStateException("Stock has no product or variant reference");
+                }));
 
-        return stockPage.map(stock -> {
-            WarehouseProductDTO dto = new WarehouseProductDTO();
-            dto.setStockId(stock.getId());
-            dto.setQuantity(stock.getQuantity());
-            dto.setLowStockThreshold(stock.getLowStockThreshold());
+        // Convert to DTOs
+        List<WarehouseProductDTO> productDTOs = stocksByProduct.entrySet().stream()
+                .map(entry -> {
+                    List<Stock> productStocks = entry.getValue();
+                    
+                    // Get the main product (from any stock entry)
+                    Product mainProduct = productStocks.get(0).getEffectiveProduct();
+                    
+                    return buildWarehouseProductDTO(mainProduct, productStocks);
+                })
+                .sorted((a, b) -> a.getProductName().compareToIgnoreCase(b.getProductName()))
+                .collect(Collectors.toList());
 
-            if (stock.getProduct() != null) {
-                dto.setProductId(stock.getProduct().getProductId());
-                dto.setProductName(stock.getProduct().getProductName());
-                dto.setProductSku(stock.getProduct().getSku());
-                dto.setIsVariant(false);
-                // Set product images
-                dto.setProductImages(stock.getProduct().getImages() != null
-                        ? stock.getProduct().getImages().stream()
-                                .map(image -> image.getImageUrl())
-                                .collect(Collectors.toList())
-                        : List.of());
-            } else if (stock.getProductVariant() != null) {
-                dto.setProductId(stock.getProductVariant().getProduct().getProductId());
-                dto.setProductName(stock.getProductVariant().getProduct().getProductName());
-                dto.setVariantId(stock.getProductVariant().getId());
-                dto.setVariantSku(stock.getProductVariant().getVariantSku());
-                dto.setIsVariant(true);
-                // Set product images from the parent product
-                dto.setProductImages(stock.getProductVariant().getProduct().getImages() != null
-                        ? stock.getProductVariant().getProduct().getImages().stream()
-                                .map(image -> image.getImageUrl())
-                                .collect(Collectors.toList())
-                        : List.of());
-            }
+        // Apply pagination manually
+        int start = (int) pageable.getOffset();
+        int end = Math.min(start + pageable.getPageSize(), productDTOs.size());
+        
+        List<WarehouseProductDTO> pageContent = productDTOs.subList(start, end);
+        
+        log.info("Found {} unique products in warehouse {}, returning page {} with {} items", 
+                productDTOs.size(), warehouseId, pageable.getPageNumber(), pageContent.size());
+        
+        return new PageImpl<>(pageContent, pageable, productDTOs.size());
+    }
 
-            return dto;
-        });
+    @Override
+    public List<ProductVariantWarehouseDTO> getProductVariantsInWarehouse(Long warehouseId, UUID productId) {
+        log.info("Getting variants for product {} in warehouse {}", productId, warehouseId);
+        
+        Warehouse warehouse = warehouseRepository.findById(warehouseId)
+                .orElseThrow(() -> new EntityNotFoundException("Warehouse not found with ID: " + warehouseId));
+
+        Product product = productRepository.findById(productId)
+                .orElseThrow(() -> new EntityNotFoundException("Product not found with ID: " + productId));
+
+        List<ProductVariant> variants = productVariantRepository.findByProductProductId(productId);
+        
+        return variants.stream()
+                .filter(variant -> {
+                    List<Stock> variantStocks = stockRepository.findByWarehouseAndProductVariant(warehouse, variant);
+                    return !variantStocks.isEmpty();
+                })
+                .map((ProductVariant variant) -> {
+                    List<Stock> variantStocks = stockRepository.findByWarehouseAndProductVariant(warehouse, variant);
+                    Stock stock = variantStocks.get(0); // Should only be one stock per variant per warehouse
+                    
+                    // Calculate batch statistics
+                    List<StockBatch> batches = stockBatchRepository.findByStock(stock);
+                    int totalActiveQuantity = 0;
+                    int activeBatchCount = 0;
+                    int expiredBatchCount = 0;
+                    int recalledBatchCount = 0;
+                    
+                    for (StockBatch batch : batches) {
+                        switch (batch.getStatus()) {
+                            case ACTIVE:
+                                totalActiveQuantity += batch.getQuantity();
+                                activeBatchCount++;
+                                break;
+                            case EXPIRED:
+                                expiredBatchCount++;
+                                break;
+                            case RECALLED:
+                                recalledBatchCount++;
+                                break;
+                            case EMPTY:
+                            case INACTIVE:
+                                // Not counted
+                                break;
+                        }
+                    }
+                    
+                    boolean isOutOfStock = totalActiveQuantity <= 0;
+                    boolean isLowStock = !isOutOfStock && stock.getLowStockThreshold() != null && 
+                                        totalActiveQuantity <= stock.getLowStockThreshold();
+                    
+                    return ProductVariantWarehouseDTO.builder()
+                            .variantId(variant.getId())
+                            .variantName(variant.getVariantName())
+                            .variantSku(variant.getVariantSku())
+                            .totalQuantity(totalActiveQuantity)
+                            .activeBatchCount(activeBatchCount)
+                            .expiredBatchCount(expiredBatchCount)
+                            .recalledBatchCount(recalledBatchCount)
+                            .lowStockThreshold(stock.getLowStockThreshold() != null ? stock.getLowStockThreshold() : 5)
+                            .isLowStock(isLowStock)
+                            .isOutOfStock(isOutOfStock)
+                            .variantImages(variant.getImages() != null
+                                    ? variant.getImages().stream()
+                                            .map(ProductVariantImage::getImageUrl)
+                                            .collect(Collectors.toList())
+                                    : List.of())
+                            .variantPrice(variant.getPrice() != null ? variant.getPrice().doubleValue() : null)
+                            .stockId(stock.getId())
+                            .build();
+                })
+                .collect(Collectors.toList());
     }
 
     @Override
@@ -244,24 +338,66 @@ public class WarehouseServiceImpl implements WarehouseService {
                     .orElseThrow(() -> new EntityNotFoundException("Product not found with ID: " + productId));
 
             boolean removed = false;
+            int totalBatchesRemoved = 0;
+            int totalStocksRemoved = 0;
 
-            // First, try to remove stock directly linked to the product
-            Optional<Stock> productStockOpt = stockRepository.findByWarehouseAndProduct(warehouse, product);
-            if (productStockOpt.isPresent()) {
-                stockRepository.delete(productStockOpt.get());
+            // First, remove stock for the main product (if it has direct stock)
+            Optional<Stock> mainProductStockOpt = stockRepository.findByWarehouseAndProduct(warehouse, product);
+            if (mainProductStockOpt.isPresent()) {
+                Stock stock = mainProductStockOpt.get();
+                List<StockBatch> batches = stockBatchRepository.findByStock(stock);
+                if (!batches.isEmpty()) {
+                    log.info("Removing {} batches for main product stock {} in warehouse {}", 
+                            batches.size(), stock.getId(), warehouseId);
+                    
+                    // First remove OrderItemBatch references to avoid foreign key constraint violations
+                    for (StockBatch batch : batches) {
+                        List<OrderItemBatch> orderItemBatches = orderItemBatchRepository.findByStockBatch_Id(batch.getId());
+                        if (!orderItemBatches.isEmpty()) {
+                            log.info("Removing {} OrderItemBatch references for batch {}", 
+                                    orderItemBatches.size(), batch.getId());
+                            orderItemBatchRepository.deleteAll(orderItemBatches);
+                        }
+                    }
+                    
+                    stockBatchRepository.deleteAll(batches);
+                    totalBatchesRemoved += batches.size();
+                }
+                stockRepository.delete(stock);
+                totalStocksRemoved += 1;
                 removed = true;
-                log.info("Removed product stock for product {} from warehouse {}", productId, warehouseId);
+                log.info("Removed main product stock for product {} from warehouse {}", productId, warehouseId);
             }
 
-            // Then, remove stock for all variants of this product
             List<ProductVariant> variants = productVariantRepository.findByProductProductId(productId);
             for (ProductVariant variant : variants) {
                 List<Stock> variantStocks = stockRepository.findByWarehouseAndProductVariant(warehouse, variant);
                 if (!variantStocks.isEmpty()) {
+                    for (Stock stock : variantStocks) {
+                        List<StockBatch> batches = stockBatchRepository.findByStock(stock);
+                        if (!batches.isEmpty()) {
+                            log.info("Removing {} batches for variant {} stock {} in warehouse {}", 
+                                    batches.size(), variant.getId(), stock.getId(), warehouseId);
+                            
+                            // First remove OrderItemBatch references to avoid foreign key constraint violations
+                            for (StockBatch batch : batches) {
+                                List<OrderItemBatch> orderItemBatches = orderItemBatchRepository.findByStockBatch_Id(batch.getId());
+                                if (!orderItemBatches.isEmpty()) {
+                                    log.info("Removing {} OrderItemBatch references for variant batch {}", 
+                                            orderItemBatches.size(), batch.getId());
+                                    orderItemBatchRepository.deleteAll(orderItemBatches);
+                                }
+                            }
+                            
+                            stockBatchRepository.deleteAll(batches);
+                            totalBatchesRemoved += batches.size();
+                        }
+                    }
                     stockRepository.deleteAll(variantStocks);
+                    totalStocksRemoved += variantStocks.size();
                     removed = true;
-                    log.info("Removed {} variant stock(s) for product {} from warehouse {}",
-                            variantStocks.size(), productId, warehouseId);
+                    log.info("Removed {} variant stock(s) for variant {} of product {} from warehouse {}",
+                            variantStocks.size(), variant.getId(), productId, warehouseId);
                 }
             }
 
@@ -270,7 +406,8 @@ public class WarehouseServiceImpl implements WarehouseService {
                 return false;
             }
 
-            log.info("Successfully removed product {} from warehouse {}", productId, warehouseId);
+            log.info("Successfully removed product {} from warehouse {}. Total: {} stocks and {} batches removed", 
+                    productId, warehouseId, totalStocksRemoved, totalBatchesRemoved);
             return true;
         } catch (Exception e) {
             log.error("Error removing product {} from warehouse {}: {}", productId, warehouseId, e.getMessage(), e);
@@ -532,5 +669,79 @@ public class WarehouseServiceImpl implements WarehouseService {
         log.info("Country '{}' exists: {}", country, exists);
 
         return exists;
+    }
+
+    /**
+     * Build WarehouseProductDTO from a main product and its associated stocks
+     */
+    private WarehouseProductDTO buildWarehouseProductDTO(Product mainProduct, List<Stock> productStocks) {
+        log.debug("Building DTO for product: {} with {} stock entries", mainProduct.getProductName(), productStocks.size());
+        
+        // Calculate totals from all batches across all stock entries for this product
+        int totalActiveQuantity = 0;
+        int activeBatchCount = 0;
+        int expiredBatchCount = 0;
+        int recalledBatchCount = 0;
+        int minLowStockThreshold = Integer.MAX_VALUE;
+        for (Stock stock : productStocks) {
+            // Get all batches for this stock
+            List<StockBatch> batches = stockBatchRepository.findByStock(stock);
+            
+            for (StockBatch batch : batches) {
+                switch (batch.getStatus()) {
+                    case ACTIVE:
+                        totalActiveQuantity += batch.getQuantity();
+                        activeBatchCount++;
+                        break;
+                    case EXPIRED:
+                        expiredBatchCount++;
+                        break;
+                    case RECALLED:
+                        recalledBatchCount++;
+                        break;
+                    case EMPTY:
+                        // EMPTY batches are not counted in any category
+                        break;
+                    case INACTIVE:
+                        // INACTIVE batches are not counted in any category
+                        break;
+                }
+            }
+            
+            // Track minimum low stock threshold
+            if (stock.getLowStockThreshold() != null && stock.getLowStockThreshold() < minLowStockThreshold) {
+                minLowStockThreshold = stock.getLowStockThreshold();
+            }
+        }
+        
+        // Handle case where no low stock threshold was set
+        if (minLowStockThreshold == Integer.MAX_VALUE) {
+            minLowStockThreshold = 5; // Default threshold
+        }
+        
+        // Determine stock status
+        boolean isOutOfStock = totalActiveQuantity <= 0;
+        boolean isLowStock = !isOutOfStock && totalActiveQuantity <= minLowStockThreshold;
+        
+        // Build and return DTO
+        return WarehouseProductDTO.builder()
+                .productId(mainProduct.getProductId())
+                .productName(mainProduct.getProductName())
+                .productSku(mainProduct.getSku())
+                .productDescription(mainProduct.getDescription())
+                .productPrice(mainProduct.getPrice() != null ? mainProduct.getPrice().doubleValue() : null)
+                .totalQuantity(totalActiveQuantity)
+                .activeBatchCount(activeBatchCount)
+                .expiredBatchCount(expiredBatchCount)
+                .recalledBatchCount(recalledBatchCount)
+                .lowStockThreshold(minLowStockThreshold)
+                .isLowStock(isLowStock)
+                .isOutOfStock(isOutOfStock)
+                .productImages(mainProduct.getImages() != null
+                        ? mainProduct.getImages().stream()
+                                .map(ProductImage::getImageUrl)
+                                .collect(Collectors.toList())
+                        : List.of())
+                .build();
     }
 }

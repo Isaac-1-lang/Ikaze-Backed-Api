@@ -1,6 +1,7 @@
 package com.ecommerce.controller;
 
 import com.ecommerce.dto.CreateWarehouseDTO;
+import com.ecommerce.dto.ProductVariantWarehouseDTO;
 import com.ecommerce.dto.UpdateWarehouseDTO;
 import com.ecommerce.dto.WarehouseDTO;
 import com.ecommerce.dto.WarehouseProductDTO;
@@ -12,6 +13,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.web.PageableDefault;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -121,12 +123,28 @@ public class WarehouseController {
     @PreAuthorize("hasRole('EMPLOYEE') or hasRole('ADMIN')")
     public ResponseEntity<Page<WarehouseProductDTO>> getProductsInWarehouse(
             @PathVariable Long warehouseId,
-            Pageable pageable) {
+            @PageableDefault(size = 10, sort = "id") Pageable pageable) {
         try {
+            log.info("Getting products for warehouse {}", warehouseId);
             Page<WarehouseProductDTO> products = warehouseService.getProductsInWarehouse(warehouseId, pageable);
             return ResponseEntity.ok(products);
         } catch (Exception e) {
             log.error("Error getting products in warehouse {}: {}", warehouseId, e.getMessage(), e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
+        }
+    }
+
+    @GetMapping("/{warehouseId}/products/{productId}/variants")
+    @PreAuthorize("hasRole('EMPLOYEE') or hasRole('ADMIN')")
+    public ResponseEntity<List<ProductVariantWarehouseDTO>> getProductVariantsInWarehouse(
+            @PathVariable Long warehouseId,
+            @PathVariable UUID productId) {
+        try {
+            log.info("Getting variants for product {} in warehouse {}", productId, warehouseId);
+            List<ProductVariantWarehouseDTO> variants = warehouseService.getProductVariantsInWarehouse(warehouseId, productId);
+            return ResponseEntity.ok(variants);
+        } catch (Exception e) {
+            log.error("Error getting variants for product {} in warehouse {}: {}", productId, warehouseId, e.getMessage(), e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
         }
     }

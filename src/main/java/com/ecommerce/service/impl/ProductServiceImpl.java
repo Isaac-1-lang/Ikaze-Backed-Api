@@ -280,11 +280,9 @@ public class ProductServiceImpl implements ProductService {
                         .orElse(null);
 
                 if (stock == null) {
-                    // Create new stock entry for product (without variant)
                     stock = new Stock();
                     stock.setProduct(product);
                     stock.setWarehouse(warehouse);
-                    stock.setQuantity(0); // Will be calculated from batches
                 }
                 
                 // Update stock threshold
@@ -321,7 +319,6 @@ public class ProductServiceImpl implements ProductService {
                         .filter(batch -> batch.getStatus() == com.ecommerce.enums.BatchStatus.ACTIVE)
                         .mapToInt(StockBatch::getQuantity)
                         .sum();
-                savedStock.setQuantity(totalQuantity);
                 stockRepository.save(savedStock);
 
                 processedStocks.add(savedStock);
@@ -377,7 +374,6 @@ public class ProductServiceImpl implements ProductService {
                 Stock stock = new Stock();
                 stock.setProduct(product);
                 stock.setWarehouse(warehouse);
-                stock.setQuantity(0);
                 stock.setLowStockThreshold(stockRequest.getLowStockThreshold());
 
                 Stock savedStock = stockRepository.save(stock);
@@ -389,7 +385,6 @@ public class ProductServiceImpl implements ProductService {
                 defaultBatch.setStatus(com.ecommerce.enums.BatchStatus.ACTIVE);
 
                 stockBatchRepository.save(defaultBatch);
-                savedStock.setQuantity(stockRequest.getStockQuantity());
                 stockRepository.save(savedStock);
 
                 newStocks.add(savedStock);
@@ -473,21 +468,17 @@ public class ProductServiceImpl implements ProductService {
                         .orElse(null);
 
                 if (stock == null) {
-                    // Create new stock entry for variant
                     stock = new Stock();
                     stock.setProductVariant(variant);
                     stock.setWarehouse(warehouse);
-                    stock.setQuantity(0); // Will be calculated from batches
                 }
                 
                 // Update stock threshold
                 stock.setLowStockThreshold(stockRequest.getLowStockThreshold());
                 Stock savedStock = stockRepository.save(stock);
     
-                // Create batches for this stock
                 List<StockBatch> batches = new ArrayList<>();
                 for (WarehouseStockWithBatchesRequest.StockBatchRequest batchRequest : stockRequest.getBatches()) {
-                    // Check if batch number already exists for this stock
                     if (stockBatchRepository.findByStockAndBatchNumber(savedStock, batchRequest.getBatchNumber())
                             .isPresent()) {
                         throw new IllegalArgumentException(
@@ -514,7 +505,6 @@ public class ProductServiceImpl implements ProductService {
                         .filter(batch -> batch.getStatus() == com.ecommerce.enums.BatchStatus.ACTIVE)
                         .mapToInt(StockBatch::getQuantity)
                         .sum();
-                savedStock.setQuantity(totalQuantity);
                 stockRepository.save(savedStock);
     
                 processedStocks.add(savedStock);
@@ -3721,8 +3711,7 @@ public class ProductServiceImpl implements ProductService {
                 Stock stock = new Stock();
                 stock.setWarehouse(warehouse);
                 stock.setProduct(product);
-                stock.setProductVariant(null); // Product-level stock, not variant
-                stock.setQuantity(warehouseStock.getStockQuantity() != null ? warehouseStock.getStockQuantity() : 0);
+                stock.setProductVariant(null);
                 stock.setLowStockThreshold(
                         warehouseStock.getLowStockThreshold() != null ? warehouseStock.getLowStockThreshold() : 5);
 
@@ -3755,7 +3744,6 @@ public class ProductServiceImpl implements ProductService {
 
         for (WarehouseStockDTO warehouseStock : warehouseStockList) {
             try {
-                // Validate warehouse exists
                 Warehouse warehouse = warehouseRepository.findById(warehouseStock.getWarehouseId())
                         .orElseThrow(() -> new EntityNotFoundException(
                                 "Warehouse not found with ID: " + warehouseStock.getWarehouseId()));
@@ -3765,7 +3753,6 @@ public class ProductServiceImpl implements ProductService {
                 stock.setWarehouse(warehouse);
                 stock.setProduct(null); // Variant-level stock, not product
                 stock.setProductVariant(variant);
-                stock.setQuantity(warehouseStock.getStockQuantity() != null ? warehouseStock.getStockQuantity() : 0);
                 stock.setLowStockThreshold(
                         warehouseStock.getLowStockThreshold() != null ? warehouseStock.getLowStockThreshold() : 5);
 
@@ -5011,7 +4998,6 @@ public class ProductServiceImpl implements ProductService {
                     Stock stock = new Stock();
                     stock.setProductVariant(savedVariant);
                     stock.setWarehouse(warehouse);
-                    stock.setQuantity(stockRequest.getStockQuantity());
                     stock.setLowStockThreshold(stockRequest.getLowStockThreshold());
                     stock.setCreatedAt(LocalDateTime.now());
                     stockRepository.save(stock);

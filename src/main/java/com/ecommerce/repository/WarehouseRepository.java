@@ -65,4 +65,9 @@ public interface WarehouseRepository extends JpaRepository<Warehouse, Long> {
          */
         @Query("SELECT DISTINCT w.country FROM Warehouse w WHERE w.country IS NOT NULL AND w.country != '' ORDER BY w.country")
         List<String> findDistinctCountries();
+
+        /**
+         * Find active warehouses by country (case insensitive)
+         */
+        List<Warehouse> findByCountryIgnoreCaseAndIsActiveTrue(String country);
 }
