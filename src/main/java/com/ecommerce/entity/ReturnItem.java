@@ -55,6 +55,9 @@ public class ReturnItem {
     @Column(name = "item_reason", length = 500)
     private String itemReason; // Specific reason for this item
 
+    @Column(name = "is_returnable")
+    private Boolean isReturnable = true; // Whether this item is eligible for return/refund
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;
 

@@ -9,6 +9,7 @@ import lombok.EqualsAndHashCode;
 import lombok.NoArgsConstructor;
 import lombok.ToString;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
@@ -90,6 +91,16 @@ public class ReturnRequest {
 
     @Column(name = "actual_pickup_time")
     private LocalDateTime actualPickupTime;
+
+    // Refund tracking fields
+    @Column(name = "refund_processed")
+    private Boolean refundProcessed = false;
+
+    @Column(name = "refund_amount", precision = 10, scale = 2)
+    private BigDecimal refundAmount;
+
+    @Column(name = "refund_processed_at")
+    private LocalDateTime refundProcessedAt;
 
     @OneToMany(mappedBy = "returnRequest", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
     private List<ReturnMedia> returnMedia = new ArrayList<>();
