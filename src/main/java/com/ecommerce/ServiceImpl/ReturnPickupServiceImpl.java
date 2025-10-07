@@ -8,7 +8,6 @@ import com.ecommerce.service.ReturnPickupService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.util.*;
@@ -299,22 +298,7 @@ public class ReturnPickupServiceImpl implements ReturnPickupService {
             }
             
             log.debug("Set all required timestamps for COMPLETED status");
-
-            // Validate the combination before saving
             validateStatusCombination(returnRequest);
-            
-            // Debug logging before save
-            log.debug("About to save return request with values:");
-            log.debug("  ID: {}", returnRequest.getId());
-            log.debug("  Status: {}", returnRequest.getStatus());
-            log.debug("  DeliveryStatus: {}", returnRequest.getDeliveryStatus());
-            log.debug("  DeliveryAgentId: {}", returnRequest.getDeliveryAgentId());
-            log.debug("  DecisionAt: {}", returnRequest.getDecisionAt());
-            log.debug("  AssignedAt: {}", returnRequest.getAssignedAt());
-            log.debug("  PickupCompletedAt: {}", returnRequest.getPickupCompletedAt());
-            log.debug("  ActualPickupTime: {}", returnRequest.getActualPickupTime());
-            log.debug("  PickupStartedAt: {}", returnRequest.getPickupStartedAt());
-            
             returnRequestRepository.save(returnRequest);
             log.info("Successfully updated return request {} status to COMPLETED with delivery status PICKUP_COMPLETED", 
                 returnRequest.getId());
