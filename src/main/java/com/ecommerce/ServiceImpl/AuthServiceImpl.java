@@ -192,27 +192,21 @@ public class AuthServiceImpl implements AuthService {
 
     private void validatePhoneNumber(String phoneNumber) {
         if (phoneNumber == null || phoneNumber.trim().isEmpty()) {
-            return; // Phone number is optional
+            return;
         }
 
-        // Remove all non-digit characters except + at the beginning
         String cleaned = phoneNumber.replaceAll("[^\\d+]", "");
-
-        // Check if it starts with + and remove it for length validation
         boolean hasCountryCode = cleaned.startsWith("+");
         String digitsOnly = hasCountryCode ? cleaned.substring(1) : cleaned;
 
-        // Validate length: international phone numbers are typically 7-15 digits
         if (digitsOnly.length() < 7 || digitsOnly.length() > 15) {
             throw new CustomException("Phone number must be between 7 and 15 digits");
         }
 
-        // Check if all remaining characters are digits
         if (!digitsOnly.matches("\\d+")) {
             throw new CustomException("Phone number contains invalid characters");
         }
 
-        // Additional validation: should not start with 0 (except for some countries)
         if (digitsOnly.startsWith("0") && digitsOnly.length() > 8) {
             throw new CustomException("Phone number format is invalid");
         }
