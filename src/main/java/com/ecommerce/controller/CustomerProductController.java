@@ -62,14 +62,10 @@ public class CustomerProductController {
     @ApiResponse(responseCode = "200", description = "Search completed successfully")
     public ResponseEntity<Page<ManyProductsDto>> searchProducts(@RequestBody ProductSearchDTO searchDTO) {
         try {
-            log.info("Searching products for customers with criteria: {}", searchDTO);
             
-            Page<ManyProductsDto> products = productService.searchProductsForCustomers(searchDTO);
-            
-            log.info("Found {} products for customers matching search criteria", products.getTotalElements());
+            Page<ManyProductsDto> products = productService.searchProductsForCustomers(searchDTO);            
             return ResponseEntity.ok(products);
         } catch (Exception e) {
-            log.error("Error searching products for customers: {}", e.getMessage(), e);
             throw e;
         }
     }

@@ -1202,8 +1202,6 @@ public class ProductServiceImpl implements ProductService {
     @Override
     public Page<ManyProductsDto> searchProducts(ProductSearchDTO searchDTO) {
         try {
-            log.info("Searching products with criteria: {}", searchDTO);
-
             int page = searchDTO.getPage() != null ? searchDTO.getPage() : 0;
             int size = searchDTO.getSize() != null ? searchDTO.getSize() : 10;
             String sortBy = searchDTO.getSortBy() != null ? searchDTO.getSortBy() : "createdAt";
@@ -1221,7 +1219,6 @@ public class ProductServiceImpl implements ProductService {
                 Specification<Product> spec = buildProductSearchSpecification(searchDTO);
                 Page<Product> productPage = productRepository.findAll(spec, pageable);
 
-                // Apply rating filter if specified
                 List<Product> filteredProducts = productPage.getContent();
                 if (searchDTO.getAverageRatingMin() != null || searchDTO.getAverageRatingMax() != null) {
                     filteredProducts = applyRatingFilter(filteredProducts, searchDTO.getAverageRatingMin(),
@@ -1702,18 +1699,15 @@ public class ProductServiceImpl implements ProductService {
             // Category filters
 
             if (searchDTO.getCategoryId() != null) {
-
                 predicates.add(criteriaBuilder.equal(root.get("category").get("id"), searchDTO.getCategoryId()));
 
             }
 
-            if (searchDTO.getCategoryIds() != null && !searchDTO.getCategoryIds().isEmpty()) {
+            if (searchDTO.getCategoryNames() != null && !searchDTO.getCategoryNames().isEmpty()) {
 
-                predicates.add(root.get("category").get("id").in(searchDTO.getCategoryIds()));
+                predicates.add(root.get("category").get("name").in(searchDTO.getCategoryNames()));
 
             }
-
-            // Brand filters
 
             if (searchDTO.getBrandId() != null) {
 
@@ -5384,13 +5378,9 @@ public class ProductServiceImpl implements ProductService {
     @Override
     public Page<ManyProductsDto> searchProductsForCustomers(ProductSearchDTO searchDTO) {
         try {
-            log.info("Searching products for customers with criteria: {}", searchDTO);
             
-            // Use the comprehensive search logic from the main searchProducts method
-            // but filter results for customer availability
             Page<ManyProductsDto> searchResults = searchProducts(searchDTO);
-            
-            // Filter the results to only include products available for customers
+
             List<ManyProductsDto> availableProducts = searchResults.getContent().stream()
                 .filter(product -> {
                     try {
@@ -5407,15 +5397,11 @@ public class ProductServiceImpl implements ProductService {
                 })
                 .collect(Collectors.toList());
             
-            // Create new page with filtered results
             Page<ManyProductsDto> filteredResults = new PageImpl<>(
                 availableProducts,
                 searchResults.getPageable(),
                 availableProducts.size()
             );
-            
-            log.info("Filtered {} search results to {} available products for customers", 
-                    searchResults.getContent().size(), availableProducts.size());
             
             return filteredResults;
         } catch (Exception e) {

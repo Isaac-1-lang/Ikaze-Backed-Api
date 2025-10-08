@@ -33,7 +33,7 @@ public class Category {
     @Column(columnDefinition = "TEXT")
     private String description;
 
-    @Column(name = "image_url")
+    @Column(name = "image_url", columnDefinition = "TEXT")
     private String imageUrl;
 
     @Column(name = "slug", unique = true)
@@ -42,7 +42,6 @@ public class Category {
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "parent_id")
     private Category parent;
-
     @OneToMany(mappedBy = "parent", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
     private List<Category> children = new ArrayList<>();
 
@@ -55,13 +54,13 @@ public class Category {
     @Column(name = "is_featured")
     private Boolean isFeatured = false;
 
-    @Column(name = "meta_title")
+    @Column(name = "meta_title", columnDefinition = "TEXT")
     private String metaTitle;
 
-    @Column(name = "meta_description")
+    @Column(name = "meta_description", columnDefinition = "TEXT")
     private String metaDescription;
 
-    @Column(name = "meta_keywords")
+    @Column(name = "meta_keywords", columnDefinition = "TEXT")
     private String metaKeywords;
 
     @OneToMany(mappedBy = "category", cascade = CascadeType.ALL, fetch = FetchType.LAZY)

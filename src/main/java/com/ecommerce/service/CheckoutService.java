@@ -8,17 +8,13 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.stream.Collectors;
-
 import org.springframework.stereotype.Service;
-
 import com.ecommerce.dto.AddressDto;
 import com.ecommerce.dto.CartItemDTO;
 import com.ecommerce.dto.CheckoutRequest;
 import com.ecommerce.dto.CheckoutVerificationResult;
 import com.ecommerce.dto.GuestCheckoutRequest;
 import com.ecommerce.dto.OrderResponseDTO;
-import com.ecommerce.dto.OrderAddressDTO;
-import com.ecommerce.dto.OrderCustomerInfoDTO;
 import com.ecommerce.dto.OrderItemDTO;
 import com.ecommerce.dto.OrderTransactionDTO;
 import com.ecommerce.dto.SimpleProductDTO;
@@ -42,7 +38,6 @@ import com.ecommerce.repository.ProductVariantRepository;
 import com.ecommerce.repository.StockBatchRepository;
 import com.ecommerce.repository.UserRepository;
 import com.ecommerce.repository.DiscountRepository;
-import com.ecommerce.service.CartService;
 import com.stripe.model.PaymentIntent;
 import com.stripe.model.checkout.Session;
 import org.springframework.security.core.Authentication;
@@ -72,7 +67,6 @@ public class CheckoutService {
     private final RewardService rewardService;
     private final ProductAvailabilityService productAvailabilityService;
     private final EnhancedMultiWarehouseAllocator enhancedWarehouseAllocator;
-    private final FEFOStockAllocationService fefoService;
     private final OrderItemBatchRepository orderItemBatchRepository;
     private final StockBatchRepository stockBatchRepository;
     private final OrderEmailService orderEmailService;
@@ -85,7 +79,6 @@ public class CheckoutService {
         UUID userId;
         try {
             userId = getCurrentUserId();
-            log.info("Retrieved user ID: {}", userId);
         } catch (Exception e) {
             log.error("Failed to get current user ID: {}", e.getMessage());
             throw new IllegalStateException("Authentication required. Please log in to create a checkout session. " +
@@ -97,11 +90,9 @@ public class CheckoutService {
 
         validateCartItems(req.getItems());
 
-        // Step 1: Allocate stock using FEFO across warehouses
         Map<CartItemDTO, List<FEFOStockAllocationService.BatchAllocation>> fefoAllocations = enhancedWarehouseAllocator
                 .allocateStockWithFEFO(req.getItems(), req.getShippingAddress());
 
-        // Step 2: Convert FEFO allocations to stock allocations for locking
         Map<Long, List<MultiWarehouseStockAllocator.StockAllocation>> stockAllocations = convertFEFOToStockAllocations(
                 fefoAllocations);
 
@@ -186,17 +177,13 @@ public class CheckoutService {
         Order saved = orderRepository.save(order);
         log.info("Order created with ID: {}", saved.getOrderId());
 
-        // Step 3: Create OrderItemBatch records for tracking (but don't commit
-        // allocation yet)
         for (Map.Entry<CartItemDTO, List<FEFOStockAllocationService.BatchAllocation>> entry : fefoAllocations
                 .entrySet()) {
             createOrderItemBatches(saved, entry.getKey(), entry.getValue());
         }
 
-        // Step 4: Lock stock at batch level using session ID
         String sessionId = saved.getOrderTransaction().getStripeSessionId();
         if (sessionId == null) {
-            // Generate temporary session ID for locking
             sessionId = "temp_" + saved.getOrderId().toString();
         }
 
@@ -623,8 +610,6 @@ public class CheckoutService {
 
     public com.ecommerce.dto.PaymentSummaryDTO calculatePaymentSummary(AddressDto deliveryAddress,
             List<CartItemDTO> items, UUID userId) {
-        log.info("Calculating payment summary for {} items, userId: {}", items.size(), userId);
-
         BigDecimal subtotal = BigDecimal.ZERO;
         BigDecimal discountAmount = BigDecimal.ZERO;
         int totalProductCount = 0;
@@ -647,7 +632,6 @@ public class CheckoutService {
 
                     itemPrice = calculateDiscountedPrice(variant);
                 } catch (Exception e) {
-                    log.error("Error finding variant {}: {}", item.getVariantId(), e.getMessage());
                     throw new EntityNotFoundException("Variant not found with ID: " + item.getVariantId());
                 }
             } else if (item.getProductId() != null) {
@@ -663,14 +647,10 @@ public class CheckoutService {
                     }
 
                     itemPrice = calculateDiscountedPrice(product);
-                    log.info("Found product: {}, originalPrice: {}, discountedPrice: {}",
-                            product.getProductId(), originalPrice, itemPrice);
                 } catch (Exception e) {
-                    log.error("Error finding product {}: {}", item.getProductId(), e.getMessage());
                     throw new EntityNotFoundException("Product not found with ID: " + item.getProductId());
                 }
             } else {
-                log.warn("Cart item has neither productId nor variantId: {}", item);
                 continue;
             }
 
@@ -694,7 +674,6 @@ public class CheckoutService {
             rewardPointsValue = rewardService.calculatePointsValue(rewardPoints);
         }
 
-        // Get detailed shipping information
         com.ecommerce.dto.ShippingDetailsDTO shippingDetails = shippingCostService
                 .calculateShippingDetails(deliveryAddress, items, subtotal);
 
