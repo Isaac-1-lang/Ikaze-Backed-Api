@@ -2,6 +2,7 @@ package com.ecommerce.controller;
 
 import com.ecommerce.dto.ManyProductsDto;
 import com.ecommerce.dto.ProductDTO;
+import com.ecommerce.dto.CustomerProductDTO;
 import com.ecommerce.dto.ProductSearchDTO;
 import com.ecommerce.dto.ProductVariantDTO;
 import com.ecommerce.service.ProductService;
@@ -198,7 +199,7 @@ public class CustomerProductController {
                description = "Returns product details if available to customers")
     @ApiResponse(responseCode = "200", description = "Product details retrieved successfully")
     @ApiResponse(responseCode = "404", description = "Product not found or not available to customers")
-    public ResponseEntity<ProductDTO> getProductById(@PathVariable UUID productId) {
+    public ResponseEntity<CustomerProductDTO> getProductById(@PathVariable UUID productId) {
         try {
             log.info("Getting product {} for customers", productId);
             
@@ -208,7 +209,7 @@ public class CustomerProductController {
                 return ResponseEntity.notFound().build();
             }
             
-            ProductDTO product = productService.getProductById(productId);
+            CustomerProductDTO product = productService.getCustomerProductById(productId);
             
             log.info("Retrieved product {} for customers", productId);
             return ResponseEntity.ok(product);
@@ -261,11 +262,11 @@ public class CustomerProductController {
                description = "Returns product details by slug if available to customers")
     @ApiResponse(responseCode = "200", description = "Product retrieved successfully")
     @ApiResponse(responseCode = "404", description = "Product not found or not available to customers")
-    public ResponseEntity<ProductDTO> getProductBySlug(@PathVariable String slug) {
+    public ResponseEntity<CustomerProductDTO> getProductBySlug(@PathVariable String slug) {
         try {
             log.info("Getting product by slug {} for customers", slug);
             
-            ProductDTO product = productService.getProductBySlug(slug);
+            CustomerProductDTO product = productService.getCustomerProductBySlug(slug);
             
             // Check if product is available for customers
             boolean isAvailable = productService.isProductAvailableForCustomers(product.getProductId());

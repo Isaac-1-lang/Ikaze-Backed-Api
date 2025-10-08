@@ -5,8 +5,9 @@ import com.ecommerce.dto.CreateProductVariantDTO;
 import com.ecommerce.dto.ImageMetadata;
 
 import com.ecommerce.dto.ManyProductsDto;
-
 import com.ecommerce.dto.ProductDTO;
+import com.ecommerce.dto.CustomerProductDTO;
+import com.ecommerce.dto.CustomerProductVariantDTO;
 
 import com.ecommerce.dto.ProductSearchDTO;
 
@@ -588,7 +589,6 @@ public class ProductServiceImpl implements ProductService {
             throw new IllegalArgumentException("Cannot create product with invalid discount");
 
         }
-
         return discount;
 
     }
@@ -598,7 +598,6 @@ public class ProductServiceImpl implements ProductService {
     public ProductDTO getProductById(UUID productId) {
 
         Product product = productRepository.findById(productId)
-
                 .orElseThrow(() -> new EntityNotFoundException("Product not found with ID: " + productId));
 
         return mapProductToDTO(product);
@@ -606,15 +605,27 @@ public class ProductServiceImpl implements ProductService {
     }
 
     @Override
-
     public ProductBasicInfoDTO getProductBasicInfo(UUID productId) {
-
         Product product = productRepository.findById(productId)
-
                 .orElseThrow(() -> new EntityNotFoundException("Product not found with ID: " + productId));
 
         return mapProductToBasicInfoDTO(product);
+    }
 
+    @Override
+    public CustomerProductDTO getCustomerProductById(UUID productId) {
+        Product product = productRepository.findById(productId)
+                .orElseThrow(() -> new EntityNotFoundException("Product not found with ID: " + productId));
+
+        return mapProductToCustomerDTO(product);
+    }
+
+    @Override
+    public CustomerProductDTO getCustomerProductBySlug(String slug) {
+        Product product = productRepository.findBySlug(slug)
+                .orElseThrow(() -> new EntityNotFoundException("Product not found with slug: " + slug));
+
+        return mapProductToCustomerDTO(product);
     }
 
     @Override
@@ -2829,7 +2840,6 @@ public class ProductServiceImpl implements ProductService {
         // Map reviews
         if (product.getReviews() != null) {
             dto.setReviews(product.getReviews().stream()
-                    .filter(review -> review.isApproved()) // Only include approved reviews
                     .map(this::mapReviewToDTO)
                     .collect(Collectors.toList()));
         }
@@ -2838,69 +2848,206 @@ public class ProductServiceImpl implements ProductService {
         mapWarehouseStockToDTO(product, dto);
 
         return dto;
-
     }
 
-    private ProductBasicInfoDTO mapProductToBasicInfoDTO(Product product) {
-
-        ProductBasicInfoDTO dto = new ProductBasicInfoDTO();
+    private CustomerProductDTO mapProductToCustomerDTO(Product product) {
+        CustomerProductDTO dto = new CustomerProductDTO();
 
         dto.setProductId(product.getProductId());
-
-        dto.setProductName(product.getProductName());
-
-        dto.setShortDescription(product.getShortDescription());
-
+        dto.setName(product.getProductName());
+        dto.setDescription(product.getShortDescription());
         dto.setSku(product.getSku());
-
         dto.setBarcode(product.getBarcode());
-
-        dto.setModel(product.getModel());
-
-        dto.setSlug(product.getSlug());
-
-        dto.setPrice(product.getPrice());
-
-        dto.setCompareAtPrice(product.getCompareAtPrice());
-
-        dto.setCostPrice(product.getCostPrice());
-
+        dto.setBasePrice(product.getPrice());
+        dto.setSalePrice(product.getCompareAtPrice());
+        dto.setDiscountedPrice(product.getDiscountedPrice());
+        dto.setStockQuantity(product.getTotalStockQuantity());
         dto.setCategoryId(product.getCategory() != null ? product.getCategory().getId() : null);
-
         dto.setCategoryName(product.getCategory() != null ? product.getCategory().getName() : null);
-
         dto.setBrandId(product.getBrand() != null ? product.getBrand().getBrandId() : null);
-
         dto.setBrandName(product.getBrand() != null ? product.getBrand().getBrandName() : null);
+        dto.setModel(product.getModel());
+        dto.setSlug(product.getSlug());
+        dto.setIsActive(product.isActive());
+        dto.setIsFeatured(product.isFeatured());
+        dto.setIsBestseller(product.isBestseller());
+        dto.setIsNewArrival(product.isNewArrival());
+        dto.setIsOnSale(product.isOnSale());
+        dto.setAverageRating(product.getAverageRating());
+        dto.setReviewCount(product.getReviewCount());
+        dto.setCreatedAt(product.getCreatedAt());
+        dto.setUpdatedAt(product.getUpdatedAt());
 
-        dto.setBrandLogoUrl(product.getBrand() != null ? product.getBrand().getLogoUrl() : null);
-
-        dto.setActive(product.isActive());
-
-        dto.setFeatured(product.isFeatured());
-
-        dto.setBestseller(product.isBestseller());
-
-        dto.setNewArrival(product.isNewArrival());
-
-        dto.setOnSale(product.isOnSale());
-
-        dto.setSalePercentage(product.getSalePercentage());
-
+        // Map product details if available (include customer-relevant fields)
         if (product.getProductDetail() != null) {
-
-            dto.setDescription(product.getProductDetail().getDescription());
-
+            dto.setFullDescription(product.getProductDetail().getDescription());
+            dto.setDimensionsCm(product.getProductDetail().getDimensionsCm());
+            dto.setWeightKg(product.getProductDetail().getWeightKg());
             dto.setMaterial(product.getProductDetail().getMaterial());
-
-            dto.setWarrantyInfo(product.getProductDetail().getWarrantyInfo());
-
             dto.setCareInstructions(product.getProductDetail().getCareInstructions());
+            dto.setWarrantyInfo(product.getProductDetail().getWarrantyInfo());
+            dto.setShippingInfo(product.getProductDetail().getShippingInfo());
+            dto.setReturnPolicy(product.getProductDetail().getReturnPolicy());
+        }
 
+        // Map images
+        if (product.getImages() != null) {
+            dto.setImages(product.getImages().stream()
+                    .map(this::mapProductImageToCustomerDTO)
+                    .collect(Collectors.toList()));
+        }
+
+        // Map videos
+        if (product.getVideos() != null) {
+            dto.setVideos(product.getVideos().stream()
+                    .map(this::mapProductVideoToCustomerDTO)
+                    .collect(Collectors.toList()));
+        }
+
+        // Map variants (without warehouse stock information)
+        if (product.getVariants() != null) {
+            dto.setVariants(product.getVariants().stream()
+                    .map(this::mapProductVariantToCustomerDTO)
+                    .collect(Collectors.toList()));
+        }
+
+        // Map reviews
+        if (product.getReviews() != null) {
+            dto.setReviews(product.getReviews().stream()
+                    .filter(review -> review.isApproved()) // Only include approved reviews
+                    .map(this::mapReviewToDTO)
+                    .collect(Collectors.toList()));
         }
 
         return dto;
+    }
 
+    private ProductBasicInfoDTO mapProductToBasicInfoDTO(Product product) {
+        ProductBasicInfoDTO dto = new ProductBasicInfoDTO();
+
+        dto.setProductId(product.getProductId());
+        dto.setProductName(product.getProductName());
+        dto.setShortDescription(product.getShortDescription());
+        dto.setSku(product.getSku());
+        dto.setBarcode(product.getBarcode());
+        dto.setModel(product.getModel());
+        dto.setSlug(product.getSlug());
+        dto.setPrice(product.getPrice());
+        dto.setCompareAtPrice(product.getCompareAtPrice());
+        dto.setCostPrice(product.getCostPrice());
+        dto.setCategoryId(product.getCategory() != null ? product.getCategory().getId() : null);
+        dto.setCategoryName(product.getCategory() != null ? product.getCategory().getName() : null);
+        dto.setBrandId(product.getBrand() != null ? product.getBrand().getBrandId() : null);
+        dto.setBrandName(product.getBrand() != null ? product.getBrand().getBrandName() : null);
+        dto.setBrandLogoUrl(product.getBrand() != null ? product.getBrand().getLogoUrl() : null);
+        dto.setActive(product.isActive());
+        dto.setFeatured(product.isFeatured());
+        dto.setBestseller(product.isBestseller());
+        dto.setNewArrival(product.isNewArrival());
+        dto.setOnSale(product.isOnSale());
+        dto.setSalePercentage(product.getSalePercentage());
+
+        if (product.getProductDetail() != null) {
+            dto.setDescription(product.getProductDetail().getDescription());
+            dto.setMaterial(product.getProductDetail().getMaterial());
+            dto.setWarrantyInfo(product.getProductDetail().getWarrantyInfo());
+            dto.setCareInstructions(product.getProductDetail().getCareInstructions());
+        }
+
+        return dto;
+    }
+
+    private CustomerProductDTO.ProductImageDTO mapProductImageToCustomerDTO(ProductImage image) {
+        return CustomerProductDTO.ProductImageDTO.builder()
+                .imageId(image.getId())
+                .url(image.getImageUrl())
+                .altText(image.getAltText())
+                .isPrimary(image.isPrimary())
+                .sortOrder(image.getSortOrder())
+                .build();
+    }
+
+    private CustomerProductDTO.ProductVideoDTO mapProductVideoToCustomerDTO(ProductVideo video) {
+        return CustomerProductDTO.ProductVideoDTO.builder()
+                .videoId(video.getVideoId())
+                .url(video.getUrl())
+                .title(video.getTitle())
+                .description(video.getDescription())
+                .sortOrder(video.getSortOrder())
+                .build();
+    }
+
+    private CustomerProductVariantDTO mapProductVariantToCustomerDTO(ProductVariant variant) {
+        CustomerProductVariantDTO dto = new CustomerProductVariantDTO();
+
+        dto.setVariantId(variant.getId());
+        dto.setVariantSku(variant.getVariantSku());
+        dto.setVariantName(variant.getVariantName());
+        dto.setVariantBarcode(variant.getVariantBarcode());
+        dto.setPrice(variant.getPrice());
+        dto.setSalePrice(variant.getCompareAtPrice());
+        dto.setCostPrice(variant.getCostPrice());
+        dto.setIsActive(variant.isActive());
+        dto.setIsInStock(variant.isInStock());
+        dto.setIsLowStock(variant.isLowStock());
+        dto.setCreatedAt(variant.getCreatedAt());
+        dto.setUpdatedAt(variant.getUpdatedAt());
+
+        // Map discount information
+        if (variant.getDiscount() != null) {
+            DiscountDTO discountDTO = mapDiscountToDTO(variant.getDiscount());
+            dto.setDiscount(discountDTO);
+
+            // Check if discount is currently active
+            boolean isActive = isDiscountCurrentlyActive(variant.getDiscount());
+            dto.setHasActiveDiscount(isActive);
+
+            // Calculate discounted price if discount is active
+            if (isActive && variant.getDiscount().getPercentage() != null) {
+                BigDecimal discountPercentage = variant.getDiscount().getPercentage();
+                BigDecimal originalPrice = variant.getPrice();
+                BigDecimal discountedPrice = originalPrice.multiply(
+                        BigDecimal.ONE.subtract(discountPercentage.divide(BigDecimal.valueOf(100))));
+                dto.setDiscountedPrice(discountedPrice);
+            }
+        } else {
+            dto.setHasActiveDiscount(false);
+        }
+
+        // Map variant images
+        if (variant.getImages() != null) {
+            dto.setImages(variant.getImages().stream()
+                    .map(this::mapVariantImageToCustomerDTO)
+                    .collect(Collectors.toList()));
+        }
+
+        // Map variant attributes
+        if (variant.getAttributeValues() != null) {
+            dto.setAttributes(variant.getAttributeValues().stream()
+                    .map(this::mapVariantAttributeToCustomerDTO)
+                    .collect(Collectors.toList()));
+        }
+
+        return dto;
+    }
+
+    private CustomerProductVariantDTO.VariantImageDTO mapVariantImageToCustomerDTO(ProductVariantImage image) {
+        return CustomerProductVariantDTO.VariantImageDTO.builder()
+                .imageId(image.getId())
+                .url(image.getImageUrl())
+                .altText(image.getAltText())
+                .isPrimary(image.isPrimary())
+                .sortOrder(image.getSortOrder())
+                .build();
+    }
+
+    private CustomerProductVariantDTO.VariantAttributeDTO mapVariantAttributeToCustomerDTO(VariantAttributeValue attributeValue) {
+        return CustomerProductVariantDTO.VariantAttributeDTO.builder()
+                .attributeValueId(attributeValue.getId().getAttributeValueId())
+                .attributeValue(attributeValue.getAttributeValue().getValue())
+                .attributeTypeId(attributeValue.getAttributeValue().getAttributeType().getAttributeTypeId())
+                .attributeType(attributeValue.getAttributeValue().getAttributeType().getName())
+                .build();
     }
 
     private ProductDTO.ProductImageDTO mapProductImageToDTO(ProductImage image) {
