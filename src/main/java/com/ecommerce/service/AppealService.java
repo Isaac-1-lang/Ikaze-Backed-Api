@@ -600,7 +600,7 @@ public class AppealService {
                 return;
             }
             
-            String trackingUrl = String.format("http://localhost:3000/returns/info?returnId=%d", returnRequest.getId());
+            String trackingUrl = String.format("https://shopsphere-frontend.vercel.app/returns/info?returnId=%d", returnRequest.getId());
             
             String formattedSubmittedAt = appeal.getSubmittedAt()
                 .format(java.time.format.DateTimeFormatter.ofPattern("MMMM dd, yyyy 'at' HH:mm"));
@@ -729,7 +729,7 @@ public class AppealService {
                 .format(java.time.format.DateTimeFormatter.ofPattern("MMMM dd, yyyy 'at' HH:mm"));
             
             // Create tracking URL for return request
-            String trackingUrl = String.format("http://localhost:3000/returns/info?returnId=%d", returnRequest.getId());
+            String trackingUrl = String.format("https://shopsphere-frontend.vercel.app/returns/info?returnId=%d", returnRequest.getId());
             
             // Send appropriate email based on decision
             if ("APPROVED".equals(decisionDTO.getDecision())) {

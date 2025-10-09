@@ -17,7 +17,7 @@ import java.util.Map;
 @RequestMapping("/api/v1/public/delivery")
 @RequiredArgsConstructor
 @Slf4j
-@CrossOrigin(origins = {"http://localhost:3000", "http://localhost:3001"})
+@CrossOrigin(origins = {"http://localhost:3000", "http://localhost:3001", "https://shopsphere-frontend.vercel.app", "https://shopsphere-adm.vercel.app"})
 public class PublicDeliveryController {
 
     private final DeliveryAvailabilityService deliveryAvailabilityService;

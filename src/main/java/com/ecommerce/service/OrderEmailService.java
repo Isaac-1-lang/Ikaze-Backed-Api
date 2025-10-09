@@ -31,7 +31,7 @@ public class OrderEmailService {
     @Value("${spring.mail.username:support@shopsphere.com}")
     private String fromEmail;
 
-    @Value("${app.base-url:http://localhost:3000}")
+    @Value("${app.base-url:https://shopsphere-frontend.vercel.app}")
     private String baseUrl;
 
     /**

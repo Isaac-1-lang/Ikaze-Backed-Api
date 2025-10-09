@@ -27,8 +27,11 @@ public class EmailServiceImpl implements EmailService {
     @Value("${spring.mail.username}")
     private String fromEmail;
 
-    @Value("${app.frontend.url:http://localhost:3000}")
+    @Value("${app.frontend.url:https://shopsphere-frontend.vercel.app/}")
     private String frontendUrl;
+
+    @Value("${app.frontend.url:https://shopsphere-adm.vercel.app/}")
+    private String frontendAdminUrl;
 
     @Value("${app.name:E-Commerce Platform}")
     private String appName;
@@ -44,7 +47,7 @@ public class EmailServiceImpl implements EmailService {
 
             String subject = String.format("You've been invited to join %s as %s", appName, assignedRole);
 
-            String invitationUrl = String.format("%s/admin-invitation/accept?token=%s", frontendUrl, invitationToken);
+            String invitationUrl = String.format("%s/admin-invitation/accept?token=%s", frontendAdminUrl, invitationToken);
 
             String emailBody = buildNewUserInvitationEmailBody(
                     firstName, lastName, invitationToken, invitedByName, assignedRole,
@@ -96,7 +99,7 @@ public class EmailServiceImpl implements EmailService {
 
             String subject = String.format("Invitation Reminder - Join %s as %s", appName, assignedRole);
 
-            String invitationUrl = String.format("%s/admin-invitation/accept?token=%s", frontendUrl, invitationToken);
+            String invitationUrl = String.format("%s/admin-invitation/accept?token=%s", frontendAdminUrl, invitationToken);
 
             String emailBody = buildInvitationResendEmailBody(
                     firstName, lastName, invitationToken, invitedByName, assignedRole,
@@ -157,7 +160,7 @@ public class EmailServiceImpl implements EmailService {
             try {
                 log.info("Sending return denial email to: {} (async)", toEmail);
 
-                String subject = String.format("❌ Return Request Decision - Order #%s", orderNumber);
+                String subject = String.format("Return Request Decision - Order #%s", orderNumber);
                 String htmlBody = generateReturnDenialHtml(customerName, returnRequestId, orderNumber, 
                                                          decisionNotes, returnItems, submittedDate, deniedDate, 
                                                          canAppeal, appealDeadline);

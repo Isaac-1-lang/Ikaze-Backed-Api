@@ -108,8 +108,8 @@ public class StripeService {
                                 "orderId", reloadedOrder.getOrderId().toString(),
                                 "orderCode", reloadedOrder.getOrderCode());
 
-                String webSuccess = "http://localhost:3000/payment-success";
-                String webCancel = "http://localhost:3000/payment-cancel";
+                String webSuccess = "https://shopsphere-frontend.vercel.app/payment-success";
+                String webCancel = "https://shopsphere-frontend.vercel.app/payment-cancel";
                 String mobSuccess = "snapshop://checkout-redirect";
                 String mobCancel = "snapshop://checkout-redirect";
                 String successUrl;
@@ -183,8 +183,8 @@ public class StripeService {
                                 "pointsUsed", reloadedOrder.getOrderTransaction().getPointsUsed().toString(),
                                 "pointsValue", reloadedOrder.getOrderTransaction().getPointsValue().toString());
 
-                String webSuccess = "http://localhost:3000/payment-success";
-                String webCancel = "http://localhost:3000/payment-cancel";
+                String webSuccess = "https://shopsphere-frontend.vercel.app/payment-success";
+                String webCancel = "https://shopsphere-frontend.vercel.app/payment-cancel";
                 String mobSuccess = "snapshop://checkout-redirect";
                 String mobCancel = "snapshop://checkout-redirect";
                 String successUrl;
