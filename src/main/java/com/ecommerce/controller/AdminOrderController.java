@@ -1,6 +1,7 @@
 package com.ecommerce.controller;
 
 import com.ecommerce.dto.AdminOrderDTO;
+import com.ecommerce.dto.OrderSearchDTO;
 import com.ecommerce.service.OrderService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -16,6 +17,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 import jakarta.persistence.EntityNotFoundException;
+import jakarta.validation.Valid;
 
 import java.util.HashMap;
 import java.util.List;
@@ -258,6 +260,82 @@ public class AdminOrderController {
             Map<String, Object> response = new HashMap<>();
             response.put("success", false);
             response.put("message", "An unexpected error occurred while updating tracking information.");
+            response.put("errorCode", "INTERNAL_ERROR");
+            response.put("details", e.getMessage());
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(response);
+        }
+    }
+
+    @PostMapping("/search")
+    @Operation(summary = "Search orders with filters", description = "Search and filter orders based on various criteria with pagination")
+    public ResponseEntity<?> searchOrders(@Valid @RequestBody OrderSearchDTO searchRequest) {
+        try {
+            log.info("Searching orders with criteria: {}", searchRequest);
+
+            // Validate that at least one filter is provided
+            if (!searchRequest.hasAtLeastOneFilter()) {
+                Map<String, Object> response = new HashMap<>();
+                response.put("success", false);
+                response.put("message", "At least one search criterion must be provided");
+                response.put("errorCode", "VALIDATION_ERROR");
+                response.put("details", "Please provide at least one filter criterion to search orders.");
+                return ResponseEntity.badRequest().body(response);
+            }
+
+            // Set default pagination if not provided
+            if (searchRequest.getPage() == null) {
+                searchRequest.setPage(0);
+            }
+            if (searchRequest.getSize() == null) {
+                searchRequest.setSize(15);
+            }
+            if (searchRequest.getSortBy() == null) {
+                searchRequest.setSortBy("createdAt");
+            }
+            if (searchRequest.getSortDirection() == null) {
+                searchRequest.setSortDirection("desc");
+            }
+
+            // Create sort object
+            Sort sort = searchRequest.getSortDirection().equalsIgnoreCase("desc") 
+                ? Sort.by(searchRequest.getSortBy()).descending() 
+                : Sort.by(searchRequest.getSortBy()).ascending();
+            
+            // Create pageable object
+            Pageable pageable = PageRequest.of(searchRequest.getPage(), searchRequest.getSize(), sort);
+            
+            // Search orders
+            Page<AdminOrderDTO> ordersPage = orderService.searchOrders(searchRequest, pageable);
+
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", true);
+            response.put("data", ordersPage.getContent());
+            response.put("pagination", Map.of(
+                "currentPage", ordersPage.getNumber(),
+                "totalPages", ordersPage.getTotalPages(),
+                "totalElements", ordersPage.getTotalElements(),
+                "pageSize", ordersPage.getSize(),
+                "hasNext", ordersPage.hasNext(),
+                "hasPrevious", ordersPage.hasPrevious(),
+                "isFirst", ordersPage.isFirst(),
+                "isLast", ordersPage.isLast()
+            ));
+
+            return ResponseEntity.ok(response);
+
+        } catch (IllegalArgumentException e) {
+            log.error("Invalid search criteria: {}", e.getMessage());
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", false);
+            response.put("message", "Invalid search criteria: " + e.getMessage());
+            response.put("errorCode", "VALIDATION_ERROR");
+            response.put("details", e.getMessage());
+            return ResponseEntity.badRequest().body(response);
+        } catch (Exception e) {
+            log.error("Error searching orders: {}", e.getMessage(), e);
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", false);
+            response.put("message", "An unexpected error occurred while searching orders.");
             response.put("errorCode", "INTERNAL_ERROR");
             response.put("details", e.getMessage());
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(response);

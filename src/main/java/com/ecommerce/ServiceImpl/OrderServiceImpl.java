@@ -26,6 +26,7 @@ import com.ecommerce.dto.CustomerOrderDTO;
 import com.ecommerce.dto.AdminOrderDTO;
 import com.ecommerce.dto.DeliveryOrderDTO;
 import com.ecommerce.dto.SimpleProductDTO;
+import com.ecommerce.dto.OrderSearchDTO;
 import jakarta.persistence.EntityNotFoundException;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -468,6 +469,17 @@ public class OrderServiceImpl implements OrderService {
         Order order = orderRepository.findByOrderCodeWithDetailsForAdmin(orderNumber)
                 .orElseThrow(() -> new EntityNotFoundException("Order not found"));
         return toAdminOrderDTO(order);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Page<AdminOrderDTO> searchOrders(OrderSearchDTO searchRequest, Pageable pageable) {
+        log.info("Searching orders with criteria: {}", searchRequest);
+        
+        // Use the repository to search orders with the given criteria
+        Page<Order> ordersPage = orderRepository.searchOrders(searchRequest, pageable);
+        
+        return ordersPage.map(this::toAdminOrderDTO);
     }
 
     // Delivery agency methods

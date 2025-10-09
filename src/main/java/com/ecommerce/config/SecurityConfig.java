@@ -82,7 +82,7 @@ public class SecurityConfig {
         CorsConfiguration configuration = new CorsConfiguration();
         configuration.setAllowedOriginPatterns(
                 Arrays.asList("http://localhost:3000", "http://127.0.0.1:3000", "http://localhost:3001",
-                        "http://44.201.73.159:3000", "https://shopsphere-frontend.vercel.app"));
+                        "http://44.201.73.159:3000", "https://shopsphere-frontend.vercel.app","https://shopsphere-adm.vercel.app"));
         configuration.setAllowedMethods(Arrays.asList("GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"));
         configuration.setAllowedHeaders(Arrays.asList("*"));
         configuration.setAllowCredentials(true);
