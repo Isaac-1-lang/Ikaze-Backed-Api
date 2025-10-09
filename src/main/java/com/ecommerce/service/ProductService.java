@@ -84,6 +84,15 @@ public interface ProductService {
                         List<WarehouseStockWithBatchesRequest> warehouseStocks);
 
         /**
+         * Unassign warehouse from product and delete all associated batches
+         * 
+         * @param productId   The product ID
+         * @param warehouseId The warehouse ID to unassign
+         * @return Map containing success status and message
+         */
+        Map<String, Object> unassignWarehouseFromProduct(UUID productId, Long warehouseId);
+
+        /**
          * Assign stock with batches to a specific product variant
          * 
          * @param productId       The product ID

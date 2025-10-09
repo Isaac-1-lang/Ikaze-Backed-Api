@@ -5,14 +5,18 @@ import com.ecommerce.dto.PointsPaymentRequest;
 import com.ecommerce.dto.PointsPaymentResult;
 import com.ecommerce.service.PointsPaymentService;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.persistence.EntityNotFoundException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import jakarta.validation.Valid;
 import java.math.BigDecimal;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.UUID;
 
 @RestController
@@ -26,20 +30,53 @@ public class PointsPaymentController {
 
     @PostMapping("/preview")
     @PreAuthorize("hasRole('CUSTOMER')")
-    public ResponseEntity<PointsPaymentPreviewDTO> previewPointsPayment(@Valid @RequestBody PointsPaymentRequest request) {
+    public ResponseEntity<?> previewPointsPayment(@Valid @RequestBody PointsPaymentRequest request) {
         try {
             log.info("Previewing points payment for user: {}", request.getUserId());
             PointsPaymentPreviewDTO preview = pointsPaymentService.previewPointsPayment(request);
             return ResponseEntity.ok(preview);
+            
+        } catch (IllegalArgumentException e) {
+            log.warn("Invalid request for points payment preview: {}", e.getMessage());
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", false);
+            response.put("message", e.getMessage());
+            response.put("errorCode", "VALIDATION_ERROR");
+            response.put("details", e.getMessage());
+            return ResponseEntity.badRequest().body(response);
+            
+        } catch (EntityNotFoundException e) {
+            log.warn("Entity not found during points payment preview: {}", e.getMessage());
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", false);
+            response.put("message", "Resource not found: " + e.getMessage());
+            response.put("errorCode", "NOT_FOUND");
+            response.put("details", e.getMessage());
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(response);
+            
+        } catch (RuntimeException e) {
+            log.error("Runtime error previewing points payment: {}", e.getMessage(), e);
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", false);
+            response.put("message", e.getMessage());
+            response.put("errorCode", "RUNTIME_ERROR");
+            response.put("details", e.getMessage());
+            return ResponseEntity.badRequest().body(response);
+            
         } catch (Exception e) {
             log.error("Error previewing points payment: {}", e.getMessage(), e);
-            return ResponseEntity.badRequest().build();
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", false);
+            response.put("message", "An unexpected error occurred while previewing points payment.");
+            response.put("errorCode", "INTERNAL_ERROR");
+            response.put("details", e.getMessage());
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(response);
         }
     }
 
     @PostMapping("/process")
     @PreAuthorize("hasRole('CUSTOMER')")
-    public ResponseEntity<PointsPaymentResult> processPointsPayment(@Valid @RequestBody PointsPaymentRequest request) {
+    public ResponseEntity<?> processPointsPayment(@Valid @RequestBody PointsPaymentRequest request) {
         try {
             log.info("Processing points payment for user: {}", request.getUserId());
             PointsPaymentResult result = pointsPaymentService.processPointsPayment(request);
@@ -49,11 +86,25 @@ public class PointsPaymentController {
             } else {
                 return ResponseEntity.badRequest().body(result);
             }
+            
+        } catch (IllegalArgumentException e) {
+            log.warn("Invalid request for points payment processing: {}", e.getMessage());
+            PointsPaymentResult errorResult = new PointsPaymentResult(false, e.getMessage(), 
+                    null, null, 0, BigDecimal.ZERO, BigDecimal.ZERO, null, false);
+            return ResponseEntity.badRequest().body(errorResult);
+            
+        } catch (EntityNotFoundException e) {
+            log.warn("Entity not found during points payment processing: {}", e.getMessage());
+            PointsPaymentResult errorResult = new PointsPaymentResult(false, "Resource not found: " + e.getMessage(), 
+                    null, null, 0, BigDecimal.ZERO, BigDecimal.ZERO, null, false);
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(errorResult);
+            
         } catch (RuntimeException e) {
             log.error("Error processing points payment: {}", e.getMessage(), e);
             PointsPaymentResult errorResult = new PointsPaymentResult(false, e.getMessage(), 
                     null, null, 0, BigDecimal.ZERO, BigDecimal.ZERO, null, false);
             return ResponseEntity.badRequest().body(errorResult);
+            
         } catch (Exception e) {
             log.error("Unexpected error processing points payment: {}", e.getMessage(), e);
             PointsPaymentResult errorResult = new PointsPaymentResult(false, "Payment processing failed", 

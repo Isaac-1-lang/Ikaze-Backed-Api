@@ -38,6 +38,7 @@ import com.ecommerce.repository.ProductVariantRepository;
 import com.ecommerce.repository.StockBatchRepository;
 import com.ecommerce.repository.UserRepository;
 import com.ecommerce.repository.DiscountRepository;
+import com.ecommerce.repository.WarehouseRepository;
 import com.stripe.model.PaymentIntent;
 import com.stripe.model.checkout.Session;
 import org.springframework.security.core.Authentication;
@@ -60,6 +61,7 @@ public class CheckoutService {
     private final UserRepository userRepository;
     private final DiscountRepository discountRepository;
     private final OrderRepository orderRepository;
+    private final WarehouseRepository warehouseRepository;
     private final StripeService stripeService;
     private final StockLockService stockLockService;
     private final MultiWarehouseStockAllocator multiWarehouseStockAllocator;
@@ -74,7 +76,7 @@ public class CheckoutService {
     private final CartService cartService;
 
     public String createCheckoutSession(CheckoutRequest req) throws Exception {
-        log.info("Creating checkout session for authenticated user");
+        validateDeliveryCountry(req.getShippingAddress().getCountry());
 
         UUID userId;
         try {
@@ -89,10 +91,10 @@ public class CheckoutService {
                 .orElseThrow(() -> new EntityNotFoundException("User not found with ID: " + userId));
 
         validateCartItems(req.getItems());
-
+            
         Map<CartItemDTO, List<FEFOStockAllocationService.BatchAllocation>> fefoAllocations = enhancedWarehouseAllocator
                 .allocateStockWithFEFO(req.getItems(), req.getShippingAddress());
-
+    
         Map<Long, List<MultiWarehouseStockAllocator.StockAllocation>> stockAllocations = convertFEFOToStockAllocations(
                 fefoAllocations);
 
@@ -207,6 +209,8 @@ public class CheckoutService {
 
     public String createGuestCheckoutSession(GuestCheckoutRequest req) throws Exception {
         log.info("Creating guest checkout session");
+
+        validateDeliveryCountry(req.getAddress().getCountry());
 
         validateCartItems(req.getItems());
 
@@ -506,39 +510,35 @@ public class CheckoutService {
             int totalRestoredQuantity = 0;
             Map<String, Integer> restorationSummary = new HashMap<>();
 
-            for (OrderItem orderItem : order.getOrderItems()) {
-                log.debug("Processing order item: productId={}, variantId={}, quantity={}",
-                        orderItem.getProduct() != null ? orderItem.getProduct().getProductId() : null,
-                        orderItem.getProductVariant() != null ? orderItem.getProductVariant().getId() : null,
-                        orderItem.getQuantity());
+            // Fetch all OrderItemBatch entities for this order with warehouses eagerly loaded
+            List<OrderItemBatch> orderItemBatches = orderItemBatchRepository.findByOrderIdWithWarehouse(order.getOrderId());
+            
+            for (OrderItemBatch orderItemBatch : orderItemBatches) {
+                StockBatch batch = orderItemBatch.getStockBatch();
+                int quantityToRestore = orderItemBatch.getQuantityUsed();
 
-                for (OrderItemBatch orderItemBatch : orderItem.getOrderItemBatches()) {
-                    StockBatch batch = orderItemBatch.getStockBatch();
-                    int quantityToRestore = orderItemBatch.getQuantityUsed();
+                log.info("Restoring {} units to batch {} (current quantity: {})",
+                        quantityToRestore, batch.getBatchNumber(), batch.getQuantity());
 
-                    log.info("Restoring {} units to batch {} (current quantity: {})",
-                            quantityToRestore, batch.getBatchNumber(), batch.getQuantity());
+                int newQuantity = batch.getQuantity() + quantityToRestore;
+                batch.setQuantity(newQuantity);
 
-                    int newQuantity = batch.getQuantity() + quantityToRestore;
-                    batch.setQuantity(newQuantity);
-
-                    if (batch.getStatus() == com.ecommerce.enums.BatchStatus.EMPTY && newQuantity > 0) {
-                        batch.setStatus(com.ecommerce.enums.BatchStatus.ACTIVE);
-                        log.info("Updated batch {} status from EMPTY to ACTIVE", batch.getBatchNumber());
-                    }
-
-                    stockBatchRepository.save(batch);
-
-                    String key = String.format("Batch %s (%s)",
-                            batch.getBatchNumber(),
-                            orderItemBatch.getWarehouse().getName());
-                    restorationSummary.merge(key, quantityToRestore, Integer::sum);
-                    totalRestoredQuantity += quantityToRestore;
-
-                    log.debug("Restored {} units to batch {} in warehouse {} (new quantity: {})",
-                            quantityToRestore, batch.getBatchNumber(),
-                            orderItemBatch.getWarehouse().getName(), newQuantity);
+                if (batch.getStatus() == com.ecommerce.enums.BatchStatus.EMPTY && newQuantity > 0) {
+                    batch.setStatus(com.ecommerce.enums.BatchStatus.ACTIVE);
+                    log.info("Updated batch {} status from EMPTY to ACTIVE", batch.getBatchNumber());
                 }
+
+                stockBatchRepository.save(batch);
+
+                String key = String.format("Batch %s (%s)",
+                        batch.getBatchNumber(),
+                        orderItemBatch.getWarehouse().getName());
+                restorationSummary.merge(key, quantityToRestore, Integer::sum);
+                totalRestoredQuantity += quantityToRestore;
+
+                log.debug("Restored {} units to batch {} in warehouse {} (new quantity: {})",
+                        quantityToRestore, batch.getBatchNumber(),
+                        orderItemBatch.getWarehouse().getName(), newQuantity);
             }
 
             log.info("Successfully restored {} total units across {} batches for order {}: {}",
@@ -610,6 +610,10 @@ public class CheckoutService {
 
     public com.ecommerce.dto.PaymentSummaryDTO calculatePaymentSummary(AddressDto deliveryAddress,
             List<CartItemDTO> items, UUID userId) {
+        
+        // Validate if we have warehouses in the delivery country
+        validateDeliveryCountry(deliveryAddress.getCountry());
+        
         BigDecimal subtotal = BigDecimal.ZERO;
         BigDecimal discountAmount = BigDecimal.ZERO;
         int totalProductCount = 0;
@@ -663,19 +667,38 @@ public class CheckoutService {
             totalProductCount += item.getQuantity();
         }
 
-        BigDecimal shippingCost = calculateShippingCost(deliveryAddress, items, subtotal);
+        com.ecommerce.dto.ShippingDetailsDTO shippingDetails;
+        try {
+            shippingDetails = shippingCostService
+                    .calculateEnhancedShippingDetails(deliveryAddress, items, subtotal);
+        } catch (Exception e) {
+            log.error("Error calculating shipping details: {}", e.getMessage(), e);
+            shippingDetails = com.ecommerce.dto.ShippingDetailsDTO.builder()
+                    .shippingCost(BigDecimal.valueOf(10.00))
+                    .distanceKm(0.0)
+                    .costPerKm(BigDecimal.ZERO)
+                    .selectedWarehouseName("Default")
+                    .selectedWarehouseCountry("Unknown")
+                    .isInternationalShipping(false)
+                    .build();
+        }
+        
+        BigDecimal shippingCost = shippingDetails.getShippingCost();
         BigDecimal taxAmount = BigDecimal.ZERO;
         BigDecimal totalAmount = subtotal.add(shippingCost).add(taxAmount);
 
         Integer rewardPoints = 0;
         BigDecimal rewardPointsValue = BigDecimal.ZERO;
         if (userId != null) {
-            rewardPoints = rewardService.getPreviewPointsForOrder(totalProductCount, subtotal);
-            rewardPointsValue = rewardService.calculatePointsValue(rewardPoints);
+            try {
+                rewardPoints = rewardService.getPreviewPointsForOrder(totalProductCount, subtotal);
+                rewardPointsValue = rewardService.calculatePointsValue(rewardPoints);
+            } catch (Exception e) {
+                log.warn("Error calculating reward points for user {}: {}", userId, e.getMessage());
+                rewardPoints = 0;
+                rewardPointsValue = BigDecimal.ZERO;
+            }
         }
-
-        com.ecommerce.dto.ShippingDetailsDTO shippingDetails = shippingCostService
-                .calculateShippingDetails(deliveryAddress, items, subtotal);
 
         return com.ecommerce.dto.PaymentSummaryDTO.builder()
                 .subtotal(subtotal)
@@ -859,6 +882,22 @@ public class CheckoutService {
 
         log.info("Discount validation passed for: {}", discount.getDiscountId());
         return true;
+    }
+
+    /**
+     * Validate if we have at least one warehouse in the delivery country
+     */
+    private void validateDeliveryCountry(String country) {
+        if (country == null || country.trim().isEmpty()) {
+            throw new IllegalArgumentException("Delivery country is required");
+        }
+
+        boolean hasWarehouseInCountry = warehouseRepository.existsByCountryIgnoreCase(country.trim());
+        
+        if (!hasWarehouseInCountry) {
+            throw new IllegalArgumentException("Sorry, we don't deliver to " + country + " as we don't have any warehouses there.");
+        }
+        
     }
 
     private void createOrderItemBatches(Order order, CartItemDTO cartItem,

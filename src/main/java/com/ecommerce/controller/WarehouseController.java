@@ -37,11 +37,9 @@ public class WarehouseController {
             @RequestParam("warehouse") String warehouseJson,
             @RequestParam(value = "images", required = false) List<MultipartFile> images) {
         try {
-            // Parse JSON string to CreateWarehouseDTO
             ObjectMapper objectMapper = new ObjectMapper();
             CreateWarehouseDTO createWarehouseDTO = objectMapper.readValue(warehouseJson, CreateWarehouseDTO.class);
 
-            log.info("Creating warehouse: {}", createWarehouseDTO.getName());
             WarehouseDTO warehouse = warehouseService.createWarehouse(createWarehouseDTO, images);
             return ResponseEntity.status(HttpStatus.CREATED).body(warehouse);
         } catch (Exception e) {

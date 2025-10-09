@@ -437,6 +437,71 @@ public class ProductServiceImpl implements ProductService {
 
     @Override
     @Transactional
+    public Map<String, Object> unassignWarehouseFromProduct(UUID productId, Long warehouseId) {
+        try {
+            log.info("Unassigning warehouse {} from product {}", warehouseId, productId);
+
+            Product product = productRepository.findById(productId)
+                    .orElseThrow(() -> new IllegalArgumentException("Product not found"));
+
+            Warehouse warehouse = warehouseRepository.findById(warehouseId)
+                    .orElseThrow(() -> new IllegalArgumentException("Warehouse not found"));
+
+            Stock stock = stockRepository.findByWarehouseAndProduct(warehouse, product)
+                    .orElseThrow(() -> new IllegalArgumentException(
+                            "No stock assignment found for product " + productId + " in warehouse " + warehouseId));
+   
+            List<StockBatch> batches = stockBatchRepository.findByStock(stock);
+            
+            int preservedBatches = 0;
+            int deactivatedBatches = 0;
+            int deletedBatches = 0;
+
+            for (StockBatch batch : batches) {
+                if (stockBatchRepository.isReferencedByOrders(batch.getId())) {
+                    if (batch.getStatus() == com.ecommerce.enums.BatchStatus.ACTIVE) {
+                        batch.setStatus(com.ecommerce.enums.BatchStatus.INACTIVE);
+                        stockBatchRepository.save(batch);
+                        deactivatedBatches++;
+                        log.info("Deactivated batch {} as it's referenced by orders", batch.getId());
+                    } else {
+                        preservedBatches++;
+                        log.info("Preserved batch {} as it's already inactive and referenced by orders", batch.getId());
+                    }
+                } else {
+                    stockBatchRepository.delete(batch);
+                    deletedBatches++;
+                    log.info("Deleted batch {} as it's not referenced by any orders", batch.getId());
+                }
+            }
+
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", true);
+            response.put("message", "Warehouse unassigned successfully from product");
+            response.put("productId", productId);
+            response.put("warehouseId", warehouseId);
+            response.put("warehouseName", warehouse.getName());
+            response.put("batchesProcessed", batches.size());
+            response.put("batchesDeleted", deletedBatches);
+            response.put("batchesDeactivated", deactivatedBatches);
+            response.put("batchesPreserved", preservedBatches);
+
+            log.info("Successfully unassigned warehouse {} from product {}. Processed {} batches: {} deleted, {} deactivated, {} preserved", 
+                    warehouseId, productId, batches.size(), deletedBatches, deactivatedBatches, preservedBatches);
+            
+            return response;
+
+        } catch (IllegalArgumentException e) {
+            log.error("Validation error unassigning warehouse: {}", e.getMessage());
+            throw e;
+        } catch (Exception e) {
+            log.error("Error unassigning warehouse {} from product {}: {}", warehouseId, productId, e.getMessage(), e);
+            throw new RuntimeException("Failed to unassign warehouse from product: " + e.getMessage(), e);
+        }
+    }
+
+    @Override
+    @Transactional
     public Map<String, Object> assignVariantStockWithBatches(UUID productId, Long variantId,
             List<WarehouseStockWithBatchesRequest> warehouseStocks) {
         try {
@@ -3174,9 +3239,7 @@ public class ProductServiceImpl implements ProductService {
                     .map(this::mapVariantAttributeToInnerDTO)
                     .collect(Collectors.toList()));
 
-        }
-
-        List<Stock> variantStocks = stockRepository.findByProductVariant(variant);
+        List<Stock> variantStocks = stockRepository.findByProductVariantWithWarehouse(variant);
         if (variantStocks != null && !variantStocks.isEmpty()) {
             dto.setWarehouseStocks(variantStocks.stream()
                     .map(this::mapStockToVariantWarehouseStockDTO)
@@ -5630,7 +5693,7 @@ public class ProductServiceImpl implements ProductService {
     private ProductVariantDTO convertToProductVariantDTO(ProductVariant variant) {
         try {
             List<ProductVariantDTO.VariantWarehouseStockDTO> warehouseStocks = new ArrayList<>();
-            List<Stock> stocks = stockRepository.findByProductVariant(variant);
+            List<Stock> stocks = stockRepository.findByProductVariantWithWarehouse(variant);
             
             for (Stock stock : stocks) {
                 Integer totalQuantity = stockBatchRepository.getTotalActiveQuantityByStock(stock);
@@ -5706,4 +5769,5 @@ public class ProductServiceImpl implements ProductService {
             throw new RuntimeException("Failed to convert variant to DTO: " + e.getMessage(), e);
         }
     }
+}
 }

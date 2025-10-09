@@ -17,8 +17,6 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
-import org.springframework.transaction.support.TransactionTemplate;
-import org.springframework.transaction.PlatformTransactionManager;
 
 @Service
 @RequiredArgsConstructor
@@ -30,6 +28,7 @@ public class PointsPaymentServiceImpl implements PointsPaymentService {
     private final OrderTransactionRepository transactionRepository;
     private final ProductRepository productRepository;
     private final ProductVariantRepository productVariantRepository;
+    private final WarehouseRepository warehouseRepository;
     private final RewardService rewardService;
     private final ShippingCostService shippingCostService;
     private final EnhancedStockValidationService stockValidationService;
@@ -45,19 +44,79 @@ public class PointsPaymentServiceImpl implements PointsPaymentService {
         User user = userRepository.findById(request.getUserId())
                 .orElseThrow(() -> new RuntimeException("User not found"));
 
+        validateDeliveryCountry(request.getShippingAddress().getCountry());
+
         stockValidationService.validateCartItems(request.getItems());
 
-        BigDecimal subtotal = calculateSubtotal(request.getItems());
-        BigDecimal shippingCost = shippingCostService.calculateOrderShippingCost(request.getShippingAddress(), request.getItems(), subtotal);
-        BigDecimal totalAmount = subtotal.add(shippingCost);
+        BigDecimal subtotal = BigDecimal.ZERO;
+        BigDecimal discountAmount = BigDecimal.ZERO;
 
-        Integer availablePoints = user.getPoints(); // Use User.points directly for performance
+        for (CartItemDTO item : request.getItems()) {
+            BigDecimal itemPrice = BigDecimal.ZERO;
+            BigDecimal originalPrice = BigDecimal.ZERO;
+
+            if (item.getVariantId() != null) {
+                try {
+                    ProductVariant variant = productVariantRepository.findById(item.getVariantId())
+                            .orElseThrow(() -> new RuntimeException("Variant not found with ID: " + item.getVariantId()));
+                    originalPrice = variant.getPrice();
+
+                    if (variant.getDiscount() != null) {
+                        validateDiscountValidity(variant.getDiscount());
+                    }
+
+                    itemPrice = calculateDiscountedPrice(variant);
+                } catch (Exception e) {
+                    throw new RuntimeException("Variant not found with ID: " + item.getVariantId());
+                }
+            } else if (item.getProductId() != null) {
+                try {
+                    Product product = productRepository.findById(item.getProductId())
+                            .orElseThrow(() -> new RuntimeException("Product not found with ID: " + item.getProductId()));
+                    originalPrice = product.getPrice();
+
+                    if (product.getDiscount() != null) {
+                        validateDiscountValidity(product.getDiscount());
+                    }
+
+                    itemPrice = calculateDiscountedPrice(product);
+                } catch (Exception e) {
+                    throw new RuntimeException("Product not found with ID: " + item.getProductId());
+                }
+            } else {
+                continue;
+            }
+
+            BigDecimal itemTotal = itemPrice.multiply(BigDecimal.valueOf(item.getQuantity()));
+            BigDecimal itemDiscount = originalPrice.subtract(itemPrice)
+                    .multiply(BigDecimal.valueOf(item.getQuantity()));
+
+            subtotal = subtotal.add(itemTotal);
+            discountAmount = discountAmount.add(itemDiscount);
+        }
+
+        // Calculate shipping cost with proper error handling (same as CheckoutService)
+        BigDecimal shippingCost;
+        try {
+            shippingCost = shippingCostService.calculateOrderShippingCost(request.getShippingAddress(), request.getItems(), subtotal);
+        } catch (Exception e) {
+            log.error("Error calculating shipping cost for points payment preview: {}", e.getMessage(), e);
+            shippingCost = BigDecimal.valueOf(10.00); // Default fallback
+        }
+
+        BigDecimal taxAmount = BigDecimal.ZERO;
+        BigDecimal totalAmount = subtotal.add(shippingCost).add(taxAmount);
+
+        Integer availablePoints = user.getPoints();
         BigDecimal pointsValue = rewardService.calculatePointsValue(availablePoints);
         BigDecimal remainingToPay = totalAmount.subtract(pointsValue).max(BigDecimal.ZERO);
         boolean canPayWithPointsOnly = pointsValue.compareTo(totalAmount) >= 0;
 
         RewardSystemDTO activeSystem = rewardService.getActiveRewardSystem();
         BigDecimal pointValue = activeSystem != null ? activeSystem.getPointValue() : BigDecimal.ZERO;
+
+        log.info("Points payment preview - Subtotal: {}, Shipping: {}, Total: {}, Available Points: {}, Points Value: {}, Remaining: {}", 
+                subtotal, shippingCost, totalAmount, availablePoints, pointsValue, remainingToPay);
 
         return new PointsPaymentPreviewDTO(
                 totalAmount,
@@ -120,7 +179,6 @@ public class PointsPaymentServiceImpl implements PointsPaymentService {
                     "Points used for order #" + savedOrder.getOrderId());
             log.info("Points deducted successfully");
 
-            // Update the existing OrderTransaction (created in createOrderFromRequest)
             OrderTransaction transaction = savedOrder.getOrderTransaction();
             transaction.setStatus(OrderTransaction.TransactionStatus.COMPLETED);
             transaction.setPointsUsed(pointsToUse);
@@ -265,7 +323,11 @@ public class PointsPaymentServiceImpl implements PointsPaymentService {
         }
     }
 
-    private BigDecimal calculateSubtotal(List<CartItemDTO> items) {
+    /**
+     * Simple subtotal calculation (legacy method - kept for backward compatibility)
+     * Note: This method doesn't handle discounts properly. Use previewPointsPayment for accurate calculations.
+     */
+    private BigDecimal calculateSimpleSubtotal(List<CartItemDTO> items) {
         return items.stream()
                 .map(item -> item.getPrice().multiply(BigDecimal.valueOf(item.getQuantity())))
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
@@ -286,7 +348,7 @@ public class PointsPaymentServiceImpl implements PointsPaymentService {
         order.setOrderCode(generateOrderNumber());
         order.setOrderStatus(Order.OrderStatus.PROCESSING);
 
-        BigDecimal subtotal = calculateSubtotal(request.getItems());
+        BigDecimal subtotal = calculateSimpleSubtotal(request.getItems());
         OrderInfo orderInfo = new OrderInfo();
         orderInfo.setShippingCost(shippingCostService.calculateOrderShippingCost(request.getShippingAddress(), request.getItems(), subtotal));
         orderInfo.setTotalAmount(totalAmount);
@@ -499,5 +561,108 @@ public class PointsPaymentServiceImpl implements PointsPaymentService {
         system.setPointValue(dto.getPointValue());
         system.setIsSystemEnabled(dto.getIsSystemEnabled());
         return system;
+    }
+
+    /**
+     * Calculate discounted price for ProductVariant (same logic as CheckoutService)
+     */
+    private BigDecimal calculateDiscountedPrice(ProductVariant variant) {
+        if (variant.getDiscount() != null && variant.getDiscount().isValid() && variant.getDiscount().isActive()) {
+            if (validateDiscountValidity(variant.getDiscount())) {
+                BigDecimal discountMultiplier = BigDecimal.ONE.subtract(
+                        variant.getDiscount().getPercentage().divide(BigDecimal.valueOf(100.0)));
+                return variant.getPrice().multiply(discountMultiplier);
+            }
+        }
+
+        if (variant.getProduct() != null && variant.getProduct().getDiscount() != null
+                && variant.getProduct().getDiscount().isValid() && variant.getProduct().getDiscount().isActive()) {
+            if (validateDiscountValidity(variant.getProduct().getDiscount())) {
+                BigDecimal discountMultiplier = BigDecimal.ONE.subtract(
+                        variant.getProduct().getDiscount().getPercentage().divide(BigDecimal.valueOf(100.0)));
+                return variant.getPrice().multiply(discountMultiplier);
+            }
+        }
+
+        if (variant.getProduct() != null && variant.getProduct().isOnSale()
+                && variant.getProduct().getSalePercentage() != null
+                && variant.getProduct().getSalePercentage() > 0) {
+            BigDecimal discountMultiplier = BigDecimal.ONE.subtract(
+                    BigDecimal.valueOf(variant.getProduct().getSalePercentage()).divide(BigDecimal.valueOf(100.0)));
+            return variant.getPrice().multiply(discountMultiplier);
+        }
+
+        return variant.getPrice();
+    }
+
+    /**
+     * Calculate discounted price for Product (same logic as CheckoutService)
+     */
+    private BigDecimal calculateDiscountedPrice(Product product) {
+        // Check product discount
+        if (product.getDiscount() != null && product.getDiscount().isValid() && product.getDiscount().isActive()) {
+            if (validateDiscountValidity(product.getDiscount())) {
+                BigDecimal discountMultiplier = BigDecimal.ONE.subtract(
+                        product.getDiscount().getPercentage().divide(BigDecimal.valueOf(100.0)));
+                return product.getPrice().multiply(discountMultiplier);
+            }
+            // If discount is invalid, continue to check sale price
+        }
+
+        if (product.isOnSale() && product.getSalePercentage() != null && product.getSalePercentage() > 0) {
+            BigDecimal discountMultiplier = BigDecimal.ONE.subtract(
+                    BigDecimal.valueOf(product.getSalePercentage()).divide(BigDecimal.valueOf(100.0)));
+            return product.getPrice().multiply(discountMultiplier);
+        }
+
+        return product.getPrice();
+    }
+
+    /**
+     * Validate discount validity (same logic as CheckoutService)
+     */
+    private boolean validateDiscountValidity(com.ecommerce.entity.Discount discount) {
+        LocalDateTime now = LocalDateTime.now();
+
+        if (!discount.isActive()) {
+            log.warn("Skipping inactive discount: {}", discount.getDiscountId());
+            return false;
+        }
+
+        if (now.isBefore(discount.getStartDate())) {
+            log.warn("Skipping discount that hasn't started yet: {}", discount.getDiscountId());
+            return false;
+        }
+
+        if (discount.getEndDate() != null && now.isAfter(discount.getEndDate())) {
+            log.warn("Skipping expired discount: {}", discount.getDiscountId());
+            return false;
+        }
+
+        if (discount.getUsageLimit() != null && discount.getUsedCount() >= discount.getUsageLimit()) {
+            log.warn("Skipping discount with exceeded usage limit: {}", discount.getDiscountId());
+            return false;
+        }
+
+        log.info("Discount validation passed for: {}", discount.getDiscountId());
+        return true;
+    }
+
+    /**
+     * Validate if we have at least one warehouse in the delivery country
+     */
+    private void validateDeliveryCountry(String country) {
+        if (country == null || country.trim().isEmpty()) {
+            throw new IllegalArgumentException("Delivery country is required");
+        }
+
+        boolean hasWarehouseInCountry = warehouseRepository.existsByCountryIgnoreCase(country.trim());
+        
+        if (!hasWarehouseInCountry) {
+            log.warn("No warehouse found in country: {}", country);
+            throw new IllegalArgumentException("Sorry, we don't deliver to " + country + " as we don't have any warehouses there.");
+        }
+        
+        log.info("Delivery country validation passed for: {}", country);
     }
 }

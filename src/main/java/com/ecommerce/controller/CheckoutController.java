@@ -224,13 +224,13 @@ public class CheckoutController {
                     request.getOrderValue());
             return ResponseEntity.ok(shippingCost);
         } catch (Exception e) {
-            log.error("Error calculating shipping cost: {}", e.getMessage(), e);
-            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(BigDecimal.ZERO);
+            log.error("Error calculating payment summary: {}", e.getMessage(), e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(BigDecimal.ZERO);
         }
     }
 
     @PostMapping("/payment-summary")
-    public ResponseEntity<com.ecommerce.dto.PaymentSummaryDTO> getPaymentSummary(
+    public ResponseEntity<?> getPaymentSummary(
             @RequestBody com.ecommerce.dto.CalculateOrderShippingRequest request) {
         try {
             log.info("Received payment summary request: address={}, items={}, userId={}",
@@ -248,9 +248,33 @@ public class CheckoutController {
 
             log.info("Payment summary calculated successfully: totalAmount={}", summary.getTotalAmount());
             return ResponseEntity.ok(summary);
+            
+        } catch (IllegalArgumentException e) {
+            log.warn("Invalid request for payment summary: {}", e.getMessage());
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", false);
+            response.put("message", e.getMessage());
+            response.put("errorCode", "VALIDATION_ERROR");
+            response.put("details", e.getMessage());
+            return ResponseEntity.badRequest().body(response);
+            
+        } catch (EntityNotFoundException e) {
+            log.warn("Entity not found during payment summary calculation: {}", e.getMessage());
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", false);
+            response.put("message", "Resource not found: " + e.getMessage());
+            response.put("errorCode", "NOT_FOUND");
+            response.put("details", e.getMessage());
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(response);
+            
         } catch (Exception e) {
             log.error("Error calculating payment summary: {}", e.getMessage(), e);
-            return ResponseEntity.status(HttpStatus.BAD_REQUEST).build();
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", false);
+            response.put("message", "An unexpected error occurred while calculating payment summary.");
+            response.put("errorCode", "INTERNAL_ERROR");
+            response.put("details", e.getMessage());
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(response);
         }
     }
 

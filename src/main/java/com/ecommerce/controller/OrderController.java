@@ -227,14 +227,14 @@ public class OrderController {
             @RequestParam String token) {
         try {
             log.info("Fetching order {} with token authentication", orderId);
-            
+
             // Validate token first
             if (!orderTrackingService.isValidToken(token)) {
                 log.warn("Invalid or expired token provided for order {}", orderId);
                 return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
                         .body(ApiResponse.error("Invalid or expired token"));
             }
-            
+
             // Get the email associated with this token
             String email = orderTrackingService.getEmailFromToken(token);
             if (email == null) {
@@ -242,7 +242,7 @@ public class OrderController {
                 return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
                         .body(ApiResponse.error("Invalid token"));
             }
-            
+
             // Get the order
             Order order = orderService.getOrderById(orderId);
             if (order == null) {
@@ -250,7 +250,7 @@ public class OrderController {
                 return ResponseEntity.status(HttpStatus.NOT_FOUND)
                         .body(ApiResponse.error("Order not found"));
             }
-            
+
             // Verify the order belongs to the email associated with the token
             String orderEmail = null;
             if (order.getOrderCustomerInfo() != null) {
@@ -258,19 +258,19 @@ public class OrderController {
             } else if (order.getUser() != null) {
                 orderEmail = order.getUser().getUserEmail();
             }
-            
+
             if (orderEmail == null || !orderEmail.equalsIgnoreCase(email)) {
                 log.warn("Order {} does not belong to email {} (token owner)", orderId, email);
                 return ResponseEntity.status(HttpStatus.FORBIDDEN)
                         .body(ApiResponse.error("Access denied: Order does not belong to your email"));
             }
-            
+
             // Convert to DTO and return
             OrderResponseDTO dto = toDto(order);
             log.info("Successfully retrieved order {} for email {}", orderId, email);
-            
+
             return ResponseEntity.ok(ApiResponse.success(dto));
-            
+
         } catch (Exception e) {
             log.error("Error fetching order {} with token", orderId, e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
@@ -593,7 +593,8 @@ public class OrderController {
         dto.setCreatedAt(order.getCreatedAt());
         dto.setUpdatedAt(order.getUpdatedAt());
 
-        // Set customer info - prioritize OrderCustomerInfo for guest orders, fallback to User for registered users
+        // Set customer info - prioritize OrderCustomerInfo for guest orders, fallback
+        // to User for registered users
         if (order.getOrderCustomerInfo() != null) {
             OrderResponseDTO.CustomerInfo customerInfo = new OrderResponseDTO.CustomerInfo();
             customerInfo.setName(order.getOrderCustomerInfo().getFullName());
@@ -618,7 +619,8 @@ public class OrderController {
             dto.setNotes(info.getNotes());
         }
 
-        // Set shipping address with coordinates - prioritize OrderCustomerInfo, fallback to OrderAddress
+        // Set shipping address with coordinates - prioritize OrderCustomerInfo,
+        // fallback to OrderAddress
         OrderResponseDTO.ShippingAddress shippingAddress = new OrderResponseDTO.ShippingAddress();
         boolean hasShippingAddress = false;
 
@@ -635,7 +637,7 @@ public class OrderController {
         if (addr != null) {
             shippingAddress.setLatitude(addr.getLatitude());
             shippingAddress.setLongitude(addr.getLongitude());
-            
+
             // If we don't have address from OrderCustomerInfo, use OrderAddress
             if (!hasShippingAddress) {
                 shippingAddress.setStreet(addr.getStreet());
@@ -684,7 +686,8 @@ public class OrderController {
         }
 
         if (order.getOrderItems() != null && !order.getOrderItems().isEmpty()) {
-            List<OrderResponseDTO.OrderItem> itemDTOs = order.getOrderItems().stream().map(this::mapOrderItemToResponseDTO).toList();
+            List<OrderResponseDTO.OrderItem> itemDTOs = order.getOrderItems().stream()
+                    .map(this::mapOrderItemToResponseDTO).toList();
             dto.setItems(itemDTOs);
         }
 
@@ -743,62 +746,66 @@ public class OrderController {
         dto.setQuantity(item.getQuantity());
         dto.setPrice(item.getPrice());
         dto.setTotalPrice(item.getSubtotal());
-        
+
         // Set product info
         if (item.getProduct() != null) {
             OrderResponseDTO.Product product = new OrderResponseDTO.Product();
             product.setId(item.getProduct().getProductId());
             product.setName(item.getProduct().getProductName());
-            
+
             // Add product images if available
             if (item.getProduct().getImages() != null && !item.getProduct().getImages().isEmpty()) {
                 List<String> imageUrls = item.getProduct().getImages().stream()
-                    .sorted((img1, img2) -> {
-                        if (img1.isPrimary() && !img2.isPrimary()) return -1;
-                        if (!img1.isPrimary() && img2.isPrimary()) return 1;
-                        int sortOrder1 = img1.getSortOrder() != null ? img1.getSortOrder() : 0;
-                        int sortOrder2 = img2.getSortOrder() != null ? img2.getSortOrder() : 0;
-                        return Integer.compare(sortOrder1, sortOrder2);
-                    })
-                    .map(img -> img.getImageUrl())
-                    .filter(url -> url != null && !url.trim().isEmpty())
-                    .collect(Collectors.toList());
+                        .sorted((img1, img2) -> {
+                            if (img1.isPrimary() && !img2.isPrimary())
+                                return -1;
+                            if (!img1.isPrimary() && img2.isPrimary())
+                                return 1;
+                            int sortOrder1 = img1.getSortOrder() != null ? img1.getSortOrder() : 0;
+                            int sortOrder2 = img2.getSortOrder() != null ? img2.getSortOrder() : 0;
+                            return Integer.compare(sortOrder1, sortOrder2);
+                        })
+                        .map(img -> img.getImageUrl())
+                        .filter(url -> url != null && !url.trim().isEmpty())
+                        .collect(Collectors.toList());
                 product.setImages(imageUrls);
             }
-            
+
             dto.setProduct(product);
         }
-        
+
         // Set variant info if available
         if (item.getProductVariant() != null) {
             OrderResponseDTO.Variant variant = new OrderResponseDTO.Variant();
             variant.setId(item.getProductVariant().getId());
             variant.setName(item.getProductVariant().getVariantName());
-            
+
             // Add variant images if available
             if (item.getProductVariant().getImages() != null && !item.getProductVariant().getImages().isEmpty()) {
                 List<String> variantImageUrls = item.getProductVariant().getImages().stream()
-                    .sorted((img1, img2) -> {
-                        if (img1.isPrimary() && !img2.isPrimary()) return -1;
-                        if (!img1.isPrimary() && img2.isPrimary()) return 1;
-                        int sortOrder1 = img1.getSortOrder() != null ? img1.getSortOrder() : 0;
-                        int sortOrder2 = img2.getSortOrder() != null ? img2.getSortOrder() : 0;
-                        return Integer.compare(sortOrder1, sortOrder2);
-                    })
-                    .map(img -> img.getImageUrl())
-                    .filter(url -> url != null && !url.trim().isEmpty())
-                    .collect(Collectors.toList());
+                        .sorted((img1, img2) -> {
+                            if (img1.isPrimary() && !img2.isPrimary())
+                                return -1;
+                            if (!img1.isPrimary() && img2.isPrimary())
+                                return 1;
+                            int sortOrder1 = img1.getSortOrder() != null ? img1.getSortOrder() : 0;
+                            int sortOrder2 = img2.getSortOrder() != null ? img2.getSortOrder() : 0;
+                            return Integer.compare(sortOrder1, sortOrder2);
+                        })
+                        .map(img -> img.getImageUrl())
+                        .filter(url -> url != null && !url.trim().isEmpty())
+                        .collect(Collectors.toList());
                 variant.setImages(variantImageUrls);
             }
-            
+
             dto.setVariant(variant);
         }
-        
+
         // Set return eligibility (placeholder)
         dto.setReturnEligible(true);
         dto.setMaxReturnDays(30);
         dto.setDaysRemainingForReturn(25);
-        
+
         return dto;
     }
 
@@ -854,9 +861,6 @@ public class OrderController {
         }
     }
 
-    /**
-     * Request secure tracking access via email (public endpoint)
-     */
     @PostMapping("/track/request-access")
     @Operation(summary = "Request tracking access", description = "Request secure tracking access via email verification", responses = {
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "Access request processed"),
@@ -866,16 +870,16 @@ public class OrderController {
     public ResponseEntity<?> requestTrackingAccess(@Valid @RequestBody OrderTrackingRequestDTO request) {
         try {
             OrderTrackingResponseDTO response = orderTrackingService.requestTrackingAccess(request);
-            
+
             Map<String, Object> responseMap = new HashMap<>();
             responseMap.put("success", response.isSuccess());
             responseMap.put("message", response.getMessage());
-            
+
             if (response.isSuccess()) {
                 responseMap.put("expiresAt", response.getExpiresAt());
                 responseMap.put("trackingUrl", response.getTrackingUrl());
             }
-            
+
             return ResponseEntity.ok(responseMap);
         } catch (Exception e) {
             log.error("Failed to process tracking access request", e);
@@ -902,7 +906,7 @@ public class OrderController {
         try {
             Pageable pageable = PageRequest.of(page, size);
             Page<OrderSummaryDTO> orders = orderTrackingService.getOrdersByToken(token, pageable);
-            
+
             Map<String, Object> response = new HashMap<>();
             response.put("success", true);
             response.put("data", orders.getContent());
@@ -910,7 +914,7 @@ public class OrderController {
             response.put("totalPages", orders.getTotalPages());
             response.put("currentPage", orders.getNumber());
             response.put("pageSize", orders.getSize());
-            
+
             return ResponseEntity.ok(response);
         } catch (IllegalArgumentException e) {
             Map<String, Object> response = new HashMap<>();
@@ -925,7 +929,6 @@ public class OrderController {
             return ResponseEntity.internalServerError().body(response);
         }
     }
-
 
     /**
      * Verify delivery by pickup token (delivery agent only)
@@ -1060,11 +1063,11 @@ public class OrderController {
             return ResponseEntity.ok(ApiResponse.success(order, "Order details retrieved successfully"));
         } catch (IllegalArgumentException e) {
             return ResponseEntity.badRequest()
-                .body(ApiResponse.error(e.getMessage()));
+                    .body(ApiResponse.error(e.getMessage()));
         } catch (Exception e) {
             log.error("Error retrieving order by number with token: {}", e.getMessage(), e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                .body(ApiResponse.error("Failed to retrieve order details"));
+                    .body(ApiResponse.error("Failed to retrieve order details"));
         }
     }
 }

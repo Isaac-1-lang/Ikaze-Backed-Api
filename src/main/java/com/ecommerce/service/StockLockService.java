@@ -70,7 +70,7 @@ public class StockLockService {
                     Long stockId = entry.getKey();
                     Integer quantity = entry.getValue();
 
-                    Stock stock = stockRepository.findById(stockId).orElse(null);
+                    Stock stock = stockRepository.findByIdWithWarehouse(stockId).orElse(null);
                     if (stock != null) {
                         stock.setQuantity(stock.getQuantity() + quantity);
                         stockRepository.save(stock);
@@ -117,7 +117,7 @@ public class StockLockService {
                     log.info("Attempting to lock: stockId={}, warehouseId={}, quantity={}", stockId, warehouseId,
                             quantity);
 
-                    Stock stock = stockRepository.findById(stockId).orElse(null);
+                    Stock stock = stockRepository.findByIdWithWarehouse(stockId).orElse(null);
                     if (stock == null) {
                         log.error("Stock not found for stockId: {}", stockId);
                         releaseStock(sessionId);
@@ -187,7 +187,7 @@ public class StockLockService {
                     log.info("Processing allocation: stockId={}, warehouseId={}, quantity={}", 
                             stockId, warehouseId, requiredQuantity);
                     
-                    Stock stock = stockRepository.findById(stockId).orElse(null);
+                    Stock stock = stockRepository.findByIdWithWarehouse(stockId).orElse(null);
                     if (stock == null) {
                         log.error("Stock not found for stockId: {}", stockId);
                         unlockAllBatches(sessionId);

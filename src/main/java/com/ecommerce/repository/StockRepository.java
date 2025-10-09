@@ -91,6 +91,35 @@ public interface StockRepository extends JpaRepository<Stock, Long> {
                         @Param("warehouseId") Long warehouseId);
 
         /**
+         * Find stock by product ID and warehouse ID with warehouse eagerly fetched
+         */
+        @Query("SELECT s FROM Stock s JOIN FETCH s.warehouse WHERE s.product.productId = :productId AND s.warehouse.id = :warehouseId AND s.productVariant IS NULL")
+        Optional<Stock> findByProductProductIdAndWarehouseWarehouseIdWithWarehouse(@Param("productId") java.util.UUID productId,
+                        @Param("warehouseId") Long warehouseId);
+
+        @Query("SELECT s FROM Stock s JOIN FETCH s.warehouse WHERE s.productVariant.id = :variantId AND s.warehouse.id = :warehouseId")
+        Optional<Stock> findByProductVariantVariantIdAndWarehouseWarehouseIdWithWarehouse(@Param("variantId") Long variantId,
+                        @Param("warehouseId") Long warehouseId);
+
+        /**
+         * Find stock by ID with warehouse eagerly fetched
+         */
+        @Query("SELECT s FROM Stock s JOIN FETCH s.warehouse WHERE s.id = :stockId")
+        Optional<Stock> findByIdWithWarehouse(@Param("stockId") Long stockId);
+
+        /**
+         * Find all stock entries for a product with warehouses eagerly fetched
+         */
+        @Query("SELECT s FROM Stock s JOIN FETCH s.warehouse WHERE s.product = :product")
+        List<Stock> findByProductWithWarehouse(@Param("product") Product product);
+
+        /**
+         * Find all stock entries for a variant with warehouses eagerly fetched
+         */
+        @Query("SELECT s FROM Stock s JOIN FETCH s.warehouse WHERE s.productVariant = :variant")
+        List<Stock> findByProductVariantWithWarehouse(@Param("variant") ProductVariant variant);
+
+        /**
          * Find all stock entries for a warehouse by warehouse ID
          */
         @Query("SELECT s FROM Stock s WHERE s.warehouse.id = :warehouseId")

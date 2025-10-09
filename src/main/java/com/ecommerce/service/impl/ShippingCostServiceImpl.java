@@ -16,6 +16,8 @@ import com.ecommerce.repository.ShippingCostRepository;
 import com.ecommerce.repository.WarehouseRepository;
 import com.ecommerce.service.GeocodingService;
 import com.ecommerce.service.ShippingCostService;
+import com.ecommerce.service.EnhancedMultiWarehouseAllocator;
+import com.ecommerce.service.FEFOStockAllocationService;
 import com.ecommerce.util.DistanceCalculator;
 import jakarta.persistence.EntityNotFoundException;
 import lombok.RequiredArgsConstructor;
@@ -26,9 +28,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
-import java.util.Comparator;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import java.util.stream.Collectors;
 
 @Service
@@ -41,13 +41,13 @@ public class ShippingCostServiceImpl implements ShippingCostService {
     private final ProductRepository productRepository;
     private final ProductVariantRepository productVariantRepository;
     private final GeocodingService geocodingService;
+    private final EnhancedMultiWarehouseAllocator enhancedWarehouseAllocator;
 
     @Override
     @Transactional
     public ShippingCostDTO createShippingCost(CreateShippingCostDTO createShippingCostDTO) {
         log.info("Creating shipping cost: {}", createShippingCostDTO.getName());
 
-        // Check if name already exists
         if (shippingCostRepository.existsByName(createShippingCostDTO.getName())) {
             throw new IllegalArgumentException(
                     "Shipping cost with name '" + createShippingCostDTO.getName() + "' already exists");
@@ -100,14 +100,12 @@ public class ShippingCostServiceImpl implements ShippingCostService {
         ShippingCost shippingCost = shippingCostRepository.findById(id)
                 .orElseThrow(() -> new EntityNotFoundException("Shipping cost not found with ID: " + id));
 
-        // Check if name already exists (excluding current ID)
         if (updateShippingCostDTO.getName() != null &&
                 shippingCostRepository.existsByNameAndIdNot(updateShippingCostDTO.getName(), id)) {
             throw new IllegalArgumentException(
                     "Shipping cost with name '" + updateShippingCostDTO.getName() + "' already exists");
         }
 
-        // Update fields if provided
         if (updateShippingCostDTO.getName() != null) {
             shippingCost.setName(updateShippingCostDTO.getName());
         }
@@ -126,14 +124,13 @@ public class ShippingCostServiceImpl implements ShippingCostService {
         if (updateShippingCostDTO.getInternationalFee() != null) {
             shippingCost.setInternationalFee(updateShippingCostDTO.getInternationalFee());
         }
-
         if (updateShippingCostDTO.getFreeShippingThreshold() != null) {
             shippingCost.setFreeShippingThreshold(updateShippingCostDTO.getFreeShippingThreshold());
         }
-
         if (updateShippingCostDTO.getIsActive() != null) {
             shippingCost.setIsActive(updateShippingCostDTO.getIsActive());
         }
+        
         ShippingCost updatedShippingCost = shippingCostRepository.save(shippingCost);
         log.info("Successfully updated shipping cost with ID: {}", updatedShippingCost.getId());
 
@@ -166,7 +163,6 @@ public class ShippingCostServiceImpl implements ShippingCostService {
         log.info("Calculating shipping cost for weight: {}, distance: {}, orderValue: {}",
                 weight, distance, orderValue);
 
-        // Find the active shipping cost configuration
         List<ShippingCost> shippingCosts = shippingCostRepository.findByIsActiveTrue();
 
         if (shippingCosts.isEmpty()) {
@@ -174,10 +170,8 @@ public class ShippingCostServiceImpl implements ShippingCostService {
             return BigDecimal.ZERO;
         }
 
-        // Use the first active shipping cost configuration
         ShippingCost shippingCost = shippingCosts.get(0);
 
-        // Check if order qualifies for free shipping
         if (shippingCost.getFreeShippingThreshold() != null &&
                 orderValue != null &&
                 orderValue.compareTo(shippingCost.getFreeShippingThreshold()) >= 0) {
@@ -185,27 +179,22 @@ public class ShippingCostServiceImpl implements ShippingCostService {
             return BigDecimal.ZERO;
         }
 
-        // Calculate shipping cost
         BigDecimal totalCost = BigDecimal.ZERO;
 
-        // Add base fee
         if (shippingCost.getBaseFee() != null) {
             totalCost = totalCost.add(shippingCost.getBaseFee());
         }
 
-        // Add distance-based cost
         if (shippingCost.getDistanceKmCost() != null && distance != null) {
             BigDecimal distanceCost = shippingCost.getDistanceKmCost().multiply(distance);
             totalCost = totalCost.add(distanceCost);
         }
 
-        // Add weight-based cost
         if (shippingCost.getWeightKgCost() != null && weight != null) {
             BigDecimal weightCost = shippingCost.getWeightKgCost().multiply(weight);
             totalCost = totalCost.add(weightCost);
         }
 
-        // Add international fee if applicable
         if (shippingCost.getInternationalFee() != null) {
             totalCost = totalCost.add(shippingCost.getInternationalFee());
         }
@@ -217,323 +206,124 @@ public class ShippingCostServiceImpl implements ShippingCostService {
     @Override
     public BigDecimal calculateOrderShippingCost(AddressDto deliveryAddress, List<CartItemDTO> items,
             BigDecimal orderValue) {
-
-                List<ShippingCost> activeShippingCosts = shippingCostRepository.findByIsActiveTrue();
-        if (activeShippingCosts.isEmpty()) {
-            return BigDecimal.ZERO;
-        }
-        ShippingCost shippingCost = activeShippingCosts.get(0);
-        if (shippingCost.getFreeShippingThreshold() != null &&
-                shippingCost.getFreeShippingThreshold().compareTo(BigDecimal.ZERO) > 0 &&
-                orderValue != null &&
-                orderValue.compareTo(shippingCost.getFreeShippingThreshold()) >= 0) {
-            return BigDecimal.ZERO;
-        }
-
-        List<Warehouse> warehouses = warehouseRepository.findAll();
-        if (warehouses.isEmpty()) {
-            throw new RuntimeException("No warehouses available");
-        }
-        List<Warehouse> countryWarehouses = warehouses.stream()
-                .filter(w -> w.getCountry().equalsIgnoreCase(deliveryAddress.getCountry()))
-                .collect(Collectors.toList());
-        Warehouse selectedWarehouse;
-        boolean isInternational = false;
-        double tempCustomerLat;
-        double tempCustomerLon;
         
-        if (deliveryAddress.getLatitude() != null && deliveryAddress.getLongitude() != null) {
-            tempCustomerLat = deliveryAddress.getLatitude();
-            tempCustomerLon = deliveryAddress.getLongitude();
-        } else {
-            Map<String, Double> tempCoords = geocodingService.getCoordinates(deliveryAddress);
-            if (tempCoords == null) {
-                throw new RuntimeException("Could not determine customer location");
-            }
-            tempCustomerLat = tempCoords.get("latitude");
-            tempCustomerLon = tempCoords.get("longitude");
-        }
-
-        if (countryWarehouses.isEmpty()) {
-            final double finalTempCustomerLat = tempCustomerLat;
-            final double finalTempCustomerLon = tempCustomerLon;
-            selectedWarehouse = warehouses.stream()
-                    .min(Comparator.comparingDouble(w -> DistanceCalculator.getDistanceFromLatLonInKm(
-                            finalTempCustomerLat,
-                            finalTempCustomerLon,
-                            w.getLatitude().doubleValue(),
-                            w.getLongitude().doubleValue())))
-                    .orElse(warehouses.get(0));
-            isInternational = true;
-        } else {
-            final double finalTempCustomerLat = tempCustomerLat;
-            final double finalTempCustomerLon = tempCustomerLon;
-            selectedWarehouse = countryWarehouses.stream()
-                    .min(Comparator.comparingDouble(w -> DistanceCalculator.getDistanceFromLatLonInKm(
-                            finalTempCustomerLat,
-                            finalTempCustomerLon,
-                            w.getLatitude().doubleValue(),
-                            w.getLongitude().doubleValue())))
-                    .orElse(countryWarehouses.get(0));
-        }
-
-        double customerLat;
-        double customerLon;
-        
-        if (deliveryAddress.getLatitude() != null && deliveryAddress.getLongitude() != null) {
-            customerLat = deliveryAddress.getLatitude();
-            customerLon = deliveryAddress.getLongitude();
-        } else {
-            Map<String, Double> customerCoords = geocodingService.getCoordinates(deliveryAddress);
-            if (customerCoords == null) {
-                throw new RuntimeException("Could not determine customer location");
-            }
-            customerLat = customerCoords.get("latitude");
-            customerLon = customerCoords.get("longitude");
-        }
-
-        double distanceKm = DistanceCalculator.getDistanceFromLatLonInKm(
-                customerLat, customerLon,
-                selectedWarehouse.getLatitude().doubleValue(),
-                selectedWarehouse.getLongitude().doubleValue());
-
-        BigDecimal totalWeight = BigDecimal.ZERO;
-        for (CartItemDTO item : items) {
-            BigDecimal itemWeight = getEffectiveProductWeight(item);
-            BigDecimal itemTotalWeight = itemWeight.multiply(BigDecimal.valueOf(item.getQuantity()));
-            totalWeight = totalWeight.add(itemTotalWeight);
-        }
-
-        // Step 6: Calculate shipping cost components
-        BigDecimal shippingCostTotal = BigDecimal.ZERO;
-
-        // Base fee
-        if (shippingCost.getBaseFee() != null) {
-            shippingCostTotal = shippingCostTotal.add(shippingCost.getBaseFee());
-            log.info("Base fee: {}", shippingCost.getBaseFee());
-        }
-
-        // Distance cost
-        if (shippingCost.getDistanceKmCost() != null) {
-            BigDecimal distanceCost = shippingCost.getDistanceKmCost().multiply(BigDecimal.valueOf(distanceKm));
-            shippingCostTotal = shippingCostTotal.add(distanceCost);
-            log.info("Distance cost: {} × {} km = {}",
-                    shippingCost.getDistanceKmCost(), distanceKm, distanceCost);
-        }
-
-        // Weight cost
-        if (shippingCost.getWeightKgCost() != null && totalWeight.compareTo(BigDecimal.ZERO) > 0) {
-            BigDecimal weightCost = shippingCost.getWeightKgCost().multiply(totalWeight);
-            shippingCostTotal = shippingCostTotal.add(weightCost);
-            log.info("Weight cost: {} × {} kg = {}",
-                    shippingCost.getWeightKgCost(), totalWeight, weightCost);
-        }
-
-        // International fee
-        if (isInternational && shippingCost.getInternationalFee() != null) {
-            shippingCostTotal = shippingCostTotal.add(shippingCost.getInternationalFee());
-        }
-        
-        return shippingCostTotal;
+        com.ecommerce.dto.ShippingDetailsDTO details = calculateEnhancedShippingDetails(deliveryAddress, items, orderValue);
+        return details.getShippingCost();
     }
 
     @Override
-    public com.ecommerce.dto.ShippingDetailsDTO calculateShippingDetails(AddressDto deliveryAddress, 
+    public com.ecommerce.dto.ShippingDetailsDTO calculateShippingDetails(AddressDto deliveryAddress,
             List<CartItemDTO> items, BigDecimal orderValue) {
-        log.info("=== SHIPPING DETAILS CALCULATION START ===");
-        log.info("Delivery Address: {} {}, {}, {}", 
-                deliveryAddress.getStreetAddress(), 
-                deliveryAddress.getCity(), 
-                deliveryAddress.getState(), 
-                deliveryAddress.getCountry());
+        
+        return calculateEnhancedShippingDetails(deliveryAddress, items, orderValue);
+    }
+
+    @Override
+    public com.ecommerce.dto.ShippingDetailsDTO calculateEnhancedShippingDetails(AddressDto deliveryAddress,
+            List<CartItemDTO> items, BigDecimal orderValue) {
+        
+        log.info("=== ENHANCED SHIPPING DETAILS CALCULATION START ===");
+        log.info("Delivery Address: {} {}, {}, {}", deliveryAddress.getStreetAddress(),
+                deliveryAddress.getCity(), deliveryAddress.getState(), deliveryAddress.getCountry());
         log.info("Order Value: {}, Items Count: {}", orderValue, items.size());
 
+        // Step 1: Get active shipping configuration
         List<ShippingCost> activeShippingCosts = shippingCostRepository.findByIsActiveTrue();
         if (activeShippingCosts.isEmpty()) {
             log.warn("No active shipping cost configuration found");
-            return com.ecommerce.dto.ShippingDetailsDTO.builder()
-                    .shippingCost(BigDecimal.ZERO)
-                    .distanceKm(0.0)
-                    .costPerKm(BigDecimal.ZERO)
-                    .selectedWarehouseName("No warehouse")
-                    .selectedWarehouseCountry("Unknown")
-                    .isInternationalShipping(false)
-                    .baseFee(BigDecimal.ZERO)
-                    .distanceCost(BigDecimal.ZERO)
-                    .weightCost(BigDecimal.ZERO)
-                    .internationalFee(BigDecimal.ZERO)
-                    .totalWeight(BigDecimal.ZERO)
-                    .build();
+            return buildEmptyShippingDetails();
         }
 
         ShippingCost shippingCost = activeShippingCosts.get(0);
         log.info("Using shipping cost configuration: {} (ID: {})", shippingCost.getName(), shippingCost.getId());
 
-        // Check for free shipping
-        if (shippingCost.getFreeShippingThreshold() != null &&
-                shippingCost.getFreeShippingThreshold().compareTo(BigDecimal.ZERO) > 0 &&
-                orderValue != null &&
-                orderValue.compareTo(shippingCost.getFreeShippingThreshold()) >= 0) {
-            log.info("Order qualifies for free shipping (threshold: {}, order value: {})", 
+        // Step 2: Check for free shipping
+        if (qualifiesForFreeShipping(shippingCost, orderValue)) {
+            log.info("Order qualifies for free shipping (threshold: {}, order value: {})",
                     shippingCost.getFreeShippingThreshold(), orderValue);
-            return com.ecommerce.dto.ShippingDetailsDTO.builder()
-                    .shippingCost(BigDecimal.ZERO)
-                    .distanceKm(0.0)
-                    .costPerKm(BigDecimal.ZERO)
-                    .selectedWarehouseName("Free shipping")
-                    .selectedWarehouseCountry("N/A")
-                    .isInternationalShipping(false)
-                    .baseFee(BigDecimal.ZERO)
-                    .distanceCost(BigDecimal.ZERO)
-                    .weightCost(BigDecimal.ZERO)
-                    .internationalFee(BigDecimal.ZERO)
-                    .totalWeight(BigDecimal.ZERO)
-                    .build();
+            return buildFreeShippingDetails();
         }
 
-        List<Warehouse> warehouses = warehouseRepository.findAll();
-        if (warehouses.isEmpty()) {
-            log.error("No warehouses available in the system");
-            throw new RuntimeException("No warehouses available");
-        }
-
-        List<Warehouse> countryWarehouses = warehouses.stream()
-                .filter(w -> w.getCountry().equalsIgnoreCase(deliveryAddress.getCountry()))
-                .collect(Collectors.toList());
-
-        Warehouse selectedWarehouse;
-        boolean isInternational = false;
-
-        // Get customer coordinates for warehouse selection
-        double tempCustomerLat;
-        double tempCustomerLon;
+        // Step 3: Get customer coordinates
+        CustomerLocation customerLocation = getCustomerLocation(deliveryAddress);
         
-        if (deliveryAddress.getLatitude() != null && deliveryAddress.getLongitude() != null) {
-            tempCustomerLat = deliveryAddress.getLatitude();
-            tempCustomerLon = deliveryAddress.getLongitude();
-        } else {
-            Map<String, Double> tempCoords = geocodingService.getCoordinates(deliveryAddress);
-            if (tempCoords == null) {
-                log.error("Could not determine customer location for warehouse selection");
-                throw new RuntimeException("Could not determine customer location");
-            }
-            tempCustomerLat = tempCoords.get("latitude");
-            tempCustomerLon = tempCoords.get("longitude");
+        // Step 4: Allocate stock using FEFO across warehouses
+        Map<CartItemDTO, List<FEFOStockAllocationService.BatchAllocation>> fefoAllocations;
+        try {
+            fefoAllocations = enhancedWarehouseAllocator.allocateStockWithFEFO(items, deliveryAddress);
+        } catch (Exception e) {
+            log.error("Failed to allocate stock with FEFO: {}", e.getMessage(), e);
+            throw new RuntimeException("Unable to allocate stock for shipping calculation");
         }
 
-        if (countryWarehouses.isEmpty()) {
-            log.info("No warehouse in delivery country. Finding nearest warehouse for international shipping.");
-            final double finalTempCustomerLat = tempCustomerLat;
-            final double finalTempCustomerLon = tempCustomerLon;
-            selectedWarehouse = warehouses.stream()
-                    .min(Comparator.comparingDouble(w -> DistanceCalculator.getDistanceFromLatLonInKm(
-                            finalTempCustomerLat,
-                            finalTempCustomerLon,
-                            w.getLatitude().doubleValue(),
-                            w.getLongitude().doubleValue())))
-                    .orElse(warehouses.get(0));
-            isInternational = true;
-            log.info("Selected nearest warehouse for international shipping: {} ({})", 
-                    selectedWarehouse.getName(), selectedWarehouse.getCountry());
-        } else {
-            final double finalTempCustomerLat = tempCustomerLat;
-            final double finalTempCustomerLon = tempCustomerLon;
-            selectedWarehouse = countryWarehouses.stream()
-                    .min(Comparator.comparingDouble(w -> DistanceCalculator.getDistanceFromLatLonInKm(
-                            finalTempCustomerLat,
-                            finalTempCustomerLon,
-                            w.getLatitude().doubleValue(),
-                            w.getLongitude().doubleValue())))
-                    .orElse(countryWarehouses.get(0));
-            log.info("Selected nearest warehouse in same country: {} ({})", 
-                    selectedWarehouse.getName(), selectedWarehouse.getCountry());
-        }
-
-        // Get customer coordinates for distance calculation
-        double customerLat;
-        double customerLon;
+        // Step 5: Extract unique warehouses involved
+        Set<Warehouse> involvedWarehouses = extractInvolvedWarehouses(fefoAllocations);
         
-        if (deliveryAddress.getLatitude() != null && deliveryAddress.getLongitude() != null) {
-            customerLat = deliveryAddress.getLatitude();
-            customerLon = deliveryAddress.getLongitude();
-            log.info("Using provided coordinates from address: ({}, {})", customerLat, customerLon);
-        } else {
-            log.info("No coordinates provided, using geocoding service");
-            Map<String, Double> customerCoords = geocodingService.getCoordinates(deliveryAddress);
-            if (customerCoords == null) {
-                log.error("Could not determine customer location for address: {}", deliveryAddress);
-                throw new RuntimeException("Could not determine customer location");
+        if (involvedWarehouses.isEmpty()) {
+            log.error("No warehouses available for stock allocation");
+            throw new RuntimeException("No warehouses available for stock allocation");
+        }
+
+        involvedWarehouses.forEach(w -> {
+            try {
+                log.info("  - {} ({}, {})", w.getName(), w.getCountry(), w.getCity());
+            } catch (Exception e) {
+                log.info("  - Warehouse ID: {} (properties not accessible)", w.getId());
             }
-            customerLat = customerCoords.get("latitude");
-            customerLon = customerCoords.get("longitude");
-        }
-        log.info("Customer coordinates: ({}, {})", customerLat, customerLon);
-        log.info("Warehouse coordinates: ({}, {})", 
-                selectedWarehouse.getLatitude().doubleValue(), 
-                selectedWarehouse.getLongitude().doubleValue());
+        });
 
-        double distanceKm = DistanceCalculator.getDistanceFromLatLonInKm(
-                customerLat, customerLon,
-                selectedWarehouse.getLatitude().doubleValue(),
-                selectedWarehouse.getLongitude().doubleValue());
-        log.info("Distance between customer and warehouse: {} km", distanceKm);
+        // Step 6: Calculate cumulative distance using hub logic
+        DistanceCalculationResult distanceResult = calculateCumulativeDistance(
+            involvedWarehouses, 
+            customerLocation, 
+            deliveryAddress.getCountry()
+        );
 
-        BigDecimal totalWeight = BigDecimal.ZERO;
-        for (CartItemDTO item : items) {
-            BigDecimal itemWeight = item.getWeight() != null ? item.getWeight() : BigDecimal.ZERO;
-            BigDecimal itemTotalWeight = itemWeight.multiply(BigDecimal.valueOf(item.getQuantity()));
-            totalWeight = totalWeight.add(itemTotalWeight);
-            log.info("Item: {} - Weight: {} kg × {} = {} kg", 
-                    item.getProductName(), itemWeight, item.getQuantity(), itemTotalWeight);
-        }
+        // Step 7: Calculate total weight
+        BigDecimal totalWeight = calculateTotalWeight(items);
         log.info("Total order weight: {} kg", totalWeight);
 
-        // Calculate cost components
-        BigDecimal baseFee = shippingCost.getBaseFee() != null ? shippingCost.getBaseFee() : BigDecimal.ZERO;
-        BigDecimal distanceCost = BigDecimal.ZERO;
-        BigDecimal weightCost = BigDecimal.ZERO;
-        BigDecimal internationalFee = BigDecimal.ZERO;
+        // Step 8: Calculate cost components
+        CostComponents costs = calculateCostComponents(
+            shippingCost, 
+            distanceResult, 
+            totalWeight
+        );
 
-        if (shippingCost.getDistanceKmCost() != null) {
-            distanceCost = shippingCost.getDistanceKmCost().multiply(BigDecimal.valueOf(distanceKm));
-            log.info("Distance cost: {} × {} km = {}", 
-                    shippingCost.getDistanceKmCost(), distanceKm, distanceCost);
+
+        String furthestWarehouseName = "Unknown";
+        String furthestWarehouseCountry = "Unknown";
+        String hubWarehouseName = "Unknown";
+        String hubWarehouseCountry = "Unknown";
+        
+        try {
+            if (distanceResult.furthestWarehouse != null) {
+                furthestWarehouseName = distanceResult.furthestWarehouse.getName();
+                furthestWarehouseCountry = distanceResult.furthestWarehouse.getCountry();
+            }
+            if (distanceResult.hubWarehouse != null) {
+                hubWarehouseName = distanceResult.hubWarehouse.getName();
+                hubWarehouseCountry = distanceResult.hubWarehouse.getCountry();
+            }
+        } catch (Exception e) {
+            log.warn("Error accessing warehouse properties: {}", e.getMessage());
         }
 
-        if (shippingCost.getWeightKgCost() != null && totalWeight.compareTo(BigDecimal.ZERO) > 0) {
-            weightCost = shippingCost.getWeightKgCost().multiply(totalWeight);
-            log.info("Weight cost: {} × {} kg = {}", 
-                    shippingCost.getWeightKgCost(), totalWeight, weightCost);
-        }
-
-        if (isInternational && shippingCost.getInternationalFee() != null) {
-            internationalFee = shippingCost.getInternationalFee();
-            log.info("International fee: {} (shipping from {} to {})", 
-                    shippingCost.getInternationalFee(), 
-                    selectedWarehouse.getCountry(), 
-                    deliveryAddress.getCountry());
-        }
-
-        BigDecimal shippingCostTotal = baseFee.add(distanceCost).add(weightCost).add(internationalFee);
-
-        log.info("=== SHIPPING DETAILS CALCULATION RESULT ===");
-        log.info("Final shipping cost: {} (distance: {} km, weight: {} kg, international: {})",
-                shippingCostTotal, distanceKm, totalWeight, isInternational);
-        log.info("=== SHIPPING DETAILS CALCULATION END ===");
-
-        return com.ecommerce.dto.ShippingDetailsDTO.builder()
-                .shippingCost(shippingCostTotal)
-                .distanceKm(distanceKm)
+        com.ecommerce.dto.ShippingDetailsDTO shippingDetails = com.ecommerce.dto.ShippingDetailsDTO.builder()
+                .shippingCost(costs.totalCost)
+                .distanceKm(distanceResult.totalDistance)
                 .costPerKm(shippingCost.getDistanceKmCost())
-                .selectedWarehouseName(selectedWarehouse.getName())
-                .selectedWarehouseCountry(selectedWarehouse.getCountry())
-                .isInternationalShipping(isInternational)
-                .baseFee(baseFee)
-                .distanceCost(distanceCost)
-                .weightCost(weightCost)
-                .internationalFee(internationalFee)
+                .selectedWarehouseName(furthestWarehouseName)
+                .selectedWarehouseCountry(furthestWarehouseCountry)
+                .isInternationalShipping(distanceResult.isInternational)
+                .baseFee(costs.baseFee)
+                .distanceCost(costs.distanceCost)
+                .weightCost(costs.weightCost)
+                .internationalFee(costs.internationalFee)
                 .totalWeight(totalWeight)
                 .build();
+
+        return shippingDetails;
     }
 
     @Override
@@ -543,13 +333,11 @@ public class ShippingCostServiceImpl implements ShippingCostService {
 
         ShippingCost shippingCost = shippingCostRepository.findById(id)
                 .orElseThrow(() -> new EntityNotFoundException("Shipping cost not found with id: " + id));
-
-        // If the shipping cost is currently active, deactivate it
+        
         if (shippingCost.getIsActive()) {
             shippingCost.setIsActive(false);
             log.info("Deactivated shipping cost: {}", shippingCost.getName());
         } else {
-            // If it's inactive, first deactivate all others, then activate this one
             shippingCostRepository.deactivateAllShippingCosts();
             shippingCost.setIsActive(true);
             log.info("Activated shipping cost: {} and deactivated all others", shippingCost.getName());
@@ -559,6 +347,390 @@ public class ShippingCostServiceImpl implements ShippingCostService {
         return mapToDTO(savedShippingCost);
     }
 
+    // ==================== PRIVATE HELPER METHODS ====================
+
+    /**
+     * Customer location holder
+     */
+    private static class CustomerLocation {
+        double latitude;
+        double longitude;
+
+        CustomerLocation(double latitude, double longitude) {
+            this.latitude = latitude;
+            this.longitude = longitude;
+        }
+    }
+
+    /**
+     * Distance calculation result holder
+     */
+    private static class DistanceCalculationResult {
+        double totalDistance;
+        Warehouse hubWarehouse;
+        Warehouse furthestWarehouse;
+        double maxWarehouseDistance;
+        boolean isInternational;
+    }
+
+    /**
+     * Cost components holder
+     */
+    private static class CostComponents {
+        BigDecimal baseFee;
+        BigDecimal distanceCost;
+        BigDecimal weightCost;
+        BigDecimal internationalFee;
+        BigDecimal totalCost;
+    }
+
+    /**
+     * Get customer location coordinates
+     */
+    private CustomerLocation getCustomerLocation(AddressDto deliveryAddress) {
+        if (deliveryAddress.getLatitude() != null && deliveryAddress.getLongitude() != null) {
+            log.info("Using provided coordinates: ({}, {})", 
+                deliveryAddress.getLatitude(), deliveryAddress.getLongitude());
+            return new CustomerLocation(deliveryAddress.getLatitude(), deliveryAddress.getLongitude());
+        }
+
+        log.info("No coordinates provided, using geocoding service");
+        Map<String, Double> coords = geocodingService.getCoordinates(deliveryAddress);
+        if (coords == null) {
+            log.error("Could not determine customer location for address: {}", deliveryAddress);
+            throw new RuntimeException("Could not determine customer location");
+        }
+
+        double lat = coords.get("latitude");
+        double lon = coords.get("longitude");
+        log.info("Geocoded coordinates: ({}, {})", lat, lon);
+        return new CustomerLocation(lat, lon);
+    }
+
+    /**
+     * Extract unique warehouses from FEFO allocations
+     */
+    private Set<Warehouse> extractInvolvedWarehouses(
+            Map<CartItemDTO, List<FEFOStockAllocationService.BatchAllocation>> fefoAllocations) {
+        
+        Set<Long> warehouseIds = new HashSet<>();
+        
+        // First, safely extract warehouse IDs
+        for (List<FEFOStockAllocationService.BatchAllocation> allocations : fefoAllocations.values()) {
+            for (FEFOStockAllocationService.BatchAllocation allocation : allocations) {
+                try {
+                    // Try to get the warehouse ID safely
+                    Warehouse warehouse = allocation.getWarehouse();
+                    if (warehouse != null) {
+                        Long warehouseId = warehouse.getId();
+                        if (warehouseId != null) {
+                            warehouseIds.add(warehouseId);
+                        }
+                    }
+                } catch (Exception e) {
+                    log.warn("Could not access warehouse from allocation: {}", e.getMessage());
+                }
+            }
+        }
+        
+        if (warehouseIds.isEmpty()) {
+            log.error("No warehouse IDs could be extracted from allocations");
+            throw new RuntimeException("No warehouse IDs available for shipping calculation");
+        }
+        
+        // Fetch all warehouses in one query to ensure they're properly loaded
+        List<Warehouse> warehouseList = warehouseRepository.findAllById(warehouseIds);
+        Set<Warehouse> warehouses = new HashSet<>(warehouseList);
+        
+        if (warehouses.isEmpty()) {
+            log.error("No warehouses could be loaded from IDs: {}", warehouseIds);
+            throw new RuntimeException("No warehouses available for shipping calculation");
+        }
+        
+        log.info("Successfully loaded {} warehouses for shipping calculation", warehouses.size());
+        return warehouses;
+    }
+
+    /**
+     * Calculate cumulative distance using hub warehouse logic
+     * 
+     * Logic:
+     * 1. Find nearest warehouse to customer that has ANY products (hub warehouse)
+     * 2. Calculate distance from each fulfilling warehouse to hub
+     * 3. Calculate distance from hub to customer
+     * 4. Sum all distances: Σ(warehouse_i → hub) + (hub → customer)
+     */
+    private DistanceCalculationResult calculateCumulativeDistance(
+            Set<Warehouse> involvedWarehouses,
+            CustomerLocation customerLocation,
+            String customerCountry) {
+
+        DistanceCalculationResult result = new DistanceCalculationResult();
+
+        // Step 1: Find hub warehouse (nearest to customer)
+        Warehouse hubWarehouse = null;
+        double minDistanceToCustomer = Double.MAX_VALUE;
+
+        for (Warehouse warehouse : involvedWarehouses) {
+            double distance = DistanceCalculator.getDistanceFromLatLonInKm(
+                customerLocation.latitude,
+                customerLocation.longitude,
+                warehouse.getLatitude().doubleValue(),
+                warehouse.getLongitude().doubleValue()
+            );
+
+            try {
+                log.info("Distance from {} to customer: {} km", warehouse.getName(), distance);
+            } catch (Exception e) {
+                log.info("Distance from warehouse ID {} to customer: {} km", warehouse.getId(), distance);
+            }
+
+            if (distance < minDistanceToCustomer) {
+                minDistanceToCustomer = distance;
+                hubWarehouse = warehouse;
+            }
+        }
+
+        if (hubWarehouse == null) {
+            hubWarehouse = involvedWarehouses.iterator().next();
+            minDistanceToCustomer = DistanceCalculator.getDistanceFromLatLonInKm(
+                customerLocation.latitude,
+                customerLocation.longitude,
+                hubWarehouse.getLatitude().doubleValue(),
+                hubWarehouse.getLongitude().doubleValue()
+            );
+        }
+
+        try {
+            log.info("Hub warehouse selected: {} ({}) at {} km from customer", 
+                hubWarehouse.getName(), hubWarehouse.getCountry(), minDistanceToCustomer);
+        } catch (Exception e) {
+            log.info("Hub warehouse selected: ID {} at {} km from customer", 
+                hubWarehouse.getId(), minDistanceToCustomer);
+        }
+
+        result.hubWarehouse = hubWarehouse;
+
+        // Step 2: Calculate distances from each warehouse to hub and find furthest
+        double cumulativeWarehouseDistance = 0.0;
+        Warehouse furthestWarehouse = hubWarehouse;
+        double maxWarehouseToHubDistance = 0.0;
+        boolean isInternational = false;
+
+        for (Warehouse warehouse : involvedWarehouses) {
+            // Check if international shipping
+            try {
+                if (!warehouse.getCountry().equalsIgnoreCase(customerCountry)) {
+                    isInternational = true;
+                }
+            } catch (Exception e) {
+                log.warn("Could not access warehouse country for international shipping check: {}", e.getMessage());
+                // Assume international if we can't determine
+                isInternational = true;
+            }
+
+            // Skip hub warehouse in warehouse-to-hub calculations
+            if (warehouse.getId().equals(hubWarehouse.getId())) {
+                continue;
+            }
+
+            double distanceToHub = DistanceCalculator.getDistanceFromLatLonInKm(
+                warehouse.getLatitude().doubleValue(),
+                warehouse.getLongitude().doubleValue(),
+                hubWarehouse.getLatitude().doubleValue(),
+                hubWarehouse.getLongitude().doubleValue()
+            );
+
+            try {
+                log.info("Distance from {} to hub warehouse {}: {} km",
+                    warehouse.getName(), hubWarehouse.getName(), distanceToHub);
+            } catch (Exception e) {
+                log.info("Distance from warehouse ID {} to hub warehouse ID {}: {} km",
+                    warehouse.getId(), hubWarehouse.getId(), distanceToHub);
+            }
+
+            cumulativeWarehouseDistance += distanceToHub;
+
+            // Track furthest warehouse
+            if (distanceToHub > maxWarehouseToHubDistance) {
+                maxWarehouseToHubDistance = distanceToHub;
+                furthestWarehouse = warehouse;
+            }
+        }
+
+        // Step 3: Calculate total distance
+        // Total = Σ(warehouse → hub) + (hub → customer)
+        result.totalDistance = cumulativeWarehouseDistance + minDistanceToCustomer;
+        result.furthestWarehouse = furthestWarehouse;
+        result.maxWarehouseDistance = maxWarehouseToHubDistance;
+        result.isInternational = isInternational;
+
+        log.info("Distance breakdown:");
+        log.info("  - Cumulative warehouse-to-hub distances: {} km", cumulativeWarehouseDistance);
+        log.info("  - Hub to customer: {} km", minDistanceToCustomer);
+        log.info("  - TOTAL DISTANCE: {} km", result.totalDistance);
+
+        return result;
+    }
+
+    /**
+     * Calculate total weight from cart items
+     */
+    private BigDecimal calculateTotalWeight(List<CartItemDTO> items) {
+        BigDecimal totalWeight = BigDecimal.ZERO;
+        
+        for (CartItemDTO item : items) {
+            BigDecimal itemWeight = getEffectiveProductWeight(item);
+            BigDecimal itemTotalWeight = itemWeight.multiply(BigDecimal.valueOf(item.getQuantity()));
+            totalWeight = totalWeight.add(itemTotalWeight);
+            
+            log.debug("Item weight: {} kg × {} = {} kg", itemWeight, item.getQuantity(), itemTotalWeight);
+        }
+        
+        return totalWeight;
+    }
+
+    /**
+     * Calculate all cost components
+     */
+    private CostComponents calculateCostComponents(
+            ShippingCost shippingCost,
+            DistanceCalculationResult distanceResult,
+            BigDecimal totalWeight) {
+
+        CostComponents costs = new CostComponents();
+
+        // Base fee
+        costs.baseFee = shippingCost.getBaseFee() != null ? shippingCost.getBaseFee() : BigDecimal.ZERO;
+        log.info("Base fee: {}", costs.baseFee);
+
+        // Distance cost (using cumulative distance)
+        costs.distanceCost = BigDecimal.ZERO;
+        if (shippingCost.getDistanceKmCost() != null) {
+            costs.distanceCost = shippingCost.getDistanceKmCost()
+                .multiply(BigDecimal.valueOf(distanceResult.totalDistance));
+            log.info("Distance cost: {} × {} km = {}",
+                shippingCost.getDistanceKmCost(), distanceResult.totalDistance, costs.distanceCost);
+        }
+
+        // Weight cost
+        costs.weightCost = BigDecimal.ZERO;
+        if (shippingCost.getWeightKgCost() != null && totalWeight.compareTo(BigDecimal.ZERO) > 0) {
+            costs.weightCost = shippingCost.getWeightKgCost().multiply(totalWeight);
+            log.info("Weight cost: {} × {} kg = {}",
+                shippingCost.getWeightKgCost(), totalWeight, costs.weightCost);
+        }
+
+        // International fee
+        costs.internationalFee = BigDecimal.ZERO;
+        if (distanceResult.isInternational && shippingCost.getInternationalFee() != null) {
+            costs.internationalFee = shippingCost.getInternationalFee();
+            log.info("International fee: {}", costs.internationalFee);
+        }
+
+        // Total cost
+        costs.totalCost = costs.baseFee
+            .add(costs.distanceCost)
+            .add(costs.weightCost)
+            .add(costs.internationalFee);
+
+        return costs;
+    }
+
+    /**
+     * Check if order qualifies for free shipping
+     */
+    private boolean qualifiesForFreeShipping(ShippingCost shippingCost, BigDecimal orderValue) {
+        return shippingCost.getFreeShippingThreshold() != null &&
+               shippingCost.getFreeShippingThreshold().compareTo(BigDecimal.ZERO) > 0 &&
+               orderValue != null &&
+               orderValue.compareTo(shippingCost.getFreeShippingThreshold()) >= 0;
+    }
+
+    /**
+     * Build empty shipping details response
+     */
+    private com.ecommerce.dto.ShippingDetailsDTO buildEmptyShippingDetails() {
+        return com.ecommerce.dto.ShippingDetailsDTO.builder()
+                .shippingCost(BigDecimal.ZERO)
+                .distanceKm(0.0)
+                .costPerKm(BigDecimal.ZERO)
+                .selectedWarehouseName("No warehouse")
+                .selectedWarehouseCountry("Unknown")
+                .isInternationalShipping(false)
+                .baseFee(BigDecimal.ZERO)
+                .distanceCost(BigDecimal.ZERO)
+                .weightCost(BigDecimal.ZERO)
+                .internationalFee(BigDecimal.ZERO)
+                .totalWeight(BigDecimal.ZERO)
+                .build();
+    }
+
+    /**
+     * Build free shipping details response
+     */
+    private com.ecommerce.dto.ShippingDetailsDTO buildFreeShippingDetails() {
+        return com.ecommerce.dto.ShippingDetailsDTO.builder()
+                .shippingCost(BigDecimal.ZERO)
+                .distanceKm(0.0)
+                .costPerKm(BigDecimal.ZERO)
+                .selectedWarehouseName("Free shipping")
+                .selectedWarehouseCountry("N/A")
+                .isInternationalShipping(false)
+                .baseFee(BigDecimal.ZERO)
+                .distanceCost(BigDecimal.ZERO)
+                .weightCost(BigDecimal.ZERO)
+                .internationalFee(BigDecimal.ZERO)
+                .totalWeight(BigDecimal.ZERO)
+                .build();
+    }
+
+    /**
+     * Get effective product weight for cart item
+     */
+    private BigDecimal getEffectiveProductWeight(CartItemDTO item) {
+        try {
+            Product effectiveProduct = getEffectiveProduct(item);
+
+            if (effectiveProduct != null && effectiveProduct.getProductDetail() != null) {
+                ProductDetail productDetail = effectiveProduct.getProductDetail();
+                BigDecimal productWeight = productDetail.getWeightKg();
+
+                if (productWeight != null && productWeight.compareTo(BigDecimal.ZERO) > 0) {
+                    return productWeight;
+                }
+            }
+
+            // Default weight: 0.1 kg
+            return new BigDecimal("0.1");
+
+        } catch (Exception e) {
+            log.warn("Error getting product weight for cart item {}: {}",
+                    item.getProductId() != null ? item.getProductId() : item.getVariantId(),
+                    e.getMessage());
+            return new BigDecimal("0.1");
+        }
+    }
+
+    /**
+     * Get effective product from cart item
+     */
+    private Product getEffectiveProduct(CartItemDTO item) {
+        if (item.isVariantBasedItem() && item.getVariantId() != null) {
+            ProductVariant variant = productVariantRepository.findById(item.getVariantId())
+                    .orElseThrow(() -> new EntityNotFoundException("Variant not found with ID: " + item.getVariantId()));
+            return variant.getProduct();
+        } else if (item.isProductBasedItem() && item.getProductId() != null) {
+            return productRepository.findById(item.getProductId())
+                    .orElseThrow(() -> new EntityNotFoundException("Product not found with ID: " + item.getProductId()));
+        }
+
+        return null;
+    }
+
+    /**
+     * Map ShippingCost entity to DTO
+     */
     private ShippingCostDTO mapToDTO(ShippingCost shippingCost) {
         return ShippingCostDTO.builder()
                 .id(shippingCost.getId())
@@ -573,59 +745,5 @@ public class ShippingCostServiceImpl implements ShippingCostService {
                 .createdAt(shippingCost.getCreatedAt())
                 .updatedAt(shippingCost.getUpdatedAt())
                 .build();
-    }
-
-    /**
-     * Gets the effective product weight for a cart item by fetching the actual product weight
-     * from the database instead of relying on frontend data.
-     * 
-     * @param item The cart item to get weight for
-     * @return The product weight in kg, with a default minimum weight if not specified
-     */
-    private BigDecimal getEffectiveProductWeight(CartItemDTO item) {
-        try {
-            Product effectiveProduct = getEffectiveProduct(item);
-            
-            if (effectiveProduct != null && effectiveProduct.getProductDetail() != null) {
-                ProductDetail productDetail = effectiveProduct.getProductDetail();
-                BigDecimal productWeight = productDetail.getWeightKg();
-                
-                if (productWeight != null && productWeight.compareTo(BigDecimal.ZERO) > 0) {
-                    return productWeight;
-                }
-            }
-            
-            // Default weight for products without specified weight (0.1 kg = 100g)
-            // This represents a light but realistic minimum weight as no product is weightless
-            return new BigDecimal("0.1");
-            
-        } catch (Exception e) {
-            log.warn("Error getting product weight for cart item {}: {}", 
-                item.getProductId() != null ? item.getProductId() : item.getVariantId(), 
-                e.getMessage());
-            // Return default weight on error
-            return new BigDecimal("0.1");
-        }
-    }
-
-    /**
-     * Gets the effective product for a cart item.
-     * If the item is variant-based, returns the parent product of the variant.
-     * If the item is product-based, returns the product directly.
-     * 
-     * @param item The cart item to get the effective product for
-     * @return The effective product, or null if not found
-     */
-    private Product getEffectiveProduct(CartItemDTO item) {
-        if (item.isVariantBasedItem() && item.getVariantId() != null) {
-            ProductVariant variant = productVariantRepository.findById(item.getVariantId())
-                .orElseThrow(() -> new EntityNotFoundException("Variant not found with ID: " + item.getVariantId()));
-            return variant.getProduct();
-        } else if (item.isProductBasedItem() && item.getProductId() != null) {
-            return productRepository.findById(item.getProductId())
-                .orElseThrow(() -> new EntityNotFoundException("Product not found with ID: " + item.getProductId()));
-        }
-        
-        return null;
     }
 }

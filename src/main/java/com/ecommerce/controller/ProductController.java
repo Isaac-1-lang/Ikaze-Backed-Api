@@ -121,17 +121,45 @@ public class ProductController {
             @PathVariable UUID productId,
             @RequestBody List<WarehouseStockRequest> warehouseStocks) {
         try {
-            log.info("Assigning stock to product {} for {} warehouses", productId, warehouseStocks.size());
-            Map<String, Object> response = productService.assignProductStock(productId, warehouseStocks);
-            return ResponseEntity.ok(response);
+
+            Map<String, Object> result = productService.assignProductStock(productId, warehouseStocks);
+
+            return ResponseEntity.ok(result);
         } catch (IllegalArgumentException e) {
-            log.error("Validation error assigning product stock: {}", e.getMessage());
             return ResponseEntity.status(HttpStatus.BAD_REQUEST)
-                    .body(createErrorResponse("VALIDATION_ERROR", e.getMessage()));
+                    .body(createErrorResponse("INVALID_INPUT", e.getMessage()));
         } catch (Exception e) {
-            log.error("Error assigning product stock: {}", e.getMessage(), e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                     .body(createErrorResponse("INTERNAL_ERROR", "Failed to assign product stock"));
+        }
+    }
+
+    @DeleteMapping("/{productId}/unassign-warehouse/{warehouseId}")
+    @PreAuthorize("hasAnyRole('ADMIN', 'EMPLOYEE')")
+    @Operation(summary = "Unassign warehouse from product", description = "Remove warehouse assignment from product and delete all associated batches", responses = {
+            @ApiResponse(responseCode = "200", description = "Warehouse unassigned successfully"),
+            @ApiResponse(responseCode = "404", description = "Product or warehouse not found"),
+            @ApiResponse(responseCode = "401", description = "Unauthorized"),
+            @ApiResponse(responseCode = "500", description = "Internal server error")
+    })
+    public ResponseEntity<?> unassignWarehouseFromProduct(
+            @PathVariable UUID productId,
+            @PathVariable Long warehouseId) {
+        try {
+            log.info("Unassigning warehouse {} from product {}", warehouseId, productId);
+            
+            Map<String, Object> result = productService.unassignWarehouseFromProduct(productId, warehouseId);
+            
+            log.info("Successfully unassigned warehouse {} from product {}", warehouseId, productId);
+            return ResponseEntity.ok(result);
+        } catch (IllegalArgumentException e) {
+            log.error("Invalid input for warehouse unassignment: {}", e.getMessage());
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                    .body(createErrorResponse("INVALID_INPUT", e.getMessage()));
+        } catch (Exception e) {
+            log.error("Error unassigning warehouse {} from product {}: {}", warehouseId, productId, e.getMessage(), e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(createErrorResponse("INTERNAL_ERROR", "Failed to unassign warehouse from product"));
         }
     }
 

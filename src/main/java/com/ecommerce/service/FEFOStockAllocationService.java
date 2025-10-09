@@ -28,12 +28,12 @@ public class FEFOStockAllocationService {
     public List<BatchAllocation> allocateStock(Product product, ProductVariant variant, int requestedQuantity, Long warehouseId) {
         List<BatchAllocation> allocations = new ArrayList<>();
         
-        // Find the single stock entry for this product/variant in the specified warehouse
+        // Find the single stock entry for this product/variant in the specified warehouse with warehouse eagerly fetched
         Optional<Stock> stockOptional;
         if (variant != null) {
-            stockOptional = stockRepository.findByProductVariantVariantIdAndWarehouseWarehouseId(variant.getId(), warehouseId);
+            stockOptional = stockRepository.findByProductVariantVariantIdAndWarehouseWarehouseIdWithWarehouse(variant.getId(), warehouseId);
         } else {
-            stockOptional = stockRepository.findByProductProductIdAndWarehouseWarehouseId(product.getProductId(), warehouseId);
+            stockOptional = stockRepository.findByProductProductIdAndWarehouseWarehouseIdWithWarehouse(product.getProductId(), warehouseId);
         }
 
         if (stockOptional.isEmpty()) {
