@@ -64,6 +64,14 @@ public interface ShippingCostService {
             java.util.List<com.ecommerce.dto.CartItemDTO> items, BigDecimal orderValue);
 
     /**
+     * Calculate enhanced shipping details using multi-warehouse allocation logic
+     * This method considers stock allocation across multiple warehouses and calculates
+     * shipping cost from the furthest warehouse involved in the order
+     */
+    com.ecommerce.dto.ShippingDetailsDTO calculateEnhancedShippingDetails(com.ecommerce.dto.AddressDto deliveryAddress,
+            java.util.List<com.ecommerce.dto.CartItemDTO> items, BigDecimal orderValue);
+
+    /**
      * Toggle shipping cost active status (only one can be active at a time)
      */
     ShippingCostDTO toggleShippingCostStatus(Long id);

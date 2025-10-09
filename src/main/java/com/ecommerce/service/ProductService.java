@@ -2,6 +2,7 @@ package com.ecommerce.service;
 
 import com.ecommerce.dto.ManyProductsDto;
 import com.ecommerce.dto.ProductDTO;
+import com.ecommerce.dto.CustomerProductDTO;
 import com.ecommerce.dto.ProductSearchDTO;
 import com.ecommerce.dto.ProductUpdateDTO;
 import com.ecommerce.dto.ProductBasicInfoDTO;
@@ -83,6 +84,15 @@ public interface ProductService {
                         List<WarehouseStockWithBatchesRequest> warehouseStocks);
 
         /**
+         * Unassign warehouse from product and delete all associated batches
+         * 
+         * @param productId   The product ID
+         * @param warehouseId The warehouse ID to unassign
+         * @return Map containing success status and message
+         */
+        Map<String, Object> unassignWarehouseFromProduct(UUID productId, Long warehouseId);
+
+        /**
          * Assign stock with batches to a specific product variant
          * 
          * @param productId       The product ID
@@ -100,6 +110,22 @@ public interface ProductService {
          * @return The product DTO
          */
         ProductDTO getProductById(UUID productId);
+
+        /**
+         * Get a product by its ID for customers (without warehouse/batch data, with ProductDetail info)
+         * 
+         * @param productId The product ID
+         * @return The customer product DTO
+         */
+        CustomerProductDTO getCustomerProductById(UUID productId);
+
+        /**
+         * Get a product by its slug for customers (without warehouse/batch data, with ProductDetail info)
+         * 
+         * @param slug The product slug
+         * @return The customer product DTO
+         */
+        CustomerProductDTO getCustomerProductBySlug(String slug);
 
         /**
          * Get basic information of a product for update form

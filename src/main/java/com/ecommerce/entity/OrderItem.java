@@ -170,12 +170,20 @@ public class OrderItem {
                 product != null ? product.getProductId() : "null",
                 productVariant != null ? productVariant.getId() : "null");
     }
-
     /**
-     * Get effective product for this order item
+     * Gets the effective product (either the direct product or the product from
+     * variant)
+     * 
+     * @return The product
      */
     public Product getEffectiveProduct() {
-        return getProduct();
+        if (product != null) {
+            return product;
+        }
+        if (productVariant != null) {
+            return productVariant.getProduct();
+        }
+        return null;
     }
 
     /**

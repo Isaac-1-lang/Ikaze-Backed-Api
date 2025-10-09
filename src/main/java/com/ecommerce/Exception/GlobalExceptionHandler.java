@@ -9,6 +9,7 @@ import java.util.HashMap;
 import java.util.Map;
 
 import com.ecommerce.dto.FileUploadResponseDTO;
+import com.ecommerce.dto.ErrorResponseDTO;
 import org.springframework.web.multipart.MaxUploadSizeExceededException;
 
 @RestControllerAdvice
@@ -65,6 +66,18 @@ public class GlobalExceptionHandler {
                 .error("Invalid input: " + ex.getMessage())
                 .build();
         return new ResponseEntity<>(response, HttpStatus.BAD_REQUEST);
+    }
+
+    @ExceptionHandler(IllegalStateException.class)
+    public ResponseEntity<ErrorResponseDTO> handleIllegalStateException(IllegalStateException ex) {
+        ErrorResponseDTO errorResponse = ErrorResponseDTO.of(ex.getMessage(), HttpStatus.BAD_REQUEST.value());
+        return new ResponseEntity<>(errorResponse, HttpStatus.BAD_REQUEST);
+    }
+
+    @ExceptionHandler(RuntimeException.class)
+    public ResponseEntity<ErrorResponseDTO> handleRuntimeException(RuntimeException ex) {
+        ErrorResponseDTO errorResponse = ErrorResponseDTO.of(ex.getMessage(), HttpStatus.BAD_REQUEST.value());
+        return new ResponseEntity<>(errorResponse, HttpStatus.BAD_REQUEST);
     }
 
     @ExceptionHandler(Exception.class)

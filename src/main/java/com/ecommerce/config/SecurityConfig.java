@@ -60,9 +60,12 @@ public class SecurityConfig {
                                 "/api/v1/cart/products",
                                 "/api/v1/checkout/guest/**",
                                 "/api/v1/orders/track/**",
+                                "/api/v1/public/**",
                                 "/api/v1/orders",
                                 "/api/v1/reviews/product/**",
                                 "/api/v1/reviews/*/stats",
+                                "/api/v1/returns/**",
+                                "/api/v1/appeals/**",
                                 "/api/v1/customer/**",
                                 "/v3/api-docs/**",
                                 "/swagger-ui/**",
@@ -79,7 +82,7 @@ public class SecurityConfig {
         CorsConfiguration configuration = new CorsConfiguration();
         configuration.setAllowedOriginPatterns(
                 Arrays.asList("http://localhost:3000", "http://127.0.0.1:3000", "http://localhost:3001",
-                        "http://44.201.73.159:3000","https://shopsphere-frontend.vercel.app"));
+                        "http://44.201.73.159:3000", "https://shopsphere-frontend.vercel.app"));
         configuration.setAllowedMethods(Arrays.asList("GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"));
         configuration.setAllowedHeaders(Arrays.asList("*"));
         configuration.setAllowCredentials(true);

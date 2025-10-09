@@ -1,0 +1,670 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Return Request Approved - ShopSphere</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+        
+        body {
+            font-family: 'Inter', 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            line-height: 1.6;
+            color: #1f2937;
+            max-width: 650px;
+            margin: 0 auto;
+            padding: 20px;
+            background: linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%);
+        }
+        
+        .email-container {
+            background-color: #ffffff;
+            border-radius: 16px;
+            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+            overflow: hidden;
+            border: 1px solid #e5e7eb;
+        }
+        
+        .header {
+            background: linear-gradient(135deg, #10b981 0%, #059669 50%, #047857 100%);
+            color: white;
+            padding: 40px 30px;
+            text-align: center;
+            position: relative;
+        }
+        
+        .header::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><defs><pattern id="grain" width="100" height="100" patternUnits="userSpaceOnUse"><circle cx="25" cy="25" r="1" fill="rgba(255,255,255,0.03)"/><circle cx="75" cy="75" r="1" fill="rgba(255,255,255,0.03)"/><circle cx="75" cy="25" r="1" fill="rgba(255,255,255,0.03)"/><circle cx="25" cy="75" r="1" fill="rgba(255,255,255,0.03)"/></pattern></defs><rect width="100" height="100" fill="url(%23grain)"/></svg>');
+            opacity: 0.5;
+        }
+        
+        .header-content {
+            position: relative;
+            z-index: 1;
+        }
+        
+        .header h1 {
+            margin: 0;
+            font-size: 32px;
+            font-weight: 700;
+            letter-spacing: -0.02em;
+        }
+        
+        .header .icon {
+            font-size: 48px;
+            margin-bottom: 15px;
+            display: block;
+        }
+        
+        .header p {
+            margin: 15px 0 0 0;
+            font-size: 18px;
+            opacity: 0.9;
+            font-weight: 300;
+        }
+        
+        .success-badge {
+            display: inline-block;
+            background: rgba(255, 255, 255, 0.2);
+            color: white;
+            padding: 8px 16px;
+            border-radius: 50px;
+            font-size: 14px;
+            font-weight: 600;
+            margin-top: 15px;
+            border: 2px solid rgba(255, 255, 255, 0.3);
+        }
+        
+        .content {
+            padding: 40px 30px;
+        }
+        
+        .greeting {
+            font-size: 18px;
+            margin-bottom: 30px;
+            color: #374151;
+            font-weight: 400;
+        }
+        
+        .greeting strong {
+            color: #111827;
+            font-weight: 600;
+        }
+        
+        .status-badge {
+            display: inline-block;
+            background: rgba(16, 185, 129, 0.1);
+            color: #065f46;
+            padding: 8px 16px;
+            border-radius: 50px;
+            font-size: 14px;
+            font-weight: 600;
+            margin: 15px 0;
+            border: 2px solid rgba(16, 185, 129, 0.2);
+        }
+        
+        .return-details {
+            background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
+            border: 2px solid #e2e8f0;
+            border-radius: 12px;
+            padding: 25px;
+            margin: 25px 0;
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .return-details::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 4px;
+            height: 100%;
+            background: linear-gradient(135deg, #10b981, #059669);
+        }
+        
+        .section-title {
+            margin: 0 0 20px 0;
+            color: #1e293b;
+            font-size: 20px;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .section-icon {
+            width: 24px;
+            height: 24px;
+            background: linear-gradient(135deg, #10b981, #059669);
+            border-radius: 6px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+        }
+        
+        .section-icon::before {
+            content: '✓';
+            color: white;
+            font-weight: bold;
+            font-size: 14px;
+        }
+        
+        .detail-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 12px;
+            padding: 12px 0;
+            border-bottom: 1px solid #e5e7eb;
+        }
+        
+        .detail-row:last-child {
+            border-bottom: none;
+            margin-bottom: 0;
+        }
+        
+        .detail-label {
+            font-weight: 500;
+            color: #6b7280;
+            font-size: 15px;
+        }
+        
+        .detail-value {
+            color: #111827;
+            font-weight: 600;
+            font-size: 15px;
+        }
+        
+        .items-list {
+            background: linear-gradient(135deg, #ecfdf5 0%, #d1fae5 100%);
+            border: 2px solid #bbf7d0;
+            border-radius: 12px;
+            padding: 25px;
+            margin: 25px 0;
+            position: relative;
+        }
+        
+        .items-list::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 4px;
+            height: 100%;
+            background: linear-gradient(135deg, #22c55e, #16a34a);
+        }
+        
+        .items-list h4 {
+            margin-top: 0;
+            color: #166534;
+            font-size: 18px;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .items-list pre {
+            margin: 15px 0 0 0;
+            font-family: 'Inter', sans-serif;
+            white-space: pre-wrap;
+            color: #166534;
+            font-size: 14px;
+            line-height: 1.6;
+        }
+        
+        .decision-notes {
+            background: linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%);
+            border: 2px solid #bfdbfe;
+            border-radius: 12px;
+            padding: 25px;
+            margin: 25px 0;
+            position: relative;
+        }
+        
+        .decision-notes::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 4px;
+            height: 100%;
+            background: linear-gradient(135deg, #3b82f6, #2563eb);
+        }
+        
+        .decision-notes h4 {
+            margin-top: 0;
+            color: #1e40af;
+            font-size: 18px;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .decision-notes p {
+            margin: 15px 0 0 0;
+            color: #1e40af;
+            font-size: 15px;
+            line-height: 1.6;
+        }
+        
+        .steps-section {
+            margin: 40px 0;
+        }
+        
+        .step {
+            display: flex;
+            align-items: flex-start;
+            background: linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%);
+            border: 1px solid #bae6fd;
+            border-radius: 12px;
+            padding: 20px;
+            margin: 15px 0;
+            position: relative;
+        }
+        
+        .step::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 4px;
+            height: 100%;
+            background: linear-gradient(135deg, #0ea5e9, #0284c7);
+            border-radius: 4px 0 0 4px;
+        }
+        
+        .step-number {
+            background: linear-gradient(135deg, #0ea5e9, #0284c7);
+            color: white;
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            margin-right: 20px;
+            font-size: 16px;
+            flex-shrink: 0;
+            box-shadow: 0 4px 8px rgba(14, 165, 233, 0.3);
+        }
+        
+        .step-content {
+            flex: 1;
+        }
+        
+        .step-content strong {
+            color: #0c4a6e;
+            font-size: 16px;
+            font-weight: 600;
+            display: block;
+            margin-bottom: 8px;
+        }
+        
+        .step-content ul {
+            margin: 8px 0 0 0;
+            padding-left: 20px;
+            color: #0c4a6e;
+        }
+        
+        .step-content li {
+            margin-bottom: 4px;
+            font-size: 14px;
+        }
+        
+        .important-notice {
+            margin: 30px 0;
+            padding: 25px;
+            background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);
+            border-radius: 12px;
+            border: 2px solid #fbbf24;
+            position: relative;
+        }
+        
+        .important-notice::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 4px;
+            height: 100%;
+            background: linear-gradient(135deg, #f59e0b, #d97706);
+        }
+        
+        .notice-icon {
+            position: absolute;
+            top: 25px;
+            left: 25px;
+            width: 24px;
+            height: 24px;
+            background: #f59e0b;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: bold;
+            font-size: 14px;
+        }
+        
+        .notice-content {
+            margin-left: 40px;
+        }
+        
+        .notice-title {
+            color: #92400e;
+            margin: 0 0 15px 0;
+            font-weight: 600;
+            font-size: 18px;
+        }
+        
+        .notice-text {
+            color: #92400e;
+            margin: 0;
+            font-size: 14px;
+            line-height: 1.6;
+        }
+        
+        .notice-text ul {
+            margin: 10px 0 0 0;
+            padding-left: 20px;
+        }
+        
+        .notice-text li {
+            margin-bottom: 6px;
+        }
+        
+        .contact-section {
+            background: linear-gradient(135deg, #f3f4f6 0%, #e5e7eb 100%);
+            border: 2px solid #d1d5db;
+            border-radius: 12px;
+            padding: 25px;
+            margin: 30px 0;
+            position: relative;
+        }
+        
+        .contact-section::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 4px;
+            height: 100%;
+            background: linear-gradient(135deg, #6b7280, #4b5563);
+        }
+        
+        .contact-section h4 {
+            margin-top: 0;
+            color: #374151;
+            font-size: 18px;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .contact-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin: 20px 0 0 0;
+        }
+        
+        .contact-item {
+            background: rgba(255, 255, 255, 0.7);
+            padding: 15px;
+            border-radius: 8px;
+            border: 1px solid rgba(0, 0, 0, 0.1);
+        }
+        
+        .contact-item strong {
+            color: #374151;
+            display: block;
+            margin-bottom: 5px;
+            font-size: 14px;
+        }
+        
+        .contact-item span {
+            color: #6b7280;
+            font-size: 14px;
+        }
+        
+        .footer {
+            background: linear-gradient(135deg, #1f2937 0%, #374151 100%);
+            padding: 40px 30px;
+            text-align: center;
+            color: #d1d5db;
+        }
+        
+        .footer h4 {
+            color: #ffffff;
+            margin: 0 0 20px 0;
+            font-size: 20px;
+            font-weight: 600;
+        }
+        
+        .footer p {
+            margin: 8px 0;
+            font-size: 15px;
+        }
+        
+        .footer strong {
+            color: #ffffff;
+        }
+        
+        .footer-brand {
+            margin-top: 25px;
+            padding-top: 20px;
+            border-top: 1px solid rgba(255, 255, 255, 0.1);
+            font-size: 13px;
+            color: #9ca3af;
+            font-weight: 300;
+        }
+        
+        @media (max-width: 600px) {
+            body {
+                padding: 15px;
+            }
+            .header, .content, .footer {
+                padding: 25px 20px;
+            }
+            .detail-row {
+                flex-direction: column;
+                gap: 8px;
+                align-items: flex-start;
+                padding: 10px 0;
+            }
+            .contact-grid {
+                grid-template-columns: 1fr;
+                gap: 15px;
+            }
+            .step {
+                padding: 15px;
+            }
+            .step-number {
+                width: 28px;
+                height: 28px;
+                font-size: 14px;
+                margin-right: 15px;
+            }
+            .notice-content {
+                margin-left: 35px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="email-container">
+        <!-- Header -->
+        <div class="header">
+            <div class="header-content">
+                <div class="icon">✅</div>
+                <h1>Return Request <span style="color: #a7f3d0;">Approved</span>!</h1>
+                <p>Great news! Your return request has been approved</p>
+                <div class="success-badge">✓ Ready for Processing</div>
+            </div>
+        </div>
+
+        <!-- Content -->
+        <div class="content">
+            <div class="greeting">
+                <p>Dear <strong th:text="${customerName}">Customer</strong>,</p>
+                <p>We're pleased to inform you that your return request has been <span class="status-badge">APPROVED</span> and is now being processed.</p>
+            </div>
+
+            <!-- Return Details -->
+            <div class="return-details">
+                <h3 class="section-title">
+                    <div class="section-icon"></div>
+                    Return Request Details
+                </h3>
+                <div class="detail-row">
+                    <span class="detail-label">Return Request ID</span>
+                    <span class="detail-value">#<span th:text="${returnRequestId}">12345</span></span>
+                </div>
+                <div class="detail-row">
+                    <span class="detail-label">Order Number</span>
+                    <span class="detail-value">#<span th:text="${orderNumber}">ORD-123456</span></span>
+                </div>
+                <div class="detail-row">
+                    <span class="detail-label">Submitted Date</span>
+                    <span class="detail-value" th:text="${submittedDate}">2024-01-15</span>
+                </div>
+                <div class="detail-row">
+                    <span class="detail-label">Approved Date</span>
+                    <span class="detail-value" th:text="${approvedDate}">2024-01-16</span>
+                </div>
+            </div>
+
+            <!-- Items to Return -->
+            <div class="items-list">
+                <h4>📦 Items to Return</h4>
+                <pre th:text="${returnItems}">• Product Name - Quantity: 1 - Reason: Defective</pre>
+            </div>
+
+            <!-- Decision Notes (if provided) -->
+            <div th:if="${decisionNotes != null and !#strings.isEmpty(decisionNotes)}" class="decision-notes">
+                <h4>💬 Decision Notes</h4>
+                <p th:text="${decisionNotes}">Admin decision notes will appear here</p>
+            </div>
+
+            <!-- Next Steps -->
+            <div class="steps-section">
+                <h3 class="section-title">
+                    <div class="section-icon"></div>
+                    Next Steps - Return Process
+                </h3>
+                
+                <div class="step">
+                    <div class="step-number">1</div>
+                    <div class="step-content">
+                        <strong>Package Your Items</strong>
+                        <ul>
+                            <li>Pack items in original packaging if available</li>
+                            <li>Include all accessories, manuals, and original tags</li>
+                            <li>Ensure items are clean and in returnable condition</li>
+                        </ul>
+                    </div>
+                </div>
+
+                <div class="step">
+                    <div class="step-number">2</div>
+                    <div class="step-content">
+                        <strong>Choose Return Method</strong>
+                        <ul>
+                            <li><strong>Drop-off:</strong> Visit any of our pickup locations</li>
+                            <li><strong>Pickup Service:</strong> Schedule a pickup from your address</li>
+                            <li><strong>Courier:</strong> Use our prepaid return label</li>
+                        </ul>
+                    </div>
+                </div>
+
+                <div class="step">
+                    <div class="step-number">3</div>
+                    <div class="step-content">
+                        <strong>Return Locations & Options</strong>
+                        <ul>
+                            <li><strong>Main Store:</strong> 123 Commerce Street, City Center</li>
+                            <li><strong>Warehouse:</strong> 456 Industrial Ave, Business District</li>
+                            <li><strong>Partner Locations:</strong> Check our website for nearest location</li>
+                            <li><strong>Pickup Scheduling:</strong> Call +250-XXX-XXXX or use our app</li>
+                        </ul>
+                    </div>
+                </div>
+
+                <div class="step">
+                    <div class="step-number">4</div>
+                    <div class="step-content">
+                        <strong>Processing & Refund</strong>
+                        <ul>
+                            <li>Items will be inspected within 2-3 business days</li>
+                            <li>Refund processed within 5-7 business days after inspection</li>
+                            <li>You'll receive email confirmation at each step</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Important Notice -->
+            <div class="important-notice">
+                <div class="notice-icon">!</div>
+                <div class="notice-content">
+                    <h4 class="notice-title">⚠️ Important Notes</h4>
+                    <div class="notice-text">
+                        <ul>
+                            <li>Return must be completed within <strong>14 days</strong> of approval</li>
+                            <li>Items must be in original condition for full refund</li>
+                            <li>Keep your return receipt until refund is processed</li>
+                            <li>Refund will be issued to original payment method</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Contact Information -->
+            <div class="contact-section">
+                <h4>📞 Need Help?</h4>
+                <div class="contact-grid">
+                    <div class="contact-item">
+                        <strong>Customer Service</strong>
+                        <span>+250-XXX-XXXX</span>
+                    </div>
+                    <div class="contact-item">
+                        <strong>Email</strong>
+                        <span>returns@shopsphere.com</span>
+                    </div>
+                    <div class="contact-item">
+                        <strong>Hours</strong>
+                        <span>Mon-Fri 8AM-6PM, Sat 9AM-4PM</span>
+                    </div>
+                </div>
+            </div>
+
+            <p style="margin-top: 30px; color: #374151; font-size: 16px;">
+                Thank you for choosing <strong>ShopSphere</strong>. We appreciate your business and are committed to making your return experience as smooth as possible.
+            </p>
+        </div>
+
+        <!-- Footer -->
+        <div class="footer">
+            <h4>ShopSphere Customer Support</h4>
+            <p>This is an automated message. Please do not reply to this email.</p>
+            
+            <div class="footer-brand">
+                <p>Thank you for choosing ShopSphere – Your trusted shopping partner.</p>
+                <p>© 2024 ShopSphere. All rights reserved.</p>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

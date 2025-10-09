@@ -5,8 +5,9 @@ import com.ecommerce.dto.CreateProductVariantDTO;
 import com.ecommerce.dto.ImageMetadata;
 
 import com.ecommerce.dto.ManyProductsDto;
-
 import com.ecommerce.dto.ProductDTO;
+import com.ecommerce.dto.CustomerProductDTO;
+import com.ecommerce.dto.CustomerProductVariantDTO;
 
 import com.ecommerce.dto.ProductSearchDTO;
 
@@ -280,11 +281,9 @@ public class ProductServiceImpl implements ProductService {
                         .orElse(null);
 
                 if (stock == null) {
-                    // Create new stock entry for product (without variant)
                     stock = new Stock();
                     stock.setProduct(product);
                     stock.setWarehouse(warehouse);
-                    stock.setQuantity(0); // Will be calculated from batches
                 }
                 
                 // Update stock threshold
@@ -321,7 +320,6 @@ public class ProductServiceImpl implements ProductService {
                         .filter(batch -> batch.getStatus() == com.ecommerce.enums.BatchStatus.ACTIVE)
                         .mapToInt(StockBatch::getQuantity)
                         .sum();
-                savedStock.setQuantity(totalQuantity);
                 stockRepository.save(savedStock);
 
                 processedStocks.add(savedStock);
@@ -377,7 +375,6 @@ public class ProductServiceImpl implements ProductService {
                 Stock stock = new Stock();
                 stock.setProduct(product);
                 stock.setWarehouse(warehouse);
-                stock.setQuantity(0);
                 stock.setLowStockThreshold(stockRequest.getLowStockThreshold());
 
                 Stock savedStock = stockRepository.save(stock);
@@ -389,7 +386,6 @@ public class ProductServiceImpl implements ProductService {
                 defaultBatch.setStatus(com.ecommerce.enums.BatchStatus.ACTIVE);
 
                 stockBatchRepository.save(defaultBatch);
-                savedStock.setQuantity(stockRequest.getStockQuantity());
                 stockRepository.save(savedStock);
 
                 newStocks.add(savedStock);
@@ -441,6 +437,71 @@ public class ProductServiceImpl implements ProductService {
 
     @Override
     @Transactional
+    public Map<String, Object> unassignWarehouseFromProduct(UUID productId, Long warehouseId) {
+        try {
+            log.info("Unassigning warehouse {} from product {}", warehouseId, productId);
+
+            Product product = productRepository.findById(productId)
+                    .orElseThrow(() -> new IllegalArgumentException("Product not found"));
+
+            Warehouse warehouse = warehouseRepository.findById(warehouseId)
+                    .orElseThrow(() -> new IllegalArgumentException("Warehouse not found"));
+
+            Stock stock = stockRepository.findByWarehouseAndProduct(warehouse, product)
+                    .orElseThrow(() -> new IllegalArgumentException(
+                            "No stock assignment found for product " + productId + " in warehouse " + warehouseId));
+   
+            List<StockBatch> batches = stockBatchRepository.findByStock(stock);
+            
+            int preservedBatches = 0;
+            int deactivatedBatches = 0;
+            int deletedBatches = 0;
+
+            for (StockBatch batch : batches) {
+                if (stockBatchRepository.isReferencedByOrders(batch.getId())) {
+                    if (batch.getStatus() == com.ecommerce.enums.BatchStatus.ACTIVE) {
+                        batch.setStatus(com.ecommerce.enums.BatchStatus.INACTIVE);
+                        stockBatchRepository.save(batch);
+                        deactivatedBatches++;
+                        log.info("Deactivated batch {} as it's referenced by orders", batch.getId());
+                    } else {
+                        preservedBatches++;
+                        log.info("Preserved batch {} as it's already inactive and referenced by orders", batch.getId());
+                    }
+                } else {
+                    stockBatchRepository.delete(batch);
+                    deletedBatches++;
+                    log.info("Deleted batch {} as it's not referenced by any orders", batch.getId());
+                }
+            }
+
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", true);
+            response.put("message", "Warehouse unassigned successfully from product");
+            response.put("productId", productId);
+            response.put("warehouseId", warehouseId);
+            response.put("warehouseName", warehouse.getName());
+            response.put("batchesProcessed", batches.size());
+            response.put("batchesDeleted", deletedBatches);
+            response.put("batchesDeactivated", deactivatedBatches);
+            response.put("batchesPreserved", preservedBatches);
+
+            log.info("Successfully unassigned warehouse {} from product {}. Processed {} batches: {} deleted, {} deactivated, {} preserved", 
+                    warehouseId, productId, batches.size(), deletedBatches, deactivatedBatches, preservedBatches);
+            
+            return response;
+
+        } catch (IllegalArgumentException e) {
+            log.error("Validation error unassigning warehouse: {}", e.getMessage());
+            throw e;
+        } catch (Exception e) {
+            log.error("Error unassigning warehouse {} from product {}: {}", warehouseId, productId, e.getMessage(), e);
+            throw new RuntimeException("Failed to unassign warehouse from product: " + e.getMessage(), e);
+        }
+    }
+
+    @Override
+    @Transactional
     public Map<String, Object> assignVariantStockWithBatches(UUID productId, Long variantId,
             List<WarehouseStockWithBatchesRequest> warehouseStocks) {
         try {
@@ -473,21 +534,17 @@ public class ProductServiceImpl implements ProductService {
                         .orElse(null);
 
                 if (stock == null) {
-                    // Create new stock entry for variant
                     stock = new Stock();
                     stock.setProductVariant(variant);
                     stock.setWarehouse(warehouse);
-                    stock.setQuantity(0); // Will be calculated from batches
                 }
                 
                 // Update stock threshold
                 stock.setLowStockThreshold(stockRequest.getLowStockThreshold());
                 Stock savedStock = stockRepository.save(stock);
     
-                // Create batches for this stock
                 List<StockBatch> batches = new ArrayList<>();
                 for (WarehouseStockWithBatchesRequest.StockBatchRequest batchRequest : stockRequest.getBatches()) {
-                    // Check if batch number already exists for this stock
                     if (stockBatchRepository.findByStockAndBatchNumber(savedStock, batchRequest.getBatchNumber())
                             .isPresent()) {
                         throw new IllegalArgumentException(
@@ -514,7 +571,6 @@ public class ProductServiceImpl implements ProductService {
                         .filter(batch -> batch.getStatus() == com.ecommerce.enums.BatchStatus.ACTIVE)
                         .mapToInt(StockBatch::getQuantity)
                         .sum();
-                savedStock.setQuantity(totalQuantity);
                 stockRepository.save(savedStock);
     
                 processedStocks.add(savedStock);
@@ -598,7 +654,6 @@ public class ProductServiceImpl implements ProductService {
             throw new IllegalArgumentException("Cannot create product with invalid discount");
 
         }
-
         return discount;
 
     }
@@ -608,7 +663,6 @@ public class ProductServiceImpl implements ProductService {
     public ProductDTO getProductById(UUID productId) {
 
         Product product = productRepository.findById(productId)
-
                 .orElseThrow(() -> new EntityNotFoundException("Product not found with ID: " + productId));
 
         return mapProductToDTO(product);
@@ -616,15 +670,27 @@ public class ProductServiceImpl implements ProductService {
     }
 
     @Override
-
     public ProductBasicInfoDTO getProductBasicInfo(UUID productId) {
-
         Product product = productRepository.findById(productId)
-
                 .orElseThrow(() -> new EntityNotFoundException("Product not found with ID: " + productId));
 
         return mapProductToBasicInfoDTO(product);
+    }
 
+    @Override
+    public CustomerProductDTO getCustomerProductById(UUID productId) {
+        Product product = productRepository.findById(productId)
+                .orElseThrow(() -> new EntityNotFoundException("Product not found with ID: " + productId));
+
+        return mapProductToCustomerDTO(product);
+    }
+
+    @Override
+    public CustomerProductDTO getCustomerProductBySlug(String slug) {
+        Product product = productRepository.findBySlug(slug)
+                .orElseThrow(() -> new EntityNotFoundException("Product not found with slug: " + slug));
+
+        return mapProductToCustomerDTO(product);
     }
 
     @Override
@@ -1201,8 +1267,6 @@ public class ProductServiceImpl implements ProductService {
     @Override
     public Page<ManyProductsDto> searchProducts(ProductSearchDTO searchDTO) {
         try {
-            log.info("Searching products with criteria: {}", searchDTO);
-
             int page = searchDTO.getPage() != null ? searchDTO.getPage() : 0;
             int size = searchDTO.getSize() != null ? searchDTO.getSize() : 10;
             String sortBy = searchDTO.getSortBy() != null ? searchDTO.getSortBy() : "createdAt";
@@ -1220,7 +1284,6 @@ public class ProductServiceImpl implements ProductService {
                 Specification<Product> spec = buildProductSearchSpecification(searchDTO);
                 Page<Product> productPage = productRepository.findAll(spec, pageable);
 
-                // Apply rating filter if specified
                 List<Product> filteredProducts = productPage.getContent();
                 if (searchDTO.getAverageRatingMin() != null || searchDTO.getAverageRatingMax() != null) {
                     filteredProducts = applyRatingFilter(filteredProducts, searchDTO.getAverageRatingMin(),
@@ -1701,18 +1764,15 @@ public class ProductServiceImpl implements ProductService {
             // Category filters
 
             if (searchDTO.getCategoryId() != null) {
-
                 predicates.add(criteriaBuilder.equal(root.get("category").get("id"), searchDTO.getCategoryId()));
 
             }
 
-            if (searchDTO.getCategoryIds() != null && !searchDTO.getCategoryIds().isEmpty()) {
+            if (searchDTO.getCategoryNames() != null && !searchDTO.getCategoryNames().isEmpty()) {
 
-                predicates.add(root.get("category").get("id").in(searchDTO.getCategoryIds()));
+                predicates.add(root.get("category").get("name").in(searchDTO.getCategoryNames()));
 
             }
-
-            // Brand filters
 
             if (searchDTO.getBrandId() != null) {
 
@@ -2839,7 +2899,6 @@ public class ProductServiceImpl implements ProductService {
         // Map reviews
         if (product.getReviews() != null) {
             dto.setReviews(product.getReviews().stream()
-                    .filter(review -> review.isApproved()) // Only include approved reviews
                     .map(this::mapReviewToDTO)
                     .collect(Collectors.toList()));
         }
@@ -2848,69 +2907,206 @@ public class ProductServiceImpl implements ProductService {
         mapWarehouseStockToDTO(product, dto);
 
         return dto;
-
     }
 
-    private ProductBasicInfoDTO mapProductToBasicInfoDTO(Product product) {
-
-        ProductBasicInfoDTO dto = new ProductBasicInfoDTO();
+    private CustomerProductDTO mapProductToCustomerDTO(Product product) {
+        CustomerProductDTO dto = new CustomerProductDTO();
 
         dto.setProductId(product.getProductId());
-
-        dto.setProductName(product.getProductName());
-
-        dto.setShortDescription(product.getShortDescription());
-
+        dto.setName(product.getProductName());
+        dto.setDescription(product.getShortDescription());
         dto.setSku(product.getSku());
-
         dto.setBarcode(product.getBarcode());
-
-        dto.setModel(product.getModel());
-
-        dto.setSlug(product.getSlug());
-
-        dto.setPrice(product.getPrice());
-
-        dto.setCompareAtPrice(product.getCompareAtPrice());
-
-        dto.setCostPrice(product.getCostPrice());
-
+        dto.setBasePrice(product.getPrice());
+        dto.setSalePrice(product.getCompareAtPrice());
+        dto.setDiscountedPrice(product.getDiscountedPrice());
+        dto.setStockQuantity(product.getTotalStockQuantity());
         dto.setCategoryId(product.getCategory() != null ? product.getCategory().getId() : null);
-
         dto.setCategoryName(product.getCategory() != null ? product.getCategory().getName() : null);
-
         dto.setBrandId(product.getBrand() != null ? product.getBrand().getBrandId() : null);
-
         dto.setBrandName(product.getBrand() != null ? product.getBrand().getBrandName() : null);
+        dto.setModel(product.getModel());
+        dto.setSlug(product.getSlug());
+        dto.setIsActive(product.isActive());
+        dto.setIsFeatured(product.isFeatured());
+        dto.setIsBestseller(product.isBestseller());
+        dto.setIsNewArrival(product.isNewArrival());
+        dto.setIsOnSale(product.isOnSale());
+        dto.setAverageRating(product.getAverageRating());
+        dto.setReviewCount(product.getReviewCount());
+        dto.setCreatedAt(product.getCreatedAt());
+        dto.setUpdatedAt(product.getUpdatedAt());
 
-        dto.setBrandLogoUrl(product.getBrand() != null ? product.getBrand().getLogoUrl() : null);
-
-        dto.setActive(product.isActive());
-
-        dto.setFeatured(product.isFeatured());
-
-        dto.setBestseller(product.isBestseller());
-
-        dto.setNewArrival(product.isNewArrival());
-
-        dto.setOnSale(product.isOnSale());
-
-        dto.setSalePercentage(product.getSalePercentage());
-
+        // Map product details if available (include customer-relevant fields)
         if (product.getProductDetail() != null) {
-
-            dto.setDescription(product.getProductDetail().getDescription());
-
+            dto.setFullDescription(product.getProductDetail().getDescription());
+            dto.setDimensionsCm(product.getProductDetail().getDimensionsCm());
+            dto.setWeightKg(product.getProductDetail().getWeightKg());
             dto.setMaterial(product.getProductDetail().getMaterial());
-
-            dto.setWarrantyInfo(product.getProductDetail().getWarrantyInfo());
-
             dto.setCareInstructions(product.getProductDetail().getCareInstructions());
+            dto.setWarrantyInfo(product.getProductDetail().getWarrantyInfo());
+            dto.setShippingInfo(product.getProductDetail().getShippingInfo());
+            dto.setReturnPolicy(product.getProductDetail().getReturnPolicy());
+        }
 
+        // Map images
+        if (product.getImages() != null) {
+            dto.setImages(product.getImages().stream()
+                    .map(this::mapProductImageToCustomerDTO)
+                    .collect(Collectors.toList()));
+        }
+
+        // Map videos
+        if (product.getVideos() != null) {
+            dto.setVideos(product.getVideos().stream()
+                    .map(this::mapProductVideoToCustomerDTO)
+                    .collect(Collectors.toList()));
+        }
+
+        // Map variants (without warehouse stock information)
+        if (product.getVariants() != null) {
+            dto.setVariants(product.getVariants().stream()
+                    .map(this::mapProductVariantToCustomerDTO)
+                    .collect(Collectors.toList()));
+        }
+
+        // Map reviews
+        if (product.getReviews() != null) {
+            dto.setReviews(product.getReviews().stream()
+                    .filter(review -> review.isApproved()) // Only include approved reviews
+                    .map(this::mapReviewToDTO)
+                    .collect(Collectors.toList()));
         }
 
         return dto;
+    }
 
+    private ProductBasicInfoDTO mapProductToBasicInfoDTO(Product product) {
+        ProductBasicInfoDTO dto = new ProductBasicInfoDTO();
+
+        dto.setProductId(product.getProductId());
+        dto.setProductName(product.getProductName());
+        dto.setShortDescription(product.getShortDescription());
+        dto.setSku(product.getSku());
+        dto.setBarcode(product.getBarcode());
+        dto.setModel(product.getModel());
+        dto.setSlug(product.getSlug());
+        dto.setPrice(product.getPrice());
+        dto.setCompareAtPrice(product.getCompareAtPrice());
+        dto.setCostPrice(product.getCostPrice());
+        dto.setCategoryId(product.getCategory() != null ? product.getCategory().getId() : null);
+        dto.setCategoryName(product.getCategory() != null ? product.getCategory().getName() : null);
+        dto.setBrandId(product.getBrand() != null ? product.getBrand().getBrandId() : null);
+        dto.setBrandName(product.getBrand() != null ? product.getBrand().getBrandName() : null);
+        dto.setBrandLogoUrl(product.getBrand() != null ? product.getBrand().getLogoUrl() : null);
+        dto.setActive(product.isActive());
+        dto.setFeatured(product.isFeatured());
+        dto.setBestseller(product.isBestseller());
+        dto.setNewArrival(product.isNewArrival());
+        dto.setOnSale(product.isOnSale());
+        dto.setSalePercentage(product.getSalePercentage());
+
+        if (product.getProductDetail() != null) {
+            dto.setDescription(product.getProductDetail().getDescription());
+            dto.setMaterial(product.getProductDetail().getMaterial());
+            dto.setWarrantyInfo(product.getProductDetail().getWarrantyInfo());
+            dto.setCareInstructions(product.getProductDetail().getCareInstructions());
+        }
+
+        return dto;
+    }
+
+    private CustomerProductDTO.ProductImageDTO mapProductImageToCustomerDTO(ProductImage image) {
+        return CustomerProductDTO.ProductImageDTO.builder()
+                .imageId(image.getId())
+                .url(image.getImageUrl())
+                .altText(image.getAltText())
+                .isPrimary(image.isPrimary())
+                .sortOrder(image.getSortOrder())
+                .build();
+    }
+
+    private CustomerProductDTO.ProductVideoDTO mapProductVideoToCustomerDTO(ProductVideo video) {
+        return CustomerProductDTO.ProductVideoDTO.builder()
+                .videoId(video.getVideoId())
+                .url(video.getUrl())
+                .title(video.getTitle())
+                .description(video.getDescription())
+                .sortOrder(video.getSortOrder())
+                .build();
+    }
+
+    private CustomerProductVariantDTO mapProductVariantToCustomerDTO(ProductVariant variant) {
+        CustomerProductVariantDTO dto = new CustomerProductVariantDTO();
+
+        dto.setVariantId(variant.getId());
+        dto.setVariantSku(variant.getVariantSku());
+        dto.setVariantName(variant.getVariantName());
+        dto.setVariantBarcode(variant.getVariantBarcode());
+        dto.setPrice(variant.getPrice());
+        dto.setSalePrice(variant.getCompareAtPrice());
+        dto.setCostPrice(variant.getCostPrice());
+        dto.setIsActive(variant.isActive());
+        dto.setIsInStock(variant.isInStock());
+        dto.setIsLowStock(variant.isLowStock());
+        dto.setCreatedAt(variant.getCreatedAt());
+        dto.setUpdatedAt(variant.getUpdatedAt());
+
+        // Map discount information
+        if (variant.getDiscount() != null) {
+            DiscountDTO discountDTO = mapDiscountToDTO(variant.getDiscount());
+            dto.setDiscount(discountDTO);
+
+            // Check if discount is currently active
+            boolean isActive = isDiscountCurrentlyActive(variant.getDiscount());
+            dto.setHasActiveDiscount(isActive);
+
+            // Calculate discounted price if discount is active
+            if (isActive && variant.getDiscount().getPercentage() != null) {
+                BigDecimal discountPercentage = variant.getDiscount().getPercentage();
+                BigDecimal originalPrice = variant.getPrice();
+                BigDecimal discountedPrice = originalPrice.multiply(
+                        BigDecimal.ONE.subtract(discountPercentage.divide(BigDecimal.valueOf(100))));
+                dto.setDiscountedPrice(discountedPrice);
+            }
+        } else {
+            dto.setHasActiveDiscount(false);
+        }
+
+        // Map variant images
+        if (variant.getImages() != null) {
+            dto.setImages(variant.getImages().stream()
+                    .map(this::mapVariantImageToCustomerDTO)
+                    .collect(Collectors.toList()));
+        }
+
+        // Map variant attributes
+        if (variant.getAttributeValues() != null) {
+            dto.setAttributes(variant.getAttributeValues().stream()
+                    .map(this::mapVariantAttributeToCustomerDTO)
+                    .collect(Collectors.toList()));
+        }
+
+        return dto;
+    }
+
+    private CustomerProductVariantDTO.VariantImageDTO mapVariantImageToCustomerDTO(ProductVariantImage image) {
+        return CustomerProductVariantDTO.VariantImageDTO.builder()
+                .imageId(image.getId())
+                .url(image.getImageUrl())
+                .altText(image.getAltText())
+                .isPrimary(image.isPrimary())
+                .sortOrder(image.getSortOrder())
+                .build();
+    }
+
+    private CustomerProductVariantDTO.VariantAttributeDTO mapVariantAttributeToCustomerDTO(VariantAttributeValue attributeValue) {
+        return CustomerProductVariantDTO.VariantAttributeDTO.builder()
+                .attributeValueId(attributeValue.getId().getAttributeValueId())
+                .attributeValue(attributeValue.getAttributeValue().getValue())
+                .attributeTypeId(attributeValue.getAttributeValue().getAttributeType().getAttributeTypeId())
+                .attributeType(attributeValue.getAttributeValue().getAttributeType().getName())
+                .build();
     }
 
     private ProductDTO.ProductImageDTO mapProductImageToDTO(ProductImage image) {
@@ -3043,9 +3239,7 @@ public class ProductServiceImpl implements ProductService {
                     .map(this::mapVariantAttributeToInnerDTO)
                     .collect(Collectors.toList()));
 
-        }
-
-        List<Stock> variantStocks = stockRepository.findByProductVariant(variant);
+        List<Stock> variantStocks = stockRepository.findByProductVariantWithWarehouse(variant);
         if (variantStocks != null && !variantStocks.isEmpty()) {
             dto.setWarehouseStocks(variantStocks.stream()
                     .map(this::mapStockToVariantWarehouseStockDTO)
@@ -3721,8 +3915,7 @@ public class ProductServiceImpl implements ProductService {
                 Stock stock = new Stock();
                 stock.setWarehouse(warehouse);
                 stock.setProduct(product);
-                stock.setProductVariant(null); // Product-level stock, not variant
-                stock.setQuantity(warehouseStock.getStockQuantity() != null ? warehouseStock.getStockQuantity() : 0);
+                stock.setProductVariant(null);
                 stock.setLowStockThreshold(
                         warehouseStock.getLowStockThreshold() != null ? warehouseStock.getLowStockThreshold() : 5);
 
@@ -3755,7 +3948,6 @@ public class ProductServiceImpl implements ProductService {
 
         for (WarehouseStockDTO warehouseStock : warehouseStockList) {
             try {
-                // Validate warehouse exists
                 Warehouse warehouse = warehouseRepository.findById(warehouseStock.getWarehouseId())
                         .orElseThrow(() -> new EntityNotFoundException(
                                 "Warehouse not found with ID: " + warehouseStock.getWarehouseId()));
@@ -3765,7 +3957,6 @@ public class ProductServiceImpl implements ProductService {
                 stock.setWarehouse(warehouse);
                 stock.setProduct(null); // Variant-level stock, not product
                 stock.setProductVariant(variant);
-                stock.setQuantity(warehouseStock.getStockQuantity() != null ? warehouseStock.getStockQuantity() : 0);
                 stock.setLowStockThreshold(
                         warehouseStock.getLowStockThreshold() != null ? warehouseStock.getLowStockThreshold() : 5);
 
@@ -5011,7 +5202,6 @@ public class ProductServiceImpl implements ProductService {
                     Stock stock = new Stock();
                     stock.setProductVariant(savedVariant);
                     stock.setWarehouse(warehouse);
-                    stock.setQuantity(stockRequest.getStockQuantity());
                     stock.setLowStockThreshold(stockRequest.getLowStockThreshold());
                     stock.setCreatedAt(LocalDateTime.now());
                     stockRepository.save(stock);
@@ -5251,13 +5441,9 @@ public class ProductServiceImpl implements ProductService {
     @Override
     public Page<ManyProductsDto> searchProductsForCustomers(ProductSearchDTO searchDTO) {
         try {
-            log.info("Searching products for customers with criteria: {}", searchDTO);
             
-            // Use the comprehensive search logic from the main searchProducts method
-            // but filter results for customer availability
             Page<ManyProductsDto> searchResults = searchProducts(searchDTO);
-            
-            // Filter the results to only include products available for customers
+
             List<ManyProductsDto> availableProducts = searchResults.getContent().stream()
                 .filter(product -> {
                     try {
@@ -5274,15 +5460,11 @@ public class ProductServiceImpl implements ProductService {
                 })
                 .collect(Collectors.toList());
             
-            // Create new page with filtered results
             Page<ManyProductsDto> filteredResults = new PageImpl<>(
                 availableProducts,
                 searchResults.getPageable(),
                 availableProducts.size()
             );
-            
-            log.info("Filtered {} search results to {} available products for customers", 
-                    searchResults.getContent().size(), availableProducts.size());
             
             return filteredResults;
         } catch (Exception e) {
@@ -5511,7 +5693,7 @@ public class ProductServiceImpl implements ProductService {
     private ProductVariantDTO convertToProductVariantDTO(ProductVariant variant) {
         try {
             List<ProductVariantDTO.VariantWarehouseStockDTO> warehouseStocks = new ArrayList<>();
-            List<Stock> stocks = stockRepository.findByProductVariant(variant);
+            List<Stock> stocks = stockRepository.findByProductVariantWithWarehouse(variant);
             
             for (Stock stock : stocks) {
                 Integer totalQuantity = stockBatchRepository.getTotalActiveQuantityByStock(stock);
@@ -5587,4 +5769,5 @@ public class ProductServiceImpl implements ProductService {
             throw new RuntimeException("Failed to convert variant to DTO: " + e.getMessage(), e);
         }
     }
+}
 }

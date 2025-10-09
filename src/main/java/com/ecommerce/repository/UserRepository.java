@@ -34,5 +34,21 @@ public interface UserRepository extends JpaRepository<User, UUID> {
     @Query("SELECT u FROM User u WHERE u.role = :role")
     List<User> findByRole(@Param("role") UserRole role);
     
+    /**
+     * Count users by role
+     */
+    int countByRole(UserRole role);
+    
+    /**
+     * Find users by role and search term (name or email) with pagination
+     */
+    @Query("SELECT u FROM User u WHERE u.role = :role AND " +
+           "(LOWER(u.firstName) LIKE %:searchTerm% OR " +
+           "LOWER(u.lastName) LIKE %:searchTerm% OR " +
+           "LOWER(u.userEmail) LIKE %:searchTerm%)")
+    Page<User> findByRoleAndSearchTerm(@Param("role") UserRole role, 
+                                       @Param("searchTerm") String searchTerm, 
+                                       Pageable pageable);
+    
     boolean existsByUserEmail(String email);
 }

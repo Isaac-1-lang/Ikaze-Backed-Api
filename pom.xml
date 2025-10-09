@@ -163,6 +163,8 @@
 			<groupId>org.springframework.boot</groupId>
 			<artifactId>spring-boot-starter-thymeleaf</artifactId>
 		</dependency>
+
+		<!-- JWT Dependencies - removed duplicates, keeping version 0.12.6 -->
 		
 	</dependencies>
 

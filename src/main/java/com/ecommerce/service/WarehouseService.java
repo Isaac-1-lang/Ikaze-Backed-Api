@@ -1,6 +1,7 @@
 package com.ecommerce.service;
 
 import com.ecommerce.dto.CreateWarehouseDTO;
+import com.ecommerce.dto.ProductVariantWarehouseDTO;
 import com.ecommerce.dto.UpdateWarehouseDTO;
 import com.ecommerce.dto.WarehouseDTO;
 import com.ecommerce.dto.WarehouseProductDTO;
@@ -20,7 +21,6 @@ public interface WarehouseService {
     Page<WarehouseDTO> getAllWarehouses(Pageable pageable);
 
     List<WarehouseDTO> getAllWarehouses();
-
     WarehouseDTO updateWarehouse(Long warehouseId, UpdateWarehouseDTO updateWarehouseDTO,
             List<MultipartFile> newImages);
 
@@ -28,12 +28,13 @@ public interface WarehouseService {
 
     Page<WarehouseProductDTO> getProductsInWarehouse(Long warehouseId, Pageable pageable);
 
+    List<ProductVariantWarehouseDTO> getProductVariantsInWarehouse(Long warehouseId, UUID productId);
+
     boolean removeProductFromWarehouse(Long warehouseId, UUID productId);
 
     boolean removeVariantFromWarehouse(Long warehouseId, Long variantId);
 
     WarehouseDTO addImagesToWarehouse(Long warehouseId, List<MultipartFile> images);
-
     boolean removeImageFromWarehouse(Long warehouseId, Long imageId);
 
     List<WarehouseDTO> getWarehousesByLocation(String location);

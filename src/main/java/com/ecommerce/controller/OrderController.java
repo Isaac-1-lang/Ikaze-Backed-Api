@@ -1,10 +1,12 @@
 package com.ecommerce.controller;
 
+import java.util.stream.Collectors;
 import com.ecommerce.entity.Order;
 import com.ecommerce.entity.OrderInfo;
 import com.ecommerce.entity.OrderAddress;
 import com.ecommerce.entity.OrderItem;
 import com.ecommerce.entity.OrderTransaction;
+import com.ecommerce.entity.Product;
 import com.ecommerce.entity.ProductImage;
 import com.ecommerce.dto.OrderResponseDTO;
 import com.ecommerce.dto.OrderItemDTO;
@@ -13,12 +15,17 @@ import com.ecommerce.dto.OrderCustomerInfoDTO;
 import com.ecommerce.dto.OrderTransactionDTO;
 import com.ecommerce.dto.SimpleProductDTO;
 import com.ecommerce.dto.CreateOrderDTO;
+import com.ecommerce.dto.OrderTrackingRequestDTO;
+import com.ecommerce.dto.OrderTrackingResponseDTO;
+import com.ecommerce.dto.OrderSummaryDTO;
 import com.ecommerce.service.OrderService;
+import com.ecommerce.service.OrderTrackingService;
+import java.time.LocalDateTime;
 import com.ecommerce.repository.UserRepository;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.Schema;
-import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import com.ecommerce.dto.ApiResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -27,10 +34,14 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 import org.springframework.web.bind.annotation.*;
 import jakarta.validation.Valid;
 import jakarta.persistence.EntityNotFoundException;
 
+import java.time.LocalDateTime;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -47,9 +58,9 @@ public class OrderController {
      * Get all orders (admin/employee only)
      */
     @GetMapping("/all")
-    // @PreAuthorize("hasAnyRole('ADMIN','EMPLOYEE')")
+    @PreAuthorize("hasAnyRole('ADMIN','EMPLOYEE')")
     @Operation(summary = "Get all orders", description = "Retrieve all orders (admin/employee only)", responses = {
-            @ApiResponse(responseCode = "200", description = "Orders retrieved successfully", content = @Content(schema = @Schema(implementation = OrderResponseDTO.class)))
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "Orders retrieved successfully", content = @Content(schema = @Schema(implementation = OrderResponseDTO.class)))
     })
     public ResponseEntity<?> getAllOrders() {
         try {
@@ -71,9 +82,9 @@ public class OrderController {
     }
 
     @GetMapping("/by-user/{userId}")
-    // @PreAuthorize("hasAnyRole('ADMIN','EMPLOYEE')")
+    @PreAuthorize("hasAnyRole('ADMIN','EMPLOYEE','CUSTOMER')")
     @Operation(summary = "Get orders by userId", description = "Retrieve all orders for a specific user (admin/employee only)", responses = {
-            @ApiResponse(responseCode = "200", description = "Orders retrieved successfully", content = @Content(schema = @Schema(implementation = OrderResponseDTO.class)))
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "Orders retrieved successfully", content = @Content(schema = @Schema(implementation = OrderResponseDTO.class)))
     })
     public ResponseEntity<?> getOrdersByUserId(@PathVariable String userId) {
         try {
@@ -103,8 +114,8 @@ public class OrderController {
     @GetMapping("/id/{orderId}")
     @PreAuthorize("hasAnyRole('ADMIN','EMPLOYEE','CUSTOMER','DELIVERY_AGENT')")
     @Operation(summary = "Get order by orderId", description = "Retrieve an order by its orderId (protected endpoint)", responses = {
-            @ApiResponse(responseCode = "200", description = "Order found", content = @Content(schema = @Schema(implementation = OrderResponseDTO.class))),
-            @ApiResponse(responseCode = "404", description = "Order not found")
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "Order found", content = @Content(schema = @Schema(implementation = OrderResponseDTO.class))),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "Order not found")
     })
     public ResponseEntity<?> getOrderById(@PathVariable Long orderId) {
         try {
@@ -119,9 +130,8 @@ public class OrderController {
             }
             Authentication auth = SecurityContextHolder.getContext().getAuthentication();
             boolean isAdminOrEmployee = auth.getAuthorities().stream()
-                    .anyMatch(grantedAuthority -> 
-                        grantedAuthority.getAuthority().equals("ROLE_ADMIN") || 
-                        grantedAuthority.getAuthority().equals("ROLE_EMPLOYEE"));
+                    .anyMatch(grantedAuthority -> grantedAuthority.getAuthority().equals("ROLE_ADMIN") ||
+                            grantedAuthority.getAuthority().equals("ROLE_EMPLOYEE"));
 
             Order order;
             if (isAdminOrEmployee) {
@@ -162,14 +172,15 @@ public class OrderController {
     }
 
     private final OrderService orderService;
+    private final OrderTrackingService orderTrackingService;
     private final UserRepository userRepository;
 
     @GetMapping
     @PreAuthorize("hasAnyRole('CUSTOMER','ADMIN','EMPLOYEE')")
     @Operation(summary = "List user orders", description = "Retrieve all orders for the authenticated user", responses = {
-            @ApiResponse(responseCode = "200", description = "Orders retrieved successfully", content = @Content(schema = @Schema(implementation = OrderResponseDTO.class))),
-            @ApiResponse(responseCode = "401", description = "Unauthorized"),
-            @ApiResponse(responseCode = "500", description = "Internal server error")
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "Orders retrieved successfully", content = @Content(schema = @Schema(implementation = OrderResponseDTO.class))),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "Unauthorized"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "500", description = "Internal server error")
     })
     public ResponseEntity<?> listUserOrders() {
         try {
@@ -200,14 +211,81 @@ public class OrderController {
         }
     }
 
+    /**
+     * Get specific order by ID using token authentication (public endpoint)
+     */
+    @GetMapping("/track/order/{orderId}")
+    @Operation(summary = "Get order by token and ID", description = "Get specific order details using tracking token and order ID", responses = {
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "Order retrieved successfully", content = @Content(schema = @Schema(implementation = OrderResponseDTO.class))),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "Invalid or expired token"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "403", description = "Access denied - order does not belong to email"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "Order not found"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "500", description = "Internal server error")
+    })
+    public ResponseEntity<ApiResponse<OrderResponseDTO>> getOrderByIdWithToken(
+            @PathVariable Long orderId,
+            @RequestParam String token) {
+        try {
+            log.info("Fetching order {} with token authentication", orderId);
+
+            // Validate token first
+            if (!orderTrackingService.isValidToken(token)) {
+                log.warn("Invalid or expired token provided for order {}", orderId);
+                return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                        .body(ApiResponse.error("Invalid or expired token"));
+            }
+
+            // Get the email associated with this token
+            String email = orderTrackingService.getEmailFromToken(token);
+            if (email == null) {
+                log.warn("No email found for token when accessing order {}", orderId);
+                return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                        .body(ApiResponse.error("Invalid token"));
+            }
+
+            // Get the order
+            Order order = orderService.getOrderById(orderId);
+            if (order == null) {
+                log.warn("Order {} not found", orderId);
+                return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                        .body(ApiResponse.error("Order not found"));
+            }
+
+            // Verify the order belongs to the email associated with the token
+            String orderEmail = null;
+            if (order.getOrderCustomerInfo() != null) {
+                orderEmail = order.getOrderCustomerInfo().getEmail();
+            } else if (order.getUser() != null) {
+                orderEmail = order.getUser().getUserEmail();
+            }
+
+            if (orderEmail == null || !orderEmail.equalsIgnoreCase(email)) {
+                log.warn("Order {} does not belong to email {} (token owner)", orderId, email);
+                return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                        .body(ApiResponse.error("Access denied: Order does not belong to your email"));
+            }
+
+            // Convert to DTO and return
+            OrderResponseDTO dto = toDto(order);
+            log.info("Successfully retrieved order {} for email {}", orderId, email);
+
+            return ResponseEntity.ok(ApiResponse.success(dto));
+
+        } catch (Exception e) {
+            log.error("Error fetching order {} with token", orderId, e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(ApiResponse.error("Failed to fetch order details"));
+        }
+    }
+
     @PostMapping("/create")
     @PreAuthorize("hasAnyRole('CUSTOMER','ADMIN','EMPLOYEE')")
     @Operation(summary = "Create a new order", description = "Create a new order with items and shipping information", responses = {
-            @ApiResponse(responseCode = "201", description = "Order created successfully", content = @Content(schema = @Schema(implementation = OrderResponseDTO.class))),
-            @ApiResponse(responseCode = "400", description = "Invalid input data"),
-            @ApiResponse(responseCode = "401", description = "Unauthorized"),
-            @ApiResponse(responseCode = "403", description = "Forbidden"),
-            @ApiResponse(responseCode = "500", description = "Internal server error")
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "201", description = "Order created successfully", content = @Content(schema = @Schema(implementation = OrderResponseDTO.class))),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400", description = "Invalid input data"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "Unauthorized"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "403", description = "Forbidden"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "500", description = "Internal server error")
     })
     public ResponseEntity<?> createOrder(@Valid @RequestBody CreateOrderDTO createOrderDTO) {
         try {
@@ -255,8 +333,8 @@ public class OrderController {
     @GetMapping("/number/{orderNumber}")
     @PreAuthorize("hasAnyRole('CUSTOMER','ADMIN','EMPLOYEE','DELIVERY_AGENT')")
     @Operation(summary = "Get order by order number", description = "Retrieve an order by its order number (protected endpoint)", responses = {
-            @ApiResponse(responseCode = "200", description = "Order found", content = @Content(schema = @Schema(implementation = OrderResponseDTO.class))),
-            @ApiResponse(responseCode = "404", description = "Order not found")
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "Order found", content = @Content(schema = @Schema(implementation = OrderResponseDTO.class))),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "Order not found")
     })
     public ResponseEntity<?> getOrderByNumber(@PathVariable String orderNumber) {
         try {
@@ -301,10 +379,10 @@ public class OrderController {
     @GetMapping("/{orderId}")
     @PreAuthorize("hasAnyRole('CUSTOMER','ADMIN','EMPLOYEE')")
     @Operation(summary = "Get order by orderId", description = "Retrieve an order by its orderId for the authenticated user", responses = {
-            @ApiResponse(responseCode = "200", description = "Order found", content = @Content(schema = @Schema(implementation = OrderResponseDTO.class))),
-            @ApiResponse(responseCode = "401", description = "Unauthorized"),
-            @ApiResponse(responseCode = "404", description = "Order not found"),
-            @ApiResponse(responseCode = "500", description = "Internal server error")
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "Order found", content = @Content(schema = @Schema(implementation = OrderResponseDTO.class))),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "Unauthorized"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "Order not found"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "500", description = "Internal server error")
     })
     public ResponseEntity<?> getOrder(@PathVariable Long orderId) {
         try {
@@ -341,10 +419,10 @@ public class OrderController {
     @PutMapping("/{orderId}/cancel")
     @PreAuthorize("hasAnyRole('CUSTOMER','ADMIN','EMPLOYEE')")
     @Operation(summary = "Cancel an order", description = "Cancel an existing order", responses = {
-            @ApiResponse(responseCode = "200", description = "Order cancelled successfully"),
-            @ApiResponse(responseCode = "400", description = "Order cannot be cancelled"),
-            @ApiResponse(responseCode = "404", description = "Order not found"),
-            @ApiResponse(responseCode = "500", description = "Internal server error")
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "Order cancelled successfully"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400", description = "Order cannot be cancelled"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "Order not found"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "500", description = "Internal server error")
     })
     public ResponseEntity<?> cancelOrder(@PathVariable Long orderId, @RequestParam(name = "userId") String userId) {
         try {
@@ -395,10 +473,10 @@ public class OrderController {
     @PutMapping("/{orderId}/status")
     // @PreAuthorize("hasAnyRole('ADMIN','EMPLOYEE')")
     @Operation(summary = "Update order status", description = "Update the status of an order", responses = {
-            @ApiResponse(responseCode = "200", description = "Order status updated successfully"),
-            @ApiResponse(responseCode = "400", description = "Invalid status"),
-            @ApiResponse(responseCode = "404", description = "Order not found"),
-            @ApiResponse(responseCode = "500", description = "Internal server error")
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "Order status updated successfully"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400", description = "Invalid status"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "Order not found"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "500", description = "Internal server error")
     })
     public ResponseEntity<?> updateOrderStatus(@PathVariable Long orderId, @RequestBody Map<String, String> request) {
         try {
@@ -450,9 +528,9 @@ public class OrderController {
     @GetMapping("/{orderId}/tracking")
     @PreAuthorize("hasAnyRole('CUSTOMER','ADMIN','EMPLOYEE')")
     @Operation(summary = "Get order tracking", description = "Get tracking information for an order", responses = {
-            @ApiResponse(responseCode = "200", description = "Tracking information retrieved successfully"),
-            @ApiResponse(responseCode = "404", description = "Order not found"),
-            @ApiResponse(responseCode = "500", description = "Internal server error")
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "Tracking information retrieved successfully"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "Order not found"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "500", description = "Internal server error")
     })
     public ResponseEntity<?> getOrderTracking(@PathVariable Long orderId,
             @RequestParam(name = "userId") String userId) {
@@ -503,9 +581,9 @@ public class OrderController {
         OrderInfo info = order.getOrderInfo();
         OrderAddress addr = order.getOrderAddress();
         OrderTransaction tx = order.getOrderTransaction();
-    
+
         OrderResponseDTO dto = new OrderResponseDTO();
-        dto.setId(order.getOrderId() != null ? order.getOrderId().toString() : null);
+        dto.setId(order.getOrderId());
         dto.setUserId(
                 order.getUser() != null && order.getUser().getId() != null ? order.getUser().getId().toString() : null);
         dto.setOrderNumber(order.getOrderCode());
@@ -514,32 +592,23 @@ public class OrderController {
         dto.setStatus(order.getOrderStatus() != null ? order.getOrderStatus().name() : null);
         dto.setCreatedAt(order.getCreatedAt());
         dto.setUpdatedAt(order.getUpdatedAt());
-    
-        if (order.getUser() != null) {
-            OrderCustomerInfoDTO customerInfo = new OrderCustomerInfoDTO();
-            customerInfo.setFirstName(order.getUser().getFirstName());
-            customerInfo.setLastName(order.getUser().getLastName());
+
+        // Set customer info - prioritize OrderCustomerInfo for guest orders, fallback
+        // to User for registered users
+        if (order.getOrderCustomerInfo() != null) {
+            OrderResponseDTO.CustomerInfo customerInfo = new OrderResponseDTO.CustomerInfo();
+            customerInfo.setName(order.getOrderCustomerInfo().getFullName());
+            customerInfo.setEmail(order.getOrderCustomerInfo().getEmail());
+            customerInfo.setPhone(order.getOrderCustomerInfo().getPhoneNumber());
+            dto.setCustomerInfo(customerInfo);
+        } else if (order.getUser() != null) {
+            OrderResponseDTO.CustomerInfo customerInfo = new OrderResponseDTO.CustomerInfo();
+            customerInfo.setName(order.getUser().getFirstName() + " " + order.getUser().getLastName());
             customerInfo.setEmail(order.getUser().getUserEmail());
-            customerInfo.setPhoneNumber(order.getUser().getPhoneNumber());
-            
-            if (addr != null) {
-                customerInfo.setStreetAddress(addr.getStreet());
-                customerInfo.setCountry(addr.getCountry());
-                
-                if (addr.getRegions() != null && !addr.getRegions().isEmpty()) {
-                    String[] regions = addr.getRegions().split(",");
-                    if (regions.length >= 2) {
-                        customerInfo.setCity(regions[0].trim());
-                        customerInfo.setState(regions[1].trim());
-                    } else if (regions.length == 1) {
-                        customerInfo.setCity(regions[0].trim());
-                        customerInfo.setState("");
-                    }
-                }
-            }
+            customerInfo.setPhone(order.getUser().getPhoneNumber());
             dto.setCustomerInfo(customerInfo);
         }
-    
+
         // Set order info
         if (info != null) {
             dto.setSubtotal(info.getTotalAmount());
@@ -549,39 +618,59 @@ public class OrderController {
             dto.setTotal(info.getFinalAmount());
             dto.setNotes(info.getNotes());
         }
-    
-        // Set shipping address with all fields including lat/lng
-        if (addr != null) {
-            OrderAddressDTO ad = new OrderAddressDTO();
-            ad.setId(addr.getOrderAddressId() != null ? addr.getOrderAddressId().toString() : null);
-            ad.setStreet(addr.getStreet());
-            ad.setCountry(addr.getCountry());
-            ad.setLatitude(addr.getLatitude());
-            ad.setLongitude(addr.getLongitude());
-            ad.setRoadName(addr.getRoadName());
-    
-            if (addr.getRegions() != null && !addr.getRegions().isEmpty()) {
-                String[] regions = addr.getRegions().split(",");
-                if (regions.length >= 2) {
-                    ad.setCity(regions[0].trim());
-                    ad.setState(regions[1].trim());
-                } else if (regions.length == 1) {
-                    ad.setCity(regions[0].trim());
-                    ad.setState("");
-                }
-            }
-            dto.setShippingAddress(ad);
+
+        // Set shipping address with coordinates - prioritize OrderCustomerInfo,
+        // fallback to OrderAddress
+        OrderResponseDTO.ShippingAddress shippingAddress = new OrderResponseDTO.ShippingAddress();
+        boolean hasShippingAddress = false;
+
+        // First try to get address from OrderCustomerInfo (for guest orders)
+        if (order.getOrderCustomerInfo() != null) {
+            shippingAddress.setStreet(order.getOrderCustomerInfo().getStreetAddress());
+            shippingAddress.setCity(order.getOrderCustomerInfo().getCity());
+            shippingAddress.setState(order.getOrderCustomerInfo().getState());
+            shippingAddress.setCountry(order.getOrderCustomerInfo().getCountry());
+            hasShippingAddress = true;
         }
-    
+
+        // Add coordinates from OrderAddress if available
+        if (addr != null) {
+            shippingAddress.setLatitude(addr.getLatitude());
+            shippingAddress.setLongitude(addr.getLongitude());
+
+            // If we don't have address from OrderCustomerInfo, use OrderAddress
+            if (!hasShippingAddress) {
+                shippingAddress.setStreet(addr.getStreet());
+                shippingAddress.setCountry(addr.getCountry());
+
+                if (addr.getRegions() != null && !addr.getRegions().isEmpty()) {
+                    String[] regions = addr.getRegions().split(",");
+                    if (regions.length >= 2) {
+                        shippingAddress.setCity(regions[0].trim());
+                        shippingAddress.setState(regions[1].trim());
+                    } else if (regions.length == 1) {
+                        shippingAddress.setCity(regions[0].trim());
+                        shippingAddress.setState("");
+                    }
+                }
+                hasShippingAddress = true;
+            }
+        }
+
+        if (hasShippingAddress) {
+            dto.setShippingAddress(shippingAddress);
+        }
+
         // Set payment information
         if (tx != null) {
             dto.setPaymentMethod(tx.getPaymentMethod() != null ? tx.getPaymentMethod().name() : null);
             dto.setPaymentStatus(tx.getStatus() != null ? tx.getStatus().name() : null);
         }
-    
+
         if (tx != null) {
             OrderTransactionDTO transactionDTO = new OrderTransactionDTO();
-            transactionDTO.setOrderTransactionId(tx.getOrderTransactionId() != null ? tx.getOrderTransactionId().toString() : null);
+            transactionDTO.setOrderTransactionId(
+                    tx.getOrderTransactionId() != null ? tx.getOrderTransactionId().toString() : null);
             transactionDTO.setTransactionRef(tx.getTransactionRef());
             transactionDTO.setPaymentMethod(tx.getPaymentMethod() != null ? tx.getPaymentMethod().name() : null);
             transactionDTO.setStatus(tx.getStatus() != null ? tx.getStatus().name() : null);
@@ -595,12 +684,13 @@ public class OrderController {
             transactionDTO.setUpdatedAt(tx.getUpdatedAt());
             dto.setTransaction(transactionDTO);
         }
-    
+
         if (order.getOrderItems() != null && !order.getOrderItems().isEmpty()) {
-            List<OrderItemDTO> itemDTOs = order.getOrderItems().stream().map(this::mapOrderItemToDTO).toList();
+            List<OrderResponseDTO.OrderItem> itemDTOs = order.getOrderItems().stream()
+                    .map(this::mapOrderItemToResponseDTO).toList();
             dto.setItems(itemDTOs);
         }
-    
+
         return dto;
     }
 
@@ -645,80 +735,197 @@ public class OrderController {
             }
             dto.setVariant(variantDto);
         }
+        calculateReturnEligibility(dto, item);
 
         return dto;
     }
 
-    /**
-     * Track order by order number (public endpoint)
-     */
-    @GetMapping("/track/{orderNumber}")
-    @Operation(summary = "Track order by order number", description = "Public endpoint to track order status by order number", responses = {
-            @ApiResponse(responseCode = "200", description = "Order found", content = @Content(schema = @Schema(implementation = OrderResponseDTO.class))),
-            @ApiResponse(responseCode = "404", description = "Order not found"),
-            @ApiResponse(responseCode = "500", description = "Internal server error")
-    })
-    public ResponseEntity<?> trackOrderByNumber(@PathVariable String orderNumber) {
-        try {
-            Order order = orderService.getOrderByOrderCode(orderNumber);
-            if (order == null) {
-                Map<String, Object> response = new HashMap<>();
-                response.put("success", false);
-                response.put("message", "Order not found");
-                response.put("errorCode", "NOT_FOUND");
-                response.put("details", "No order found with order number: " + orderNumber);
-                return ResponseEntity.status(HttpStatus.NOT_FOUND).body(response);
+    private OrderResponseDTO.OrderItem mapOrderItemToResponseDTO(OrderItem item) {
+        OrderResponseDTO.OrderItem dto = new OrderResponseDTO.OrderItem();
+        dto.setId(item.getOrderItemId());
+        dto.setQuantity(item.getQuantity());
+        dto.setPrice(item.getPrice());
+        dto.setTotalPrice(item.getSubtotal());
+
+        // Set product info
+        if (item.getProduct() != null) {
+            OrderResponseDTO.Product product = new OrderResponseDTO.Product();
+            product.setId(item.getProduct().getProductId());
+            product.setName(item.getProduct().getProductName());
+
+            // Add product images if available
+            if (item.getProduct().getImages() != null && !item.getProduct().getImages().isEmpty()) {
+                List<String> imageUrls = item.getProduct().getImages().stream()
+                        .sorted((img1, img2) -> {
+                            if (img1.isPrimary() && !img2.isPrimary())
+                                return -1;
+                            if (!img1.isPrimary() && img2.isPrimary())
+                                return 1;
+                            int sortOrder1 = img1.getSortOrder() != null ? img1.getSortOrder() : 0;
+                            int sortOrder2 = img2.getSortOrder() != null ? img2.getSortOrder() : 0;
+                            return Integer.compare(sortOrder1, sortOrder2);
+                        })
+                        .map(img -> img.getImageUrl())
+                        .filter(url -> url != null && !url.trim().isEmpty())
+                        .collect(Collectors.toList());
+                product.setImages(imageUrls);
             }
 
-            OrderResponseDTO orderResponse = toDto(order);
-            Map<String, Object> response = new HashMap<>();
-            response.put("success", true);
-            response.put("data", orderResponse);
-            return ResponseEntity.ok(response);
+            dto.setProduct(product);
+        }
+
+        // Set variant info if available
+        if (item.getProductVariant() != null) {
+            OrderResponseDTO.Variant variant = new OrderResponseDTO.Variant();
+            variant.setId(item.getProductVariant().getId());
+            variant.setName(item.getProductVariant().getVariantName());
+
+            // Add variant images if available
+            if (item.getProductVariant().getImages() != null && !item.getProductVariant().getImages().isEmpty()) {
+                List<String> variantImageUrls = item.getProductVariant().getImages().stream()
+                        .sorted((img1, img2) -> {
+                            if (img1.isPrimary() && !img2.isPrimary())
+                                return -1;
+                            if (!img1.isPrimary() && img2.isPrimary())
+                                return 1;
+                            int sortOrder1 = img1.getSortOrder() != null ? img1.getSortOrder() : 0;
+                            int sortOrder2 = img2.getSortOrder() != null ? img2.getSortOrder() : 0;
+                            return Integer.compare(sortOrder1, sortOrder2);
+                        })
+                        .map(img -> img.getImageUrl())
+                        .filter(url -> url != null && !url.trim().isEmpty())
+                        .collect(Collectors.toList());
+                variant.setImages(variantImageUrls);
+            }
+
+            dto.setVariant(variant);
+        }
+
+        // Set return eligibility (placeholder)
+        dto.setReturnEligible(true);
+        dto.setMaxReturnDays(30);
+        dto.setDaysRemainingForReturn(25);
+
+        return dto;
+    }
+
+    private void calculateReturnEligibility(OrderItemDTO dto, OrderItem item) {
+        Order order = item.getOrder();
+        Integer defaultReturnDays = 15;
+
+        // Get return days from product, with null safety
+        if (item.getProduct() != null) {
+            Integer productReturnDays = item.getProduct().getMaximumDaysForReturn();
+            if (productReturnDays != null && productReturnDays > 0) {
+                defaultReturnDays = productReturnDays;
+            }
+        }
+
+        // Get return days from product variant, with null safety
+        if (item.getProductVariant() != null) {
+            Product effectiveProduct = item.getEffectiveProduct();
+            if (effectiveProduct != null) {
+                Integer variantReturnDays = effectiveProduct.getMaximumDaysForReturn();
+                if (variantReturnDays != null && variantReturnDays > 0) {
+                    defaultReturnDays = variantReturnDays;
+                }
+            }
+        }
+
+        // Ensure we have a valid return days value
+        if (defaultReturnDays == null || defaultReturnDays <= 0) {
+            defaultReturnDays = 15; // Fallback to 15 days
+        }
+
+        dto.setMaxReturnDays(defaultReturnDays);
+        dto.setDeliveredAt(order.getDeliveredAt());
+
+        if (order.getOrderStatus() == Order.OrderStatus.DELIVERED && order.getDeliveredAt() != null) {
+            LocalDateTime deliveredAt = order.getDeliveredAt();
+            LocalDateTime returnDeadline = deliveredAt.plusDays(defaultReturnDays);
+            LocalDateTime now = LocalDateTime.now();
+
+            boolean isEligible = now.isBefore(returnDeadline);
+            dto.setIsReturnEligible(isEligible);
+
+            if (isEligible) {
+                long daysRemaining = java.time.temporal.ChronoUnit.DAYS.between(now, returnDeadline);
+                dto.setDaysRemainingForReturn((int) Math.max(0, daysRemaining));
+            } else {
+                dto.setDaysRemainingForReturn(0);
+            }
+        } else {
+            // Order not delivered yet, not eligible for return
+            dto.setIsReturnEligible(false);
+            dto.setDaysRemainingForReturn(0);
+        }
+    }
+
+    @PostMapping("/track/request-access")
+    @Operation(summary = "Request tracking access", description = "Request secure tracking access via email verification", responses = {
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "Access request processed"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400", description = "Invalid request"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "500", description = "Internal server error")
+    })
+    public ResponseEntity<?> requestTrackingAccess(@Valid @RequestBody OrderTrackingRequestDTO request) {
+        try {
+            OrderTrackingResponseDTO response = orderTrackingService.requestTrackingAccess(request);
+
+            Map<String, Object> responseMap = new HashMap<>();
+            responseMap.put("success", response.isSuccess());
+            responseMap.put("message", response.getMessage());
+
+            if (response.isSuccess()) {
+                responseMap.put("expiresAt", response.getExpiresAt());
+                responseMap.put("trackingUrl", response.getTrackingUrl());
+            }
+
+            return ResponseEntity.ok(responseMap);
         } catch (Exception e) {
-            log.error("Failed to track order by number: {}", orderNumber, e);
+            log.error("Failed to process tracking access request", e);
             Map<String, Object> response = new HashMap<>();
             response.put("success", false);
-            response.put("message", "An unexpected error occurred while tracking order.");
-            response.put("errorCode", "INTERNAL_ERROR");
-            response.put("details", e.getMessage());
+            response.put("message", "Failed to process tracking request. Please try again later.");
             return ResponseEntity.internalServerError().body(response);
         }
     }
 
     /**
-     * Track order by pickup token (public endpoint)
+     * Get orders by tracking token (public endpoint)
      */
-    @GetMapping("/track/token/{pickupToken}")
-    @Operation(summary = "Track order by pickup token", description = "Public endpoint to track order status by pickup token", responses = {
-            @ApiResponse(responseCode = "200", description = "Order found", content = @Content(schema = @Schema(implementation = OrderResponseDTO.class))),
-            @ApiResponse(responseCode = "404", description = "Order not found"),
-            @ApiResponse(responseCode = "500", description = "Internal server error")
+    @GetMapping("/track/orders")
+    @Operation(summary = "Get orders by token", description = "Get paginated list of orders using tracking token", responses = {
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "Orders retrieved successfully"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "Invalid or expired token"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "500", description = "Internal server error")
     })
-    public ResponseEntity<?> trackOrderByToken(@PathVariable String pickupToken) {
+    public ResponseEntity<?> getOrdersByToken(
+            @RequestParam String token,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "10") int size) {
         try {
-            Order order = orderService.getOrderByPickupToken(pickupToken);
-            if (order == null) {
-                Map<String, Object> response = new HashMap<>();
-                response.put("success", false);
-                response.put("message", "Order not found");
-                response.put("errorCode", "NOT_FOUND");
-                response.put("details", "No order found with pickup token: " + pickupToken);
-                return ResponseEntity.status(HttpStatus.NOT_FOUND).body(response);
-            }
+            Pageable pageable = PageRequest.of(page, size);
+            Page<OrderSummaryDTO> orders = orderTrackingService.getOrdersByToken(token, pageable);
 
-            OrderResponseDTO orderResponse = toDto(order);
             Map<String, Object> response = new HashMap<>();
             response.put("success", true);
-            response.put("data", orderResponse);
+            response.put("data", orders.getContent());
+            response.put("totalElements", orders.getTotalElements());
+            response.put("totalPages", orders.getTotalPages());
+            response.put("currentPage", orders.getNumber());
+            response.put("pageSize", orders.getSize());
+
             return ResponseEntity.ok(response);
-        } catch (Exception e) {
-            log.error("Failed to track order by token: {}", pickupToken, e);
+        } catch (IllegalArgumentException e) {
             Map<String, Object> response = new HashMap<>();
             response.put("success", false);
-            response.put("message", "An unexpected error occurred while tracking order.");
-            response.put("errorCode", "INTERNAL_ERROR");
-            response.put("details", e.getMessage());
+            response.put("message", e.getMessage());
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(response);
+        } catch (Exception e) {
+            log.error("Failed to get orders by token", e);
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", false);
+            response.put("message", "Failed to retrieve orders. Please try again later.");
             return ResponseEntity.internalServerError().body(response);
         }
     }
@@ -729,10 +936,10 @@ public class OrderController {
     @PostMapping("/delivery/verify/{pickupToken}")
     @PreAuthorize("hasRole('DELIVERY_AGENT')")
     @Operation(summary = "Verify delivery by pickup token", description = "Delivery agent endpoint to verify and mark order as delivered", responses = {
-            @ApiResponse(responseCode = "200", description = "Delivery verified successfully"),
-            @ApiResponse(responseCode = "400", description = "Invalid pickup token or order already delivered"),
-            @ApiResponse(responseCode = "404", description = "Order not found"),
-            @ApiResponse(responseCode = "500", description = "Internal server error")
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "Delivery verified successfully"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400", description = "Invalid pickup token or order already delivered"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "Order not found"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "500", description = "Internal server error")
     })
     public ResponseEntity<?> verifyDelivery(@PathVariable String pickupToken) {
         try {
@@ -770,10 +977,8 @@ public class OrderController {
             log.info("Updating order status to DELIVERED and marking token as used");
             order.setOrderStatus(Order.OrderStatus.DELIVERED);
             order.setPickupTokenUsed(true);
+            order.setDeliveredAt(java.time.LocalDateTime.now());
             Order savedOrder = orderService.saveOrder(order);
-
-            log.info("Order updated successfully: ID={}, Status={}, PickupTokenUsed={}",
-                    savedOrder.getOrderId(), savedOrder.getOrderStatus(), savedOrder.getPickupTokenUsed());
 
             if (savedOrder.getReadyForDeliveryGroup() != null) {
                 log.info("Checking if all orders in delivery group {} are delivered",
@@ -844,5 +1049,25 @@ public class OrderController {
             log.error("Error getting current user ID: {}", e.getMessage(), e);
         }
         return null;
+    }
+
+    /**
+     * Get order details by order number with token validation (secure endpoint)
+     */
+    @GetMapping("/track/secure/{orderNumber}")
+    public ResponseEntity<ApiResponse<OrderResponseDTO>> getOrderByNumberWithToken(
+            @PathVariable String orderNumber,
+            @RequestParam String token) {
+        try {
+            OrderResponseDTO order = orderTrackingService.getOrderByNumberWithToken(orderNumber, token);
+            return ResponseEntity.ok(ApiResponse.success(order, "Order details retrieved successfully"));
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest()
+                    .body(ApiResponse.error(e.getMessage()));
+        } catch (Exception e) {
+            log.error("Error retrieving order by number with token: {}", e.getMessage(), e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(ApiResponse.error("Failed to retrieve order details"));
+        }
     }
 }

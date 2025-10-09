@@ -65,4 +65,101 @@ public interface EmailService {
          * @param body    email body content
          */
         void sendEmail(String toEmail, String subject, String body);
+
+        /**
+         * Send return request approval email with HTML template
+         * 
+         * @param toEmail           recipient email
+         * @param customerName      customer's full name
+         * @param returnRequestId   return request ID
+         * @param orderNumber       order number
+         * @param decisionNotes     admin's decision notes
+         * @param returnItems       list of return items
+         * @param submittedDate     when the return was submitted
+         * @param approvedDate      when the return was approved
+         */
+        void sendReturnApprovalEmail(String toEmail, String customerName, Long returnRequestId, 
+                                   String orderNumber, String decisionNotes, String returnItems,
+                                   String submittedDate, String approvedDate);
+
+        /**
+         * Send return request denial email with HTML template
+         * 
+         * @param toEmail           recipient email
+         * @param customerName      customer's full name
+         * @param returnRequestId   return request ID
+         * @param orderNumber       order number
+         * @param decisionNotes     admin's decision notes
+         * @param returnItems       list of return items
+         * @param submittedDate     when the return was submitted
+         * @param deniedDate        when the return was denied
+         * @param canAppeal         whether customer can appeal this decision
+         * @param appealDeadline    deadline for submitting an appeal
+         */
+        void sendReturnDenialEmail(String toEmail, String customerName, Long returnRequestId, 
+                                 String orderNumber, String decisionNotes, String returnItems,
+                                 String submittedDate, String deniedDate, boolean canAppeal, 
+                                 String appealDeadline);
+
+        /**
+         * Send appeal confirmation email with HTML template
+         * 
+         * @param toEmail           recipient email
+         * @param customerName      customer's full name
+         * @param appealId          appeal ID
+         * @param returnRequestId   return request ID
+         * @param orderNumber       order number
+         * @param appealReason      reason for the appeal
+         * @param submittedAt       when the appeal was submitted
+         * @param trackingUrl       URL to track appeal status
+         */
+        void sendAppealConfirmationEmail(String toEmail, String customerName, Long appealId,
+                                       Long returnRequestId, String orderNumber, String appealReason,
+                                       String submittedAt, String trackingUrl);
+
+        /**
+         * Send appeal approval email with HTML template
+         * 
+         * @param toEmail           recipient email
+         * @param customerName      customer's full name
+         * @param appealId          appeal ID
+         * @param returnRequestId   return request ID
+         * @param orderNumber       order number
+         * @param appealReason      reason for the appeal
+         * @param decisionNotes     admin's decision notes
+         * @param submittedAt       when the appeal was submitted
+         * @param approvedAt        when the appeal was approved
+         * @param trackingUrl       URL to track return status
+         */
+        void sendAppealApprovalEmail(String toEmail, String customerName, Long appealId,
+                                   Long returnRequestId, String orderNumber, String appealReason,
+                                   String decisionNotes, String submittedAt, String approvedAt,
+                                   String trackingUrl);
+
+        /**
+         * Send appeal denial email with HTML template
+         * 
+         * @param toEmail           recipient email
+         * @param customerName      customer's full name
+         * @param appealId          appeal ID
+         * @param returnRequestId   return request ID
+         * @param orderNumber       order number
+         * @param appealReason      reason for the appeal
+         * @param decisionNotes     admin's decision notes
+         * @param submittedAt       when the appeal was submitted
+         * @param deniedAt          when the appeal was denied
+         */
+        void sendAppealDenialEmail(String toEmail, String customerName, Long appealId,
+                                 Long returnRequestId, String orderNumber, String appealReason,
+                                 String decisionNotes, String submittedAt, String deniedAt);
+
+        /**
+         * Send order tracking access email with HTML template
+         * 
+         * @param toEmail           recipient email
+         * @param token             secure access token
+         * @param trackingUrl       direct tracking URL with token
+         * @param expiresAt         when the token expires
+         */
+        void sendOrderTrackingEmail(String toEmail, String token, String trackingUrl, String expiresAt);
 }

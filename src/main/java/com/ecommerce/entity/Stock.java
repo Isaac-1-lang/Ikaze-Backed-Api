@@ -139,9 +139,7 @@ public class Stock {
      */
     @Deprecated
     public void setQuantity(Integer quantity) {
-        // Keep for backward compatibility but log warning
-        System.out.println("Warning: Direct quantity setting is deprecated. Use batch management instead.");
-        this.quantity = quantity;
+        throw new Error("Direct quantity setting is deprecated. Use batch management instead.");
     }
 
     /**

@@ -47,7 +47,7 @@ public class Order {
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "ready_group_id")
-    private ReadyForDeliveryGroup readyForDeliveryGroup; // The delivery group this order belongs to
+    private ReadyForDeliveryGroup readyForDeliveryGroup;
 
     @OneToOne(mappedBy = "order", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
     private OrderTransaction orderTransaction;
@@ -69,6 +69,9 @@ public class Order {
 
     @Column(name = "updated_at")
     private LocalDateTime updatedAt;
+
+    @Column(name = "delivered_at")
+    private LocalDateTime deliveredAt;
 
     @PrePersist
     protected void onCreate() {
@@ -217,6 +220,6 @@ public class Order {
      * Order status enum
      */
     public enum OrderStatus {
-        PENDING, PROCESSING, SHIPPED, DELIVERED, CANCELLED, REFUNDED, RETURNED
+        PENDING, PROCESSING, SHIPPED, DELIVERED, CANCELLED, RETURNED
     }
 }

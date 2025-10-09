@@ -20,6 +20,11 @@ public interface ShippingCostRepository extends JpaRepository<ShippingCost, Long
      */
     List<ShippingCost> findByIsActiveTrue();
 
+    /**
+     * Find the first active shipping cost configuration
+     */
+    Optional<ShippingCost> findFirstByIsActiveTrue();
+
         /**
          * Find shipping costs by name (case insensitive)
          */

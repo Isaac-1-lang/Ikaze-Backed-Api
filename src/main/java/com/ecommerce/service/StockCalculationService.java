@@ -5,6 +5,8 @@ import com.ecommerce.entity.ProductVariant;
 import com.ecommerce.entity.Stock;
 import com.ecommerce.entity.StockBatch;
 import com.ecommerce.enums.BatchStatus;
+import com.ecommerce.repository.StockRepository;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
@@ -15,7 +17,10 @@ import java.util.stream.Collectors;
  * This service replaces direct Stock.quantity usage with batch-based calculations
  */
 @Service
+@RequiredArgsConstructor
 public class StockCalculationService {
+
+    private final StockRepository stockRepository;
 
     /**
      * Calculates total available stock for a product
@@ -185,7 +190,9 @@ public class StockCalculationService {
             }
         } else {
             info.append("Direct Stock Entries:\n");
-            for (Stock stock : product.getStocks()) {
+            // Use repository to fetch stocks with warehouses eagerly loaded
+            List<Stock> stocks = stockRepository.findByProductWithWarehouse(product);
+            for (Stock stock : stocks) {
                 info.append("  - Warehouse ").append(stock.getWarehouse().getName())
                     .append(": ").append(calculateStockFromBatches(stock)).append("\n");
             }
