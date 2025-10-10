@@ -5200,7 +5200,34 @@ public class ProductServiceImpl implements ProductService {
                     stock.setWarehouse(warehouse);
                     stock.setLowStockThreshold(stockRequest.getLowStockThreshold());
                     stock.setCreatedAt(LocalDateTime.now());
-                    stockRepository.save(stock);
+                    Stock savedStock = stockRepository.save(stock);
+
+                    // Handle batch information if provided
+                    if (stockRequest.getBatches() != null && !stockRequest.getBatches().isEmpty()) {
+                        for (WarehouseStockRequest.BatchRequest batchRequest : stockRequest.getBatches()) {
+                            StockBatch batch = new StockBatch();
+                            batch.setStock(savedStock);
+                            batch.setBatchNumber(batchRequest.getBatchNumber());
+                            batch.setQuantity(batchRequest.getQuantity());
+                            batch.setManufactureDate(batchRequest.getManufactureDate());
+                            batch.setSupplierName(batchRequest.getSupplierName());
+                            batch.setSupplierBatchNumber(batchRequest.getSupplierBatchNumber());
+                            batch.setCreatedAt(LocalDateTime.now());
+                            stockBatchRepository.save(batch);
+                        }
+                        log.info("Added {} batches for stock {}", stockRequest.getBatches().size(), savedStock.getId());
+                    } else {
+                        // If no batches provided, create a default batch with the stock quantity
+                        if (stockRequest.getStockQuantity() != null && stockRequest.getStockQuantity() > 0) {
+                            StockBatch defaultBatch = new StockBatch();
+                            defaultBatch.setStock(savedStock);
+                            defaultBatch.setBatchNumber("DEFAULT-" + System.currentTimeMillis());
+                            defaultBatch.setQuantity(stockRequest.getStockQuantity());
+                            defaultBatch.setCreatedAt(LocalDateTime.now());
+                            stockBatchRepository.save(defaultBatch);
+                            log.info("Created default batch for stock {} with quantity {}", savedStock.getId(), stockRequest.getStockQuantity());
+                        }
+                    }
                 }
                 log.info("Added {} warehouse stocks for variant {}", request.getWarehouseStocks().size(),
                         savedVariant.getId());
