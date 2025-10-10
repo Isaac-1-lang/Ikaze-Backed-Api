@@ -1134,7 +1134,7 @@ public class ProductController {
         } catch (Exception e) {
             log.error("Error creating variant for product {}: {}", productId, e.getMessage(), e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body(createErrorResponse("INTERNAL_ERROR", "Failed to create variant") + e.getMessage());
+                    .body(createErrorResponse("INTERNAL_ERROR", "Failed to create variant: " + e.getMessage()));
         }
     }
 
