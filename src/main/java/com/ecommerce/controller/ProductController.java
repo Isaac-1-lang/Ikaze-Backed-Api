@@ -74,7 +74,7 @@ public class ProductController {
         } catch (Exception e) {
             log.error("Error creating empty product: {}", e.getMessage(), e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body(createErrorResponse("INTERNAL_ERROR", "Failed to create empty product" + e.getMessage()));
+                    .body(createErrorResponse("INTERNAL_ERROR", "Failed to create empty product: " + e.getMessage()));
         }
     }
 

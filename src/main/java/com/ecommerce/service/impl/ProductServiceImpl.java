@@ -159,6 +159,7 @@ public class ProductServiceImpl implements ProductService {
             Product product = new Product();
             product.setProductName(name);
             product.setSku(generateTemporarySku(name));
+            product.setSlug(generateUniqueSlug(name)); // Set unique slug before saving
             product.setPrice(new java.math.BigDecimal("0.01"));
             product.setStatus(com.ecommerce.enums.ProductStatus.DRAFT);
             product.setCompletionPercentage(0);
@@ -187,6 +188,17 @@ public class ProductServiceImpl implements ProductService {
                 .replaceAll("[^A-Z0-9]", "")
                 .substring(0, Math.min(name.length(), 8));
         return "TEMP-" + baseSku + "-" + System.currentTimeMillis();
+    }
+
+    private String generateUniqueSlug(String name) {
+        String baseSlug = name.toLowerCase()
+                .replaceAll("\\s+", "-")
+                .replaceAll("[^a-z0-9-]", "")
+                .replaceAll("-+", "-")
+                .trim();
+        
+        long timestamp = System.currentTimeMillis();
+        return baseSlug + "-" + timestamp;
     }
 
     @Override
