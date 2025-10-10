@@ -57,6 +57,7 @@ import java.util.UUID;
 public class ProductController {
 
     private final ProductService productService;
+    private final ObjectMapper objectMapper;
 
     @PostMapping("/create-empty")
     @PreAuthorize("hasAnyRole('ADMIN', 'EMPLOYEE')")
@@ -1110,7 +1111,6 @@ public class ProductController {
                     .images(images)
                     .build();
 
-            ObjectMapper objectMapper = new ObjectMapper();
             List<VariantAttributeRequest> attributes = objectMapper.readValue(attributesJson,
                     objectMapper.getTypeFactory().constructCollectionType(List.class, VariantAttributeRequest.class));
             request.setAttributes(attributes);

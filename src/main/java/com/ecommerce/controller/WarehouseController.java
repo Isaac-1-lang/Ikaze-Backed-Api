@@ -30,6 +30,7 @@ import java.util.UUID;
 public class WarehouseController {
 
     private final WarehouseService warehouseService;
+    private final ObjectMapper objectMapper;
 
     @PostMapping
     @PreAuthorize("hasRole('EMPLOYEE') or hasRole('ADMIN')")
@@ -37,7 +38,6 @@ public class WarehouseController {
             @RequestParam("warehouse") String warehouseJson,
             @RequestParam(value = "images", required = false) List<MultipartFile> images) {
         try {
-            ObjectMapper objectMapper = new ObjectMapper();
             CreateWarehouseDTO createWarehouseDTO = objectMapper.readValue(warehouseJson, CreateWarehouseDTO.class);
 
             WarehouseDTO warehouse = warehouseService.createWarehouse(createWarehouseDTO, images);
