@@ -30,7 +30,7 @@ public class OrderAddress {
     private String country;
 
     @Column(name = "regions", nullable = false)
-    private String regions;
+    private String regions; 
     @Column(name = "latitude")
     private Double latitude;
 
