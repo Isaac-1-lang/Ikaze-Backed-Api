@@ -8,6 +8,7 @@ import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.Size;
 import jakarta.validation.Valid;
+import com.fasterxml.jackson.annotation.JsonFormat;
 
 import java.util.List;
 
@@ -44,8 +45,10 @@ public class WarehouseStockRequest {
         @Size(max = 100, message = "Batch number must not exceed 100 characters")
         private String batchNumber;
 
+        @JsonFormat(pattern = "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'")
         private java.time.LocalDateTime manufactureDate;
 
+        @JsonFormat(pattern = "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'")
         private java.time.LocalDateTime expiryDate;
 
         @NotNull(message = "Quantity is required")
