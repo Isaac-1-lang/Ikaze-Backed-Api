@@ -27,10 +27,10 @@ public class EmailServiceImpl implements EmailService {
     @Value("${spring.mail.username}")
     private String fromEmail;
 
-    @Value("${app.frontend.url:https://shopsphere-frontend.vercel.app/}")
+    @Value("${app.frontend.url:https://shopsphere-frontend.vercel.app}")
     private String frontendUrl;
 
-    @Value("${app.frontend.url:https://shopsphere-adm.vercel.app/}")
+    @Value("${app.frontend.admin.url:https://shopsphere-adm.vercel.app}")
     private String frontendAdminUrl;
 
     @Value("${app.name:E-Commerce Platform}")
