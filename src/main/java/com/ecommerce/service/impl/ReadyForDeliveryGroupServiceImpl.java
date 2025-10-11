@@ -521,12 +521,9 @@ public class ReadyForDeliveryGroupServiceImpl implements ReadyForDeliveryGroupSe
 
     @Override
     public OrderDTO getOrderDetailsForAgent(Long orderId, UUID agentId) {
-        log.info("Getting order details for order {} by agent {}", orderId, agentId);
-
         Order order = orderRepository.findById(orderId)
                 .orElseThrow(() -> new EntityNotFoundException("Order not found"));
 
-        // Verify the agent has access to this order through a delivery group
         if (order.getReadyForDeliveryGroup() == null ||
                 !order.getReadyForDeliveryGroup().getDeliverer().getId().equals(agentId)) {
             throw new IllegalStateException("Agent does not have access to this order");
@@ -546,7 +543,6 @@ public class ReadyForDeliveryGroupServiceImpl implements ReadyForDeliveryGroupSe
 
                     SimpleProductDTO productDto = new SimpleProductDTO();
 
-                    // Handle variant-based items
                     if (item.getProductVariant() != null) {
                         dto.setVariantId(item.getProductVariant().getId().toString());
                         dto.setProductId(item.getProductVariant().getProduct().getProductId().toString());
@@ -573,15 +569,19 @@ public class ReadyForDeliveryGroupServiceImpl implements ReadyForDeliveryGroupSe
 
         AddressDto shippingAddress = new AddressDto();
         if (order.getOrderAddress() != null) {
-            shippingAddress.setStreetAddress(order.getOrderAddress().getStreet());
-            shippingAddress.setCity(order.getOrderAddress().getRegions());
-            shippingAddress.setState(order.getOrderAddress().getRegions());
-            shippingAddress.setCountry(order.getOrderAddress().getCountry());
+            shippingAddress.setStreetAddress(order.getOrderAddress().getStreet() != null ? order.getOrderAddress().getStreet() : "N/A");
+            shippingAddress.setCity(order.getOrderAddress().getRegions() != null ? order.getOrderAddress().getRegions() : "N/A");
+            shippingAddress.setState(order.getOrderAddress().getRegions() != null ? order.getOrderAddress().getRegions() : "N/A");
+            shippingAddress.setCountry(order.getOrderAddress().getCountry() != null ? order.getOrderAddress().getCountry() : "N/A");
+            shippingAddress.setLatitude(order.getOrderAddress().getLatitude());
+            shippingAddress.setLongitude(order.getOrderAddress().getLongitude());
         } else {
             shippingAddress.setStreetAddress("N/A");
             shippingAddress.setCity("N/A");
             shippingAddress.setState("N/A");
             shippingAddress.setCountry("N/A");
+            shippingAddress.setLatitude(null);
+            shippingAddress.setLongitude(null);
         }
 
         String customerName = "N/A";
