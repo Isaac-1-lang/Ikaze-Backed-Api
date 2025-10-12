@@ -96,7 +96,7 @@ public class ReturnController {
             }
 
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body(createErrorResponse("RETURN_ERROR", "Failed to process return request"));
+                    .body(createErrorResponse("RETURN_ERROR", "Failed to process return request" + e.getMessage()));
         }
     }
 
@@ -457,7 +457,7 @@ public class ReturnController {
         } catch (Exception e) {
             log.error("Error processing tokenized return request", e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                .body(createErrorResponse("INTERNAL_ERROR", "Failed to process return request"));
+                .body(createErrorResponse("INTERNAL_ERROR", "Failed to process return request" + e.getMessage()));
         }
     }
 
