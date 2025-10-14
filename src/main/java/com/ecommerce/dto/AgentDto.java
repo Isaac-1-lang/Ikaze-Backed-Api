@@ -19,5 +19,6 @@ public class AgentDto {
     private String phoneNumber;
     private boolean isAvailable;
     private boolean hasAGroup;
+    private Long activeGroupCount;
     private LocalDateTime lastActiveAt;
 }

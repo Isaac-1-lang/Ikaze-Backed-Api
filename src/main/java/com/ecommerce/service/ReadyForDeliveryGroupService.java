@@ -31,6 +31,8 @@ public interface ReadyForDeliveryGroupService {
 
     // New methods for enhanced workflow
     Page<DeliveryGroupDto> listAvailableGroups(Pageable pageable);
+    
+    Page<DeliveryGroupDto> listAvailableGroups(String search, Pageable pageable);
 
     DeliveryGroupDto createGroupEnhanced(CreateReadyForDeliveryGroupDTO request);
 
@@ -39,6 +41,8 @@ public interface ReadyForDeliveryGroupService {
     void removeOrderFromGroup(Long groupId, Long orderId);
 
     Page<AgentDto> listAvailableAgents(Pageable pageable, Sort sort);
+    
+    Page<AgentDto> listAvailableAgents(String search, Pageable pageable, Sort sort);
 
     Optional<DeliveryGroupDto> findGroupByOrder(Long orderId);
 
@@ -56,4 +60,7 @@ public interface ReadyForDeliveryGroupService {
     Map<String, Object> startDelivery(Long groupId);
 
     Map<String, Object> finishDelivery(Long groupId);
+
+    // Change order's delivery group assignment
+    DeliveryGroupDto changeOrderGroup(Long orderId, Long newGroupId);
 }

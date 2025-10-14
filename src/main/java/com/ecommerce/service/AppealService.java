@@ -362,7 +362,7 @@ public class AppealService {
 
         LocalDateTime deliveryDate = order.getDeliveredAt();
         if (deliveryDate == null) {
-            throw new RuntimeException("Order delivery date not found");
+            throw new RuntimeException("Order not delivered yet for return");
         }
 
         List<ReturnItem> returnItems = returnRequest.getReturnItems();

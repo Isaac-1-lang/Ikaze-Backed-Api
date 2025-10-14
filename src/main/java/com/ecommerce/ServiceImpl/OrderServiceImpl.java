@@ -14,6 +14,7 @@ import com.ecommerce.entity.User;
 import com.ecommerce.entity.OrderItemBatch;
 import com.ecommerce.entity.Warehouse;
 import com.ecommerce.entity.StockBatch;
+import com.ecommerce.entity.ReadyForDeliveryGroup;
 import com.ecommerce.repository.OrderRepository;
 import com.ecommerce.repository.ProductRepository;
 import com.ecommerce.repository.ProductVariantRepository;
@@ -25,6 +26,7 @@ import com.ecommerce.dto.CreateOrderDTO;
 import com.ecommerce.dto.CustomerOrderDTO;
 import com.ecommerce.dto.AdminOrderDTO;
 import com.ecommerce.dto.DeliveryOrderDTO;
+import com.ecommerce.dto.DeliveryGroupInfoDTO;
 import com.ecommerce.dto.SimpleProductDTO;
 import com.ecommerce.dto.OrderSearchDTO;
 import jakarta.persistence.EntityNotFoundException;
@@ -663,23 +665,18 @@ public class OrderServiceImpl implements OrderService {
                 .notes(order.getOrderInfo() != null ? order.getOrderInfo().getNotes() : null)
                 .createdAt(order.getCreatedAt())
                 .updatedAt(order.getUpdatedAt())
+                .deliveryGroup(toDeliveryGroupInfoDTO(order.getReadyForDeliveryGroup()))
                 .build();
     }
 
     private AdminOrderDTO.AdminOrderItemDTO toAdminOrderItemDTO(OrderItem item) {
         Product product = item.getEffectiveProduct();
 
-        // Calculate discount information by comparing with current product/variant
-        // prices
         BigDecimal currentPrice = item.getPrice();
         BigDecimal originalPrice = currentPrice;
         boolean hasDiscount = false;
         BigDecimal discountPercentage = BigDecimal.ZERO;
-
-        // Check if item was bought at a discount by comparing with current product
-        // price
         if (item.isVariantBased() && item.getProductVariant() != null) {
-            // For variant-based items, compare with variant price
             BigDecimal currentVariantPrice = item.getProductVariant().getPrice();
             if (currentVariantPrice.compareTo(currentPrice) > 0) {
                 originalPrice = currentVariantPrice;
@@ -770,13 +767,11 @@ public class OrderServiceImpl implements OrderService {
                 .build();
     }
 
-    // Helper method to get warehouse and batch information for an order item
     private List<AdminOrderDTO.AdminOrderWarehouseDTO> getWarehousesForOrderItem(OrderItem item) {
         if (item.getOrderItemBatches() == null || item.getOrderItemBatches().isEmpty()) {
             return new ArrayList<>();
         }
 
-        // Group batches by warehouse
         Map<Warehouse, List<OrderItemBatch>> warehouseBatches = item.getOrderItemBatches().stream()
                 .collect(Collectors.groupingBy(OrderItemBatch::getWarehouse));
 
@@ -1066,5 +1061,45 @@ public class OrderServiceImpl implements OrderService {
                         log.info("Delivery group {} is already finished", groupId);
                     }
                 });
+    }
+
+    // Helper method to convert ReadyForDeliveryGroup to DeliveryGroupInfoDTO
+    private DeliveryGroupInfoDTO toDeliveryGroupInfoDTO(ReadyForDeliveryGroup group) {
+        if (group == null) {
+            return null;
+        }
+
+        User deliverer = group.getDeliverer();
+        String delivererName = deliverer != null 
+            ? deliverer.getFirstName() + " " + deliverer.getLastName() 
+            : null;
+
+        // Determine status
+        String status;
+        if (group.getHasDeliveryFinished()) {
+            status = "COMPLETED";
+        } else if (group.getHasDeliveryStarted()) {
+            status = "IN_PROGRESS";
+        } else {
+            status = "READY";
+        }
+
+        return DeliveryGroupInfoDTO.builder()
+                .deliveryGroupId(group.getDeliveryGroupId())
+                .deliveryGroupName(group.getDeliveryGroupName())
+                .deliveryGroupDescription(group.getDeliveryGroupDescription())
+                .delivererId(deliverer != null ? deliverer.getId().toString() : null)
+                .delivererName(delivererName)
+                .delivererEmail(deliverer != null ? deliverer.getUserEmail() : null)
+                .delivererPhone(deliverer != null ? deliverer.getPhoneNumber() : null)
+                .memberCount(group.getOrders() != null ? group.getOrders().size() : 0)
+                .hasDeliveryStarted(group.getHasDeliveryStarted())
+                .deliveryStartedAt(group.getDeliveryStartedAt())
+                .hasDeliveryFinished(group.getHasDeliveryFinished())
+                .deliveryFinishedAt(group.getDeliveryFinishedAt())
+                .scheduledAt(group.getScheduledAt())
+                .createdAt(group.getCreatedAt())
+                .status(status)
+                .build();
     }
 }

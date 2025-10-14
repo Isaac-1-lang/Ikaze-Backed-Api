@@ -489,7 +489,7 @@ public class ReturnService {
     private void validateReturnEligibility(Order order) {
         LocalDateTime deliveryDate = order.getDeliveredAt();
         if (deliveryDate == null) {
-            throw new RuntimeException("Order delivery date not found");
+            throw new RuntimeException("Order not delivered yet for return");
         }
         // Note: Individual item return period validation is now handled in
         // validateReturnItemsEligibility()
@@ -967,7 +967,7 @@ public class ReturnService {
     private void validateReturnItemsEligibility(List<ReturnItemDTO> returnItems, Order order) {
         LocalDateTime deliveryDate = order.getDeliveredAt();
         if (deliveryDate == null) {
-            throw new RuntimeException("Order delivery date not found");
+            throw new RuntimeException("Order not delivered yet for return");
         }
 
         List<OrderItem> orderItems = order.getOrderItems();

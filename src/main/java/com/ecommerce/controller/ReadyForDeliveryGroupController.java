@@ -393,15 +393,17 @@ public class ReadyForDeliveryGroupController {
 
     @GetMapping("/available")
     @PreAuthorize("hasAnyRole('ADMIN', 'EMPLOYEE')")
-    @Operation(summary = "List available groups", description = "Get paginated list of available delivery groups", responses = {
+    @Operation(summary = "List available groups", description = "Get paginated list of available delivery groups with optional search", responses = {
             @ApiResponse(responseCode = "200", description = "Groups retrieved successfully"),
             @ApiResponse(responseCode = "500", description = "Internal server error")
     })
-    public ResponseEntity<?> listAvailableGroups(Pageable pageable) {
+    public ResponseEntity<?> listAvailableGroups(
+            @RequestParam(required = false) String search,
+            Pageable pageable) {
         try {
-            log.info("Getting available groups with pagination: page={}, size={}", pageable.getPageNumber(),
-                    pageable.getPageSize());
-            Page<DeliveryGroupDto> groups = deliveryGroupService.listAvailableGroups(pageable);
+            log.info("Getting available groups with pagination: page={}, size={}, search={}", 
+                    pageable.getPageNumber(), pageable.getPageSize(), search);
+            Page<DeliveryGroupDto> groups = deliveryGroupService.listAvailableGroups(search, pageable);
 
             Map<String, Object> response = new HashMap<>();
             response.put("success", true);
@@ -529,15 +531,18 @@ public class ReadyForDeliveryGroupController {
 
     @GetMapping("/agents")
     @PreAuthorize("hasAnyRole('ADMIN', 'EMPLOYEE')")
-    @Operation(summary = "List available agents", description = "Get paginated list of available delivery agents", responses = {
+    @Operation(summary = "List available agents", description = "Get paginated list of available delivery agents with optional search", responses = {
             @ApiResponse(responseCode = "200", description = "Agents retrieved successfully"),
             @ApiResponse(responseCode = "500", description = "Internal server error")
     })
-    public ResponseEntity<?> listAvailableAgents(Pageable pageable, Sort sort) {
+    public ResponseEntity<?> listAvailableAgents(
+            @RequestParam(required = false) String search,
+            Pageable pageable, 
+            Sort sort) {
         try {
-            log.info("Getting available agents with pagination: page={}, size={}", pageable.getPageNumber(),
-                    pageable.getPageSize());
-            Page<AgentDto> agents = deliveryGroupService.listAvailableAgents(pageable, sort);
+            log.info("Getting available agents with pagination: page={}, size={}, search={}", 
+                    pageable.getPageNumber(), pageable.getPageSize(), search);
+            Page<AgentDto> agents = deliveryGroupService.listAvailableAgents(search, pageable, sort);
 
             Map<String, Object> response = new HashMap<>();
             response.put("success", true);
@@ -702,6 +707,52 @@ public class ReadyForDeliveryGroupController {
             Map<String, Object> response = new HashMap<>();
             response.put("success", false);
             response.put("message", "An unexpected error occurred while finishing delivery.");
+            response.put("errorCode", "INTERNAL_ERROR");
+            response.put("details", e.getMessage());
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(response);
+        }
+    }
+
+    @PutMapping("/order/{orderId}/change-group/{newGroupId}")
+    @PreAuthorize("hasAnyRole('ADMIN', 'EMPLOYEE')")
+    @Operation(summary = "Change order's delivery group", description = "Move an order from its current group to a new group")
+    public ResponseEntity<Map<String, Object>> changeOrderGroup(
+            @PathVariable Long orderId,
+            @PathVariable Long newGroupId) {
+        try {
+            log.info("Changing order {} to group {}", orderId, newGroupId);
+            
+            DeliveryGroupDto updatedGroup = deliveryGroupService.changeOrderGroup(orderId, newGroupId);
+            
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", true);
+            response.put("message", "Order successfully moved to new delivery group");
+            response.put("data", updatedGroup);
+            
+            log.info("Order {} successfully changed to group {}", orderId, newGroupId);
+            return ResponseEntity.ok(response);
+            
+        } catch (EntityNotFoundException e) {
+            log.warn("Entity not found: {}", e.getMessage());
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", false);
+            response.put("message", e.getMessage());
+            response.put("errorCode", "NOT_FOUND");
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(response);
+            
+        } catch (IllegalStateException e) {
+            log.warn("Cannot change order group: {}", e.getMessage());
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", false);
+            response.put("message", e.getMessage());
+            response.put("errorCode", "INVALID_STATE");
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(response);
+            
+        } catch (Exception e) {
+            log.error("Error changing order {} to group {}: {}", orderId, newGroupId, e.getMessage(), e);
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", false);
+            response.put("message", "An unexpected error occurred while changing order group.");
             response.put("errorCode", "INTERNAL_ERROR");
             response.put("details", e.getMessage());
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(response);
