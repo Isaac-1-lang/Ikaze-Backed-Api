@@ -1014,4 +1014,11 @@ public class ReturnService {
         }
         return orderItem.getEffectiveProduct().getProductName();
     }
+
+    /**
+     * Count return requests by status
+     */
+    public long countReturnRequestsByStatus(ReturnRequest.ReturnStatus status) {
+        return returnRequestRepository.countByStatus(status);
+    }
 }

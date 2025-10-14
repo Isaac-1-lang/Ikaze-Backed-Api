@@ -471,4 +471,28 @@ public class ReturnController {
         response.put("timestamp", System.currentTimeMillis());
         return response;
     }
+    
+    /**
+     * Get pending return requests count (Admin/Employee only)
+     */
+    @GetMapping("/admin/count/pending")
+    @PreAuthorize("hasAnyRole('ADMIN', 'EMPLOYEE')")
+    @Operation(summary = "Get pending return requests count", description = "Get count of return requests with PENDING status")
+    public ResponseEntity<?> getPendingReturnRequestsCount() {
+        try {
+            long count = returnService.countReturnRequestsByStatus(ReturnRequest.ReturnStatus.PENDING);
+            
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", true);
+            response.put("count", count);
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            log.error("Error getting pending return requests count: {}", e.getMessage(), e);
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", false);
+            response.put("message", "Failed to get pending return requests count");
+            response.put("count", 0);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(response);
+        }
+    }
 }

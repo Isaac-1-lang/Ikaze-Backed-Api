@@ -1098,4 +1098,20 @@ public class OrderServiceImpl implements OrderService {
                 .status(status)
                 .build();
     }
+    
+    @Override
+    public long countOrdersByStatus(String status) {
+        try {
+            Order.OrderStatus orderStatus = Order.OrderStatus.valueOf(status.toUpperCase());
+            return orderRepository.countByOrderStatus(orderStatus);
+        } catch (IllegalArgumentException e) {
+            log.error("Invalid order status: {}", status);
+            return 0;
+        }
+    }
+    
+    @Override
+    public long countProcessingOrdersWithoutDeliveryGroup() {
+        return orderRepository.countByOrderStatusAndReadyForDeliveryGroupIsNull(Order.OrderStatus.PROCESSING);
+    }
 }

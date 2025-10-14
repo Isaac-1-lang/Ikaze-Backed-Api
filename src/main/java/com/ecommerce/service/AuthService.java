@@ -15,6 +15,10 @@ public interface AuthService {
     boolean verifyResetCode(String email, String code);
 
     void resetPassword(String email, String newPassword);
+    
+    boolean verifyResetToken(String token);
+    
+    void resetPasswordByToken(String token, String newPassword);
 
     String logoutUser(String token);
 

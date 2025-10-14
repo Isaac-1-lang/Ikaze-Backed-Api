@@ -40,7 +40,7 @@ public class SecurityConfig {
                                 "/api/v1/auth/users/login",
                                 "/api/v1/auth/users/register",
                                 "/api/v1/auth/users/request-password-reset",
-                                "/api/v1/auth/users/verify-reset-code",
+                                "/api/v1/auth/users/verify-reset-token",
                                 "/api/v1/auth/users/reset-password",
                                 "/api/v1/products/**",
                                 "/api/v1/categories/**",

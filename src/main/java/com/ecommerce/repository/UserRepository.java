@@ -51,4 +51,9 @@ public interface UserRepository extends JpaRepository<User, UUID> {
                                        Pageable pageable);
     
     boolean existsByUserEmail(String email);
+    
+    /**
+     * Find user by reset token
+     */
+    Optional<User> findByResetToken(String resetToken);
 }

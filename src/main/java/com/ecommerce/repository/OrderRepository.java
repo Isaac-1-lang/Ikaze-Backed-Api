@@ -234,4 +234,14 @@ public interface OrderRepository extends JpaRepository<Order, Long>, OrderReposi
         @Query("SELECT o FROM Order o JOIN o.orderCustomerInfo ci WHERE LOWER(ci.email) = LOWER(:email) ORDER BY o.createdAt DESC")
         Page<Order> findByCustomerInfoEmailWithPagination(@Param("email") String email, Pageable pageable);
 
+        /**
+         * Count orders by status
+         */
+        long countByOrderStatus(Order.OrderStatus orderStatus);
+
+        /**
+         * Count orders by status with no delivery group assigned
+         */
+        long countByOrderStatusAndReadyForDeliveryGroupIsNull(Order.OrderStatus orderStatus);
+
 }
