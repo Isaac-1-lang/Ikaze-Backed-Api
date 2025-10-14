@@ -53,14 +53,15 @@ public class OrderRepositoryImpl implements OrderRepositoryCustom {
 
         // Customer name filter (both guest and registered users)
         if (searchRequest.getCustomerName() != null && !searchRequest.getCustomerName().trim().isEmpty()) {
-            Predicate guestName = cb.like(cb.lower(orderCustomerInfo.get("fullName")), 
+            Predicate guestFirstName = cb.like(cb.lower(orderCustomerInfo.get("firstName")), 
+                "%" + searchRequest.getCustomerName().toLowerCase() + "%");
+            Predicate guestLastName = cb.like(cb.lower(orderCustomerInfo.get("lastName")), 
                 "%" + searchRequest.getCustomerName().toLowerCase() + "%");
             Predicate registeredFirstName = cb.like(cb.lower(user.get("firstName")), 
                 "%" + searchRequest.getCustomerName().toLowerCase() + "%");
             Predicate registeredLastName = cb.like(cb.lower(user.get("lastName")), 
                 "%" + searchRequest.getCustomerName().toLowerCase() + "%");
-            
-            predicates.add(cb.or(guestName, registeredFirstName, registeredLastName));
+            predicates.add(cb.or(guestFirstName, guestLastName, registeredFirstName, registeredLastName));
         }
 
         // Customer email filter
@@ -160,11 +161,12 @@ public class OrderRepositoryImpl implements OrderRepositoryCustom {
             
             Predicate orderNumberMatch = cb.like(cb.lower(order.get("orderCode")), keyword);
             Predicate userIdMatch = cb.like(cb.lower(user.get("id").as(String.class)), keyword);
-            Predicate guestNameMatch = cb.like(cb.lower(orderCustomerInfo.get("fullName")), keyword);
+            Predicate guestFirstNameMatch = cb.like(cb.lower(orderCustomerInfo.get("firstName")), keyword);
+            Predicate guestLastNameMatch = cb.like(cb.lower(orderCustomerInfo.get("lastName")), keyword);
             Predicate guestEmailMatch = cb.like(cb.lower(orderCustomerInfo.get("email")), keyword);
             Predicate registeredEmailMatch = cb.like(cb.lower(user.get("userEmail")), keyword);
             
-            predicates.add(cb.or(orderNumberMatch, userIdMatch, guestNameMatch, guestEmailMatch, registeredEmailMatch));
+            predicates.add(cb.or(orderNumberMatch, userIdMatch, guestFirstNameMatch, guestLastNameMatch, guestEmailMatch, registeredEmailMatch));
         }
 
         // Apply all predicates
@@ -200,13 +202,15 @@ public class OrderRepositoryImpl implements OrderRepositoryCustom {
                 "%" + searchRequest.getUserId().toLowerCase() + "%"));
         }
         if (searchRequest.getCustomerName() != null && !searchRequest.getCustomerName().trim().isEmpty()) {
-            Predicate guestName = cb.like(cb.lower(countOrderCustomerInfo.get("fullName")), 
+            Predicate guestFirstName = cb.like(cb.lower(countOrderCustomerInfo.get("firstName")), 
+                "%" + searchRequest.getCustomerName().toLowerCase() + "%");
+            Predicate guestLastName = cb.like(cb.lower(countOrderCustomerInfo.get("lastName")), 
                 "%" + searchRequest.getCustomerName().toLowerCase() + "%");
             Predicate registeredFirstName = cb.like(cb.lower(countUser.get("firstName")), 
                 "%" + searchRequest.getCustomerName().toLowerCase() + "%");
             Predicate registeredLastName = cb.like(cb.lower(countUser.get("lastName")), 
                 "%" + searchRequest.getCustomerName().toLowerCase() + "%");
-            countPredicates.add(cb.or(guestName, registeredFirstName, registeredLastName));
+            countPredicates.add(cb.or(guestFirstName, guestLastName, registeredFirstName, registeredLastName));
         }
         if (searchRequest.getCustomerEmail() != null && !searchRequest.getCustomerEmail().trim().isEmpty()) {
             Predicate guestEmail = cb.like(cb.lower(countOrderCustomerInfo.get("email")), 
@@ -248,10 +252,11 @@ public class OrderRepositoryImpl implements OrderRepositoryCustom {
             String keyword = "%" + searchRequest.getSearchKeyword().toLowerCase() + "%";
             Predicate orderNumberMatch = cb.like(cb.lower(countRoot.get("orderCode")), keyword);
             Predicate userIdMatch = cb.like(cb.lower(countUser.get("id").as(String.class)), keyword);
-            Predicate guestNameMatch = cb.like(cb.lower(countOrderCustomerInfo.get("fullName")), keyword);
+            Predicate guestFirstNameMatch = cb.like(cb.lower(countOrderCustomerInfo.get("firstName")), keyword);
+            Predicate guestLastNameMatch = cb.like(cb.lower(countOrderCustomerInfo.get("lastName")), keyword);
             Predicate guestEmailMatch = cb.like(cb.lower(countOrderCustomerInfo.get("email")), keyword);
             Predicate registeredEmailMatch = cb.like(cb.lower(countUser.get("userEmail")), keyword);
-            countPredicates.add(cb.or(orderNumberMatch, userIdMatch, guestNameMatch, guestEmailMatch, registeredEmailMatch));
+            countPredicates.add(cb.or(orderNumberMatch, userIdMatch, guestFirstNameMatch, guestLastNameMatch, guestEmailMatch, registeredEmailMatch));
         }
 
         countQuery.select(cb.countDistinct(countRoot));

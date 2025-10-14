@@ -477,10 +477,7 @@ public class OrderServiceImpl implements OrderService {
     @Transactional(readOnly = true)
     public Page<AdminOrderDTO> searchOrders(OrderSearchDTO searchRequest, Pageable pageable) {
         log.info("Searching orders with criteria: {}", searchRequest);
-        
-        // Use the repository to search orders with the given criteria
         Page<Order> ordersPage = orderRepository.searchOrders(searchRequest, pageable);
-        
         return ordersPage.map(this::toAdminOrderDTO);
     }
 
@@ -925,7 +922,6 @@ public class OrderServiceImpl implements OrderService {
     }
 
     private SimpleProductDTO toSimpleProductDTO(Product product) {
-        // Get product images
         String[] imageUrls = getProductImages(product);
 
         return new SimpleProductDTO(
@@ -1070,9 +1066,9 @@ public class OrderServiceImpl implements OrderService {
         }
 
         User deliverer = group.getDeliverer();
-        String delivererName = deliverer != null 
-            ? deliverer.getFirstName() + " " + deliverer.getLastName() 
-            : null;
+        String delivererName = deliverer != null
+                ? deliverer.getFirstName() + " " + deliverer.getLastName()
+                : null;
 
         // Determine status
         String status;

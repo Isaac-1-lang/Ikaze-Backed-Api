@@ -272,7 +272,6 @@ public class AdminOrderController {
         try {
             log.info("Searching orders with criteria: {}", searchRequest);
 
-            // Validate that at least one filter is provided
             if (!searchRequest.hasAtLeastOneFilter()) {
                 Map<String, Object> response = new HashMap<>();
                 response.put("success", false);
