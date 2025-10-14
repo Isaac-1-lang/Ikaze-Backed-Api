@@ -716,7 +716,7 @@ public class ReadyForDeliveryGroupController {
     @PutMapping("/order/{orderId}/change-group/{newGroupId}")
     @PreAuthorize("hasAnyRole('ADMIN', 'EMPLOYEE')")
     @Operation(summary = "Change order's delivery group", description = "Move an order from its current group to a new group")
-    public ResponseEntity<Map<String, Object>> changeOrderGroup(
+    public ResponseEntity<Map<String, Object>> changeTheOrderGroup(
             @PathVariable Long orderId,
             @PathVariable Long newGroupId) {
         try {
