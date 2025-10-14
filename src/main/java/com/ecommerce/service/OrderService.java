@@ -70,4 +70,8 @@ public interface OrderService {
     boolean checkAllOrdersDeliveredInGroup(Long groupId);
 
     void autoFinishDeliveryGroup(Long groupId);
+    
+    long countOrdersByStatus(String status);
+    
+    long countProcessingOrdersWithoutDeliveryGroup();
 }
