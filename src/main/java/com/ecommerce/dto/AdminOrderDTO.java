@@ -35,6 +35,7 @@ public class AdminOrderDTO {
     private LocalDateTime updatedAt;
     private String estimatedDelivery;
     private String trackingNumber;
+    private DeliveryGroupInfoDTO deliveryGroup; // Delivery group assignment info
 
     @Data
     @Builder
