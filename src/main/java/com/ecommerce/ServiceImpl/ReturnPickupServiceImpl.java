@@ -46,7 +46,6 @@ public class ReturnPickupServiceImpl implements ReturnPickupService {
 
             validateReturnPickup(pickupRequest, deliveryAgentId);
             
-            // Get the return request with all relationships (already validated above)
             ReturnRequest returnRequest = returnRequestRepository
                     .findByIdWithCompleteDeliveryDetails(pickupRequest.getReturnRequestId())
                     .orElseThrow(() -> new RuntimeException("Return request not found with ID: " + pickupRequest.getReturnRequestId()));
@@ -103,21 +102,16 @@ public class ReturnPickupServiceImpl implements ReturnPickupService {
 
     @Override
     public void validateReturnPickup(ReturnPickupRequestDTO pickupRequest, UUID deliveryAgentId) {
-        // Comprehensive validation using our new validation methods
         validateReturnPickupRequest(pickupRequest);
         
-        // Get return request
         ReturnRequest returnRequest = returnRequestRepository
                 .findByIdWithCompleteDeliveryDetails(pickupRequest.getReturnRequestId())
                 .orElseThrow(() -> new RuntimeException("Return request not found with ID: " + pickupRequest.getReturnRequestId()));
         
-        // Validate delivery agent assignment
         validateDeliveryAgentAssignment(deliveryAgentId, returnRequest);
         
-        // Validate return request state
         validateReturnRequestState(returnRequest);
         
-        // Validate return items
         validateReturnItems(pickupRequest, returnRequest);
         
         validateReturnWindows(pickupRequest, returnRequest);
@@ -133,10 +127,13 @@ public class ReturnPickupServiceImpl implements ReturnPickupService {
             ReturnItem returnItem = returnItemRepository.findById(pickupItem.getReturnItemId())
                     .orElseThrow(() -> new RuntimeException("Return item not found: " + pickupItem.getReturnItemId()));
 
-            int returnWindowDays = 30;
+            int returnWindowDays = 30; // Default return window
             if (returnItem.getOrderItem() != null &&
                     returnItem.getOrderItem().getProduct() != null) {
-                returnWindowDays = returnItem.getEffectiveProduct().getMaximumDaysForReturn();
+                Integer productReturnDays = returnItem.getEffectiveProduct().getMaximumDaysForReturn();
+                if (productReturnDays != null && productReturnDays > 0) {
+                    returnWindowDays = productReturnDays;
+                }
             }
 
             long daysSinceOrder = java.time.temporal.ChronoUnit.DAYS.between(orderDate.toLocalDate(),
@@ -212,7 +209,6 @@ public class ReturnPickupServiceImpl implements ReturnPickupService {
     }
 
     private boolean shouldRestock(ReturnPickupRequestDTO.ReturnItemPickupStatus status) {
-        // Only restock undamaged items
         return status == ReturnPickupRequestDTO.ReturnItemPickupStatus.UNDAMAGED;
     }
 

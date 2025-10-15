@@ -26,6 +26,7 @@ public class EmailServiceImpl implements EmailService {
 
     @Value("${spring.mail.username}")
     private String fromEmail;
+    
 
     @Value("${app.frontend.url:https://shopsphere-frontend.vercel.app}")
     private String frontendUrl;
@@ -512,15 +513,12 @@ public class EmailServiceImpl implements EmailService {
         }
     }
 
-    /**
-     * Generate appeal denial email HTML using Thymeleaf template
-     */
+
     private String generateAppealDenialHtml(String customerName, Long appealId, Long returnRequestId,
                                           String orderNumber, String appealReason, String decisionNotes,
                                           String submittedAt, String deniedAt) {
         Context context = new Context();
         
-        // Set template variables
         context.setVariable("customerName", customerName);
         context.setVariable("appealId", appealId);
         context.setVariable("returnRequestId", returnRequestId);
