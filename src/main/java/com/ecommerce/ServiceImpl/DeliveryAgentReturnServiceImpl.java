@@ -247,12 +247,31 @@ public class DeliveryAgentReturnServiceImpl implements DeliveryAgentReturnServic
                 }
             }
 
-            // Filter by delivery status
+            // Filter by delivery status (supports comma-separated values)
             if (deliveryStatus != null && !deliveryStatus.trim().isEmpty()) {
                 try {
-                    ReturnRequest.DeliveryStatus status = ReturnRequest.DeliveryStatus
-                            .valueOf(deliveryStatus.toUpperCase());
-                    predicates.add(criteriaBuilder.equal(root.get("deliveryStatus"), status));
+                    // Check if multiple statuses are provided (comma-separated)
+                    if (deliveryStatus.contains(",")) {
+                        String[] statuses = deliveryStatus.split(",");
+                        List<ReturnRequest.DeliveryStatus> statusList = new ArrayList<>();
+                        
+                        for (String status : statuses) {
+                            try {
+                                statusList.add(ReturnRequest.DeliveryStatus.valueOf(status.trim().toUpperCase()));
+                            } catch (IllegalArgumentException e) {
+                                log.warn("Invalid delivery status in filter: {}", status);
+                            }
+                        }
+                        
+                        if (!statusList.isEmpty()) {
+                            predicates.add(root.get("deliveryStatus").in(statusList));
+                        }
+                    } else {
+                        // Single status
+                        ReturnRequest.DeliveryStatus status = ReturnRequest.DeliveryStatus
+                                .valueOf(deliveryStatus.toUpperCase());
+                        predicates.add(criteriaBuilder.equal(root.get("deliveryStatus"), status));
+                    }
                 } catch (IllegalArgumentException e) {
                     log.warn("Invalid delivery status filter: {}", deliveryStatus);
                 }
