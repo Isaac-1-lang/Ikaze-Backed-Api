@@ -209,7 +209,6 @@ public class ReturnPickupServiceImpl implements ReturnPickupService {
     }
 
     private boolean shouldRestock(ReturnPickupRequestDTO.ReturnItemPickupStatus status) {
-        // Only restock undamaged items
         return status == ReturnPickupRequestDTO.ReturnItemPickupStatus.UNDAMAGED;
     }
 
