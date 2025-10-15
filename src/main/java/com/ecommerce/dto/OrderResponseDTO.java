@@ -3,6 +3,8 @@ package com.ecommerce.dto;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
+import com.ecommerce.entity.ReturnRequest;
+import com.ecommerce.entity.ReturnAppeal;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -36,6 +38,7 @@ public class OrderResponseDTO {
     private String estimatedDelivery;
     private String trackingNumber;
     private OrderTransactionDTO transaction;
+    private ReturnRequestInfo returnRequest;
 
     @Data
     @NoArgsConstructor
@@ -89,5 +92,32 @@ public class OrderResponseDTO {
         private Long id;
         private String name;
         private List<String> images;
+    }
+
+    @Data
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class ReturnRequestInfo {
+        private Long id;
+        private String status; // PENDING, APPROVED, DENIED, etc.
+        private String reason;
+        private LocalDateTime submittedAt;
+        private LocalDateTime decisionAt;
+        private String decisionNotes;
+        private boolean canBeAppealed;
+        private AppealInfo appeal;
+    }
+
+    @Data
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class AppealInfo {
+        private Long id;
+        private String status; // PENDING, APPROVED, DENIED
+        private String reason;
+        private String description;
+        private LocalDateTime submittedAt;
+        private LocalDateTime decisionAt;
+        private String decisionNotes;
     }
 }

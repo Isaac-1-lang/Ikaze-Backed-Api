@@ -18,5 +18,4 @@ public class OrderTrackingResponseDTO {
     private String message;
     private String token;
     private LocalDateTime expiresAt;
-    private String trackingUrl;
 }

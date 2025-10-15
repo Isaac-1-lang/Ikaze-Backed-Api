@@ -492,8 +492,6 @@ public class EmailServiceImpl implements EmailService {
     @Async
     public void sendOrderTrackingEmail(String toEmail, String token, String trackingUrl, String expiresAt) {
         try {
-            log.info("Sending order tracking email to: {}", toEmail);
-
             String subject = "Track Your Orders - Secure Access Link";
             
             Context context = new Context();
