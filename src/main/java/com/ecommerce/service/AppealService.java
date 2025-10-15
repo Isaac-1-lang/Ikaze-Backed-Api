@@ -99,14 +99,10 @@ public class AppealService {
         return convertToDTO(savedAppeal);
     }
 
-    /**
-     * Submit an appeal for a denied return request using tracking token (for guest users)
-     */
     public ReturnAppealDTO submitTokenizedAppeal(TokenizedAppealRequestDTO submitDTO, MultipartFile[] mediaFiles) {
         log.info("Processing tokenized appeal submission for return request {} with token",
                 submitDTO.getReturnRequestId());
 
-        // Validate tracking token first
         String customerEmail = validateTrackingToken(submitDTO.getTrackingToken());
         
         ReturnRequest returnRequest = validateReturnForTokenizedAppeal(submitDTO.getReturnRequestId(), customerEmail);
@@ -122,10 +118,9 @@ public class AppealService {
             validateMediaFiles(mediaFiles);
         }
 
-        // Create appeal (customerId will be null for guest users)
         ReturnAppeal appeal = new ReturnAppeal();
         appeal.setReturnRequestId(submitDTO.getReturnRequestId());
-        appeal.setCustomerId(null); // Guest users don't have customerId
+        appeal.setCustomerId(null);
         appeal.setLevel(1); 
         appeal.setReason(submitDTO.getReason());
         appeal.setDescription(submitDTO.getDescription());
@@ -178,7 +173,6 @@ public class AppealService {
 
         ReturnAppeal updatedAppeal = returnAppealRepository.save(appeal);
 
-        // Send email notification to customer
         sendAppealDecisionEmailToCustomer(updatedAppeal, decisionDTO);
 
         log.info("Appeal {} decision completed: {}",
@@ -187,9 +181,6 @@ public class AppealService {
         return convertToDTO(updatedAppeal);
     }
 
-    /**
-     * Escalate appeal to higher level review
-     */
     public ReturnAppealDTO escalateAppeal(Long appealId, String escalationReason, String escalatedBy) {
         log.info("Escalating appeal {} for higher level review", appealId);
 

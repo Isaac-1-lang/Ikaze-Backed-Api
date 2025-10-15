@@ -24,6 +24,10 @@ import com.ecommerce.service.OrderService;
 import com.ecommerce.service.OrderTrackingService;
 import java.time.LocalDateTime;
 import com.ecommerce.repository.UserRepository;
+import com.ecommerce.repository.ReturnRequestRepository;
+import com.ecommerce.repository.ReturnAppealRepository;
+import com.ecommerce.entity.ReturnRequest;
+import com.ecommerce.entity.ReturnAppeal;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.Schema;
@@ -48,6 +52,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.Optional;
 
 @RestController
 @RequestMapping("/api/v1/orders")
@@ -244,6 +249,8 @@ public class OrderController {
     private final OrderService orderService;
     private final OrderTrackingService orderTrackingService;
     private final UserRepository userRepository;
+    private final ReturnRequestRepository returnRequestRepository;
+    private final ReturnAppealRepository returnAppealRepository;
 
     @GetMapping
     @PreAuthorize("hasAnyRole('CUSTOMER','ADMIN','EMPLOYEE')")
@@ -761,6 +768,44 @@ public class OrderController {
             dto.setItems(itemDTOs);
         }
 
+        // Add return request information if exists
+        try {
+            List<ReturnRequest> returnRequests = returnRequestRepository.findByOrderId(order.getOrderId());
+            if (returnRequests != null && !returnRequests.isEmpty()) {
+                ReturnRequest returnRequest = returnRequests.get(0); // Get the first (should be only one)
+                OrderResponseDTO.ReturnRequestInfo returnInfo = new OrderResponseDTO.ReturnRequestInfo();
+                returnInfo.setId(returnRequest.getId());
+                returnInfo.setStatus(returnRequest.getStatus() != null ? returnRequest.getStatus().name() : null);
+                returnInfo.setReason(returnRequest.getReason());
+                returnInfo.setSubmittedAt(returnRequest.getSubmittedAt());
+                returnInfo.setDecisionAt(returnRequest.getDecisionAt());
+                returnInfo.setDecisionNotes(returnRequest.getDecisionNotes());
+                returnInfo.setCanBeAppealed(returnRequest.canBeAppealed());
+
+                // Check if there's an appeal for this return request
+                if (returnAppealRepository.existsByReturnRequestId(returnRequest.getId())) {
+                    Optional<ReturnAppeal> appealOpt = returnAppealRepository.findByReturnRequestId(returnRequest.getId());
+                    if (appealOpt.isPresent()) {
+                        ReturnAppeal appeal = appealOpt.get();
+                        OrderResponseDTO.AppealInfo appealInfo = new OrderResponseDTO.AppealInfo();
+                        appealInfo.setId(appeal.getId());
+                        appealInfo.setStatus(appeal.getStatus() != null ? appeal.getStatus().name() : null);
+                        appealInfo.setReason(appeal.getReason());
+                        appealInfo.setDescription(appeal.getDescription());
+                        appealInfo.setSubmittedAt(appeal.getSubmittedAt());
+                        appealInfo.setDecisionAt(appeal.getDecisionAt());
+                        appealInfo.setDecisionNotes(appeal.getDecisionNotes());
+                        returnInfo.setAppeal(appealInfo);
+                    }
+                }
+
+                dto.setReturnRequest(returnInfo);
+            }
+        } catch (Exception e) {
+            log.warn("Error fetching return request for order {}: {}", order.getOrderId(), e.getMessage());
+            // Don't fail the entire request if return request fetch fails
+        }
+
         return dto;
     }
 
@@ -947,7 +992,6 @@ public class OrderController {
 
             if (response.isSuccess()) {
                 responseMap.put("expiresAt", response.getExpiresAt());
-                responseMap.put("trackingUrl", response.getTrackingUrl());
             }
 
             return ResponseEntity.ok(responseMap);
