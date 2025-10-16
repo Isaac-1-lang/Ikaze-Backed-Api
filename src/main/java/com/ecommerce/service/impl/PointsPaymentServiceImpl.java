@@ -354,6 +354,7 @@ public class PointsPaymentServiceImpl implements PointsPaymentService {
 
         BigDecimal subtotal = calculateSimpleSubtotal(request.getItems());
         OrderInfo orderInfo = new OrderInfo();
+        orderInfo.setSubtotal(subtotal); // Products total before discounts, taxes, shipping
         orderInfo.setShippingCost(shippingCostService.calculateOrderShippingCost(request.getShippingAddress(), request.getItems(), subtotal));
         orderInfo.setTotalAmount(totalAmount);
         orderInfo.setOrder(order);

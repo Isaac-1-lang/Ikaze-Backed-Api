@@ -75,9 +75,17 @@ public class CheckoutService {
     private final EnhancedStockLockService enhancedStockLockService;
     private final CartService cartService;
     private final MoneyFlowService moneyFlowService;
+    private final RoadValidationService roadValidationService;
 
     public String createCheckoutSession(CheckoutRequest req) throws Exception {
         validateDeliveryCountry(req.getShippingAddress().getCountry());
+        
+        if (req.getShippingAddress().getLatitude() != null && req.getShippingAddress().getLongitude() != null) {
+            roadValidationService.validateRoadLocation(
+                req.getShippingAddress().getLatitude(), 
+                req.getShippingAddress().getLongitude()
+            );
+        }
 
         UUID userId;
         try {
@@ -152,6 +160,7 @@ public class CheckoutService {
 
         OrderInfo orderInfo = new OrderInfo();
         orderInfo.setOrder(order);
+        orderInfo.setSubtotal(paymentSummary.getSubtotal()); // Products total before discounts
         orderInfo.setTotalAmount(paymentSummary.getTotalAmount());
         orderInfo.setTaxAmount(paymentSummary.getTaxAmount());
         orderInfo.setShippingCost(paymentSummary.getShippingCost());
@@ -212,6 +221,13 @@ public class CheckoutService {
         log.info("Creating guest checkout session");
 
         validateDeliveryCountry(req.getAddress().getCountry());
+        if (req.getAddress().getLatitude() != null && req.getAddress().getLongitude() != null) {
+            roadValidationService.validateRoadLocation(
+                req.getAddress().getLatitude(), 
+                req.getAddress().getLongitude()
+            );
+            log.info("Road validated successfully");
+        }
 
         validateCartItems(req.getItems());
 
@@ -279,6 +295,7 @@ public class CheckoutService {
 
         OrderInfo orderInfo = new OrderInfo();
         orderInfo.setOrder(order);
+        orderInfo.setSubtotal(paymentSummary.getSubtotal()); // Products total before discounts
         orderInfo.setTotalAmount(paymentSummary.getTotalAmount());
         orderInfo.setTaxAmount(paymentSummary.getTaxAmount());
         orderInfo.setShippingCost(paymentSummary.getShippingCost());
@@ -344,6 +361,7 @@ public class CheckoutService {
 
     @Transactional
     public CheckoutVerificationResult verifyCheckoutSession(String sessionId) throws Exception {
+        log.info("Payment record found for session: {}", sessionId);
         OrderTransaction tx = transactionRepository.findByStripeSessionIdWithOrder(sessionId)
                 .orElseThrow(() -> new EntityNotFoundException("No matching payment record"));
 
@@ -615,8 +633,12 @@ public class CheckoutService {
     public com.ecommerce.dto.PaymentSummaryDTO calculatePaymentSummary(AddressDto deliveryAddress,
             List<CartItemDTO> items, UUID userId) {
         
-        // Validate if we have warehouses in the delivery country
         validateDeliveryCountry(deliveryAddress.getCountry());
+        
+        // Validate that the pickup point is on or near a road
+        if (deliveryAddress.getLatitude() != null && deliveryAddress.getLongitude() != null) {
+            roadValidationService.validateRoadLocation(deliveryAddress.getLatitude(), deliveryAddress.getLongitude());
+        }
         
         BigDecimal subtotal = BigDecimal.ZERO;
         BigDecimal discountAmount = BigDecimal.ZERO;

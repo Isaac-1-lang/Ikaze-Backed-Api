@@ -75,7 +75,6 @@ public class AnalyticsServiceImpl implements AnalyticsService {
 
         Double activeProductsVs = null;
 
-        // Revenue (completed transactions) in range
         BigDecimal revenue = null;
         Double revenueVs = null;
         if (isAdmin) {
