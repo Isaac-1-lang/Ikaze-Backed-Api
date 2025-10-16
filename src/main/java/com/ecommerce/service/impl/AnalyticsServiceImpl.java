@@ -6,6 +6,7 @@ import com.ecommerce.dto.*;
 import com.ecommerce.entity.Order;
 import com.ecommerce.entity.OrderItem;
 import com.ecommerce.entity.OrderTransaction;
+import com.ecommerce.entity.Product;
 import com.ecommerce.entity.User;
 import com.ecommerce.repository.OrderRepository;
 import com.ecommerce.repository.OrderTransactionRepository;
@@ -13,6 +14,7 @@ import com.ecommerce.repository.ProductRepository;
 import com.ecommerce.repository.UserRepository;
 import com.ecommerce.service.AnalyticsService;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
@@ -23,6 +25,7 @@ import java.time.LocalTime;
 import java.util.*;
 import java.util.stream.Collectors;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class AnalyticsServiceImpl implements AnalyticsService {
@@ -98,11 +101,18 @@ public class AnalyticsServiceImpl implements AnalyticsService {
         Map<UUID, ProductAgg> productAgg = new HashMap<>();
         for (Order o : orders) {
             for (OrderItem oi : o.getOrderItems()) {
-                UUID productId = oi.getProductVariant().getProduct().getProductId();
+                // Use the safe getEffectiveProduct() method
+                Product effectiveProduct = oi.getEffectiveProduct();
+                if (effectiveProduct == null) {
+                    log.warn("OrderItem {} has no effective product, skipping", oi.getOrderItemId());
+                    continue;
+                }
+                
+                UUID productId = effectiveProduct.getProductId();
                 ProductAgg agg = productAgg.computeIfAbsent(productId, k -> new ProductAgg());
                 agg.count += oi.getQuantity();
                 agg.amount = agg.amount.add(oi.getSubtotal());
-                agg.name = oi.getProductVariant().getProduct().getProductName();
+                agg.name = effectiveProduct.getProductName();
             }
         }
         long totalUnits = productAgg.values().stream().mapToLong(a -> a.count).sum();
@@ -122,10 +132,14 @@ public class AnalyticsServiceImpl implements AnalyticsService {
         Map<Long, CatAgg> catAgg = new HashMap<>();
         for (Order o : orders) {
             for (OrderItem oi : o.getOrderItems()) {
-                if (oi.getProductVariant().getProduct().getCategory() == null)
+                // Use the safe getEffectiveProduct() method
+                Product effectiveProduct = oi.getEffectiveProduct();
+                if (effectiveProduct == null || effectiveProduct.getCategory() == null) {
                     continue;
-                Long cid = oi.getProductVariant().getProduct().getCategory().getId();
-                String cname = oi.getProductVariant().getProduct().getCategory().getName();
+                }
+                
+                Long cid = effectiveProduct.getCategory().getId();
+                String cname = effectiveProduct.getCategory().getName();
                 CatAgg agg = catAgg.computeIfAbsent(cid, k -> new CatAgg());
                 agg.name = cname;
                 agg.amount = agg.amount.add(oi.getSubtotal());

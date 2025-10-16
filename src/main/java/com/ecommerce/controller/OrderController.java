@@ -10,8 +10,6 @@ import com.ecommerce.entity.Product;
 import com.ecommerce.entity.ProductImage;
 import com.ecommerce.dto.OrderResponseDTO;
 import com.ecommerce.dto.OrderItemDTO;
-import com.ecommerce.dto.OrderAddressDTO;
-import com.ecommerce.dto.OrderCustomerInfoDTO;
 import com.ecommerce.dto.OrderTransactionDTO;
 import com.ecommerce.dto.SimpleProductDTO;
 import com.ecommerce.dto.CreateOrderDTO;
@@ -26,8 +24,10 @@ import java.time.LocalDateTime;
 import com.ecommerce.repository.UserRepository;
 import com.ecommerce.repository.ReturnRequestRepository;
 import com.ecommerce.repository.ReturnAppealRepository;
+import com.ecommerce.repository.ReturnItemRepository;
 import com.ecommerce.entity.ReturnRequest;
 import com.ecommerce.entity.ReturnAppeal;
+import com.ecommerce.entity.ReturnItem;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.Schema;
@@ -251,6 +251,7 @@ public class OrderController {
     private final UserRepository userRepository;
     private final ReturnRequestRepository returnRequestRepository;
     private final ReturnAppealRepository returnAppealRepository;
+    private final ReturnItemRepository returnItemRepository;
 
     @GetMapping
     @PreAuthorize("hasAnyRole('CUSTOMER','ADMIN','EMPLOYEE')")
@@ -920,6 +921,57 @@ public class OrderController {
         dto.setReturnEligible(true);
         dto.setMaxReturnDays(30);
         dto.setDaysRemainingForReturn(25);
+
+        // Add return information
+        try {
+            List<ReturnItem> returnItems = returnItemRepository.findByOrderItemOrderItemId(item.getOrderItemId());
+            if (returnItems != null && !returnItems.isEmpty()) {
+                OrderResponseDTO.ReturnItemInfo returnInfo = new OrderResponseDTO.ReturnItemInfo();
+                returnInfo.setHasReturnRequest(true);
+                
+                // Calculate total returned quantity
+                int totalReturnedQty = returnItems.stream()
+                        .mapToInt(ReturnItem::getReturnQuantity)
+                        .sum();
+                returnInfo.setTotalReturnedQuantity(totalReturnedQty);
+                returnInfo.setRemainingQuantity(item.getQuantity() - totalReturnedQty);
+                
+                // Add return request summaries
+                List<OrderResponseDTO.ReturnRequestSummary> returnSummaries = returnItems.stream()
+                        .map(returnItem -> {
+                            OrderResponseDTO.ReturnRequestSummary summary = new OrderResponseDTO.ReturnRequestSummary();
+                            summary.setReturnRequestId(returnItem.getReturnRequest().getId());
+                            summary.setReturnedQuantity(returnItem.getReturnQuantity());
+                            summary.setStatus(returnItem.getReturnRequest().getStatus() != null ? 
+                                    returnItem.getReturnRequest().getStatus().name() : null);
+                            summary.setReason(returnItem.getItemReason() != null ? 
+                                    returnItem.getItemReason() : returnItem.getReturnRequest().getReason());
+                            summary.setSubmittedAt(returnItem.getReturnRequest().getSubmittedAt());
+                            return summary;
+                        })
+                        .collect(Collectors.toList());
+                returnInfo.setReturnRequests(returnSummaries);
+                
+                dto.setReturnInfo(returnInfo);
+            } else {
+                // No return requests for this item
+                OrderResponseDTO.ReturnItemInfo returnInfo = new OrderResponseDTO.ReturnItemInfo();
+                returnInfo.setHasReturnRequest(false);
+                returnInfo.setTotalReturnedQuantity(0);
+                returnInfo.setRemainingQuantity(item.getQuantity());
+                returnInfo.setReturnRequests(List.of());
+                dto.setReturnInfo(returnInfo);
+            }
+        } catch (Exception e) {
+            log.warn("Error fetching return info for order item {}: {}", item.getOrderItemId(), e.getMessage());
+            // Set default return info if fetch fails
+            OrderResponseDTO.ReturnItemInfo returnInfo = new OrderResponseDTO.ReturnItemInfo();
+            returnInfo.setHasReturnRequest(false);
+            returnInfo.setTotalReturnedQuantity(0);
+            returnInfo.setRemainingQuantity(item.getQuantity());
+            returnInfo.setReturnRequests(List.of());
+            dto.setReturnInfo(returnInfo);
+        }
 
         return dto;
     }

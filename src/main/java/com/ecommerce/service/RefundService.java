@@ -26,10 +26,9 @@ public class RefundService {
     private final OrderRepository orderRepository;
     private final UserRepository userRepository;
     private final NotificationService notificationService;
-    
-    // External services (to be injected when available)
-    // private final StripeService stripeService;
-    // private final PaymentService paymentService;
+    private final StripeService stripeService;
+    private final RewardService rewardService;
+    private final MoneyFlowService moneyFlowService;
 
     /**
      * Process refund for approved return request based on original payment method
@@ -81,9 +80,6 @@ public class RefundService {
         }
     }
 
-    /**
-     * Process refund for credit/debit card payments via Stripe
-     */
     private void processOriginalPaymentRefund(ReturnRequest returnRequest, Order order, 
                                             OrderTransaction transaction, ReturnDecisionDTO.RefundDetailsDTO refundDetails) {
         log.info("Processing original payment method refund for return request {} - Payment Method: {}", 
@@ -93,18 +89,21 @@ public class RefundService {
                 BigDecimal.valueOf(refundDetails.getRefundAmount()) : transaction.getOrderAmount();
         
         if (transaction.getStripeSessionId() != null && transaction.getStripePaymentIntentId() != null) {
-            // Process Stripe refund
             log.info("Processing Stripe refund for payment intent: {}", transaction.getStripePaymentIntentId());
             
-            // TODO: Integrate with Stripe API
-            // stripeService.processRefund(transaction.getStripePaymentIntentId(), refundAmount);
-            
-            log.info("Stripe refund of {} processed for return request {}", 
-                    refundAmount, returnRequest.getId());
+            try {
+                stripeService.processRefund(transaction.getStripePaymentIntentId(), refundAmount);
+                log.info("Stripe refund of {} processed successfully for return request {}", 
+                        refundAmount, returnRequest.getId());
+                
+                recordRefundInMoneyFlow(order, refundAmount, "Card refund");
+            } catch (Exception e) {
+                log.error("Failed to process Stripe refund: {}", e.getMessage(), e);
+                throw new RuntimeException("Stripe refund failed: " + e.getMessage(), e);
+            }
         } else {
             log.warn("No Stripe session found for transaction {}, cannot process automatic refund", 
                     transaction.getOrderTransactionId());
-            
         }
     }
 
@@ -130,10 +129,15 @@ public class RefundService {
         if (cardAmount.compareTo(BigDecimal.ZERO) > 0 && transaction.getStripePaymentIntentId() != null) {
             log.info("Processing card refund portion: {}", cardAmount);
             
-            // TODO: Integrate with Stripe API for partial refund
-            // stripeService.processRefund(transaction.getStripePaymentIntentId(), cardAmount);
-            
-            log.info("Card portion refund of {} processed", cardAmount);
+            try {
+                stripeService.processRefund(transaction.getStripePaymentIntentId(), cardAmount);
+                log.info("Card portion refund of {} processed successfully", cardAmount);
+                
+                recordRefundInMoneyFlow(order, cardAmount, "Hybrid refund (Card portion)");
+            } catch (Exception e) {
+                log.error("Failed to process card refund portion: {}", e.getMessage(), e);
+                throw new RuntimeException("Card refund failed: " + e.getMessage(), e);
+            }
         }
         
         // Refund points if there were points used
@@ -142,13 +146,12 @@ public class RefundService {
             
             User user = order.getUser();
             if (user != null) {
-                // Add points back to user account
-                Integer currentPoints = user.getPoints() != null ? user.getPoints() : 0;
-                user.setPoints(currentPoints + pointsUsed);
-                userRepository.save(user);
+                String refundDescription = String.format("Points refunded for return request (Order #%s)",
+                        order.getOrderCode() != null ? order.getOrderCode() : order.getOrderId().toString());
                 
-                log.info("Refunded {} points to user {}. New balance: {}", 
-                        pointsUsed, user.getId(), user.getPoints());
+                rewardService.refundPointsForCancelledOrder(user.getId(), pointsUsed, refundDescription);
+                
+                log.info("Refunded {} points to user {} via RewardService", pointsUsed, user.getId());
             } else {
                 log.error("Cannot refund points - user not found for order {}", order.getOrderId());
             }
@@ -173,14 +176,13 @@ public class RefundService {
             throw new RuntimeException("User not found for order: " + order.getOrderId());
         }
         
-        // Add points back to user account
-        Integer currentPoints = user.getPoints() != null ? user.getPoints() : 0;
-        user.setPoints(currentPoints + pointsUsed);
-        userRepository.save(user);
+        // Refund points using RewardService
+        String refundDescription = String.format("Points refunded for return request (Order #%s)",
+                order.getOrderCode() != null ? order.getOrderCode() : order.getOrderId().toString());
         
-        log.info("Refunded {} points to user {}. Previous balance: {}, New balance: {}", 
-                pointsUsed, user.getId(), currentPoints, user.getPoints());
+        rewardService.refundPointsForCancelledOrder(user.getId(), pointsUsed, refundDescription);
         
+        log.info("Refunded {} points to user {} via RewardService", pointsUsed, user.getId());
     }
 
     /**
@@ -246,6 +248,26 @@ public class RefundService {
             log.error("Error checking refund eligibility for return request {}: {}", 
                     returnRequest.getId(), e.getMessage());
             return false;
+        }
+    }
+
+    /**
+     * Record refund in money flow system
+     */
+    private void recordRefundInMoneyFlow(Order order, BigDecimal refundAmount, String refundType) {
+        try {
+            String description = String.format("%s for Order #%s", 
+                    refundType,
+                    order.getOrderCode() != null ? order.getOrderCode() : order.getOrderId().toString());
+            
+            com.ecommerce.dto.CreateMoneyFlowDTO moneyFlowDTO = new com.ecommerce.dto.CreateMoneyFlowDTO();
+            moneyFlowDTO.setDescription(description);
+            moneyFlowDTO.setType(com.ecommerce.enums.MoneyFlowType.OUT);
+            moneyFlowDTO.setAmount(refundAmount);
+            moneyFlowService.save(moneyFlowDTO);
+            log.info("Recorded money flow OUT: {} for refund on order {}", refundAmount, order.getOrderId());
+        } catch (Exception e) {
+            log.error("Failed to record money flow for refund on order {}: {}", order.getOrderId(), e.getMessage(), e);
         }
     }
 }

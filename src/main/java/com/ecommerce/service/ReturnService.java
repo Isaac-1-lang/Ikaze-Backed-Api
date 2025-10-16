@@ -505,7 +505,7 @@ public class ReturnService {
         LocalDateTime thirtyDaysAgo = LocalDateTime.now().minusDays(30);
         List<ReturnRequest> recentReturns = returnRequestRepository.findRecentByCustomerId(customerId, thirtyDaysAgo);
 
-        if (recentReturns.size() > 5) { // Configurable threshold
+        if (recentReturns.size() > 5) { 
             log.warn("Customer {} has {} returns in the last 30 days - flagging for review",
                     customerId, recentReturns.size());
         }
@@ -521,9 +521,7 @@ public class ReturnService {
             refundService.processRefund(returnRequest, decisionDTO.getRefundDetails());
         }
 
-        // Send comprehensive approval notification with HTML email
         notificationService.notifyReturnApproved(returnRequest);
-
         log.info("Return request {} approved successfully", returnRequest.getId());
     }
 
@@ -533,7 +531,6 @@ public class ReturnService {
 
         returnRequest.deny(decisionDTO.getDecisionNotes());
 
-        // Send comprehensive denial notification with HTML email (customer can appeal)
         notificationService.notifyReturnDenied(returnRequest);
 
         log.info("Return request {} denied successfully", returnRequest.getId());

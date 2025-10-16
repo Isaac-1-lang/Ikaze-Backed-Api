@@ -74,6 +74,7 @@ public class CheckoutService {
     private final OrderEmailService orderEmailService;
     private final EnhancedStockLockService enhancedStockLockService;
     private final CartService cartService;
+    private final MoneyFlowService moneyFlowService;
 
     public String createCheckoutSession(CheckoutRequest req) throws Exception {
         validateDeliveryCountry(req.getShippingAddress().getCountry());
@@ -379,6 +380,9 @@ public class CheckoutService {
         Order order = tx.getOrder();
         order.setOrderStatus(Order.OrderStatus.PROCESSING);
         orderRepository.save(order);
+
+        // Record money flow for successful payment
+        recordPaymentInMoneyFlow(order, tx);
 
         log.info("Payment verification completed successfully for order: {}", order.getOrderId());
         stockLockService.confirmStock(sessionId);
@@ -1472,6 +1476,39 @@ public class CheckoutService {
         } catch (Exception e) {
             log.error("Error refunding points for failed payment order {}: {}",
                     order.getOrderId(), e.getMessage(), e);
+        }
+    }
+
+    /**
+     * Record payment in money flow system
+     */
+    private void recordPaymentInMoneyFlow(Order order, OrderTransaction transaction) {
+        try {
+            BigDecimal paymentAmount = transaction.getOrderAmount();
+            
+            // For hybrid payments, only record the actual money paid (not points)
+            if (transaction.getPaymentMethod() == OrderTransaction.PaymentMethod.HYBRID) {
+                BigDecimal pointsValue = transaction.getPointsValue() != null ? 
+                        transaction.getPointsValue() : BigDecimal.ZERO;
+                paymentAmount = paymentAmount.subtract(pointsValue);
+            }
+            
+            // Only record if there's actual money involved
+            if (paymentAmount.compareTo(BigDecimal.ZERO) > 0) {
+                String description = String.format("Payment received for Order #%s (%s)", 
+                        order.getOrderCode() != null ? order.getOrderCode() : order.getOrderId().toString(),
+                        transaction.getPaymentMethod().name());
+                
+                com.ecommerce.dto.CreateMoneyFlowDTO moneyFlowDTO = new com.ecommerce.dto.CreateMoneyFlowDTO();
+                moneyFlowDTO.setDescription(description);
+                moneyFlowDTO.setType(com.ecommerce.enums.MoneyFlowType.IN);
+                moneyFlowDTO.setAmount(paymentAmount);
+                
+                moneyFlowService.save(moneyFlowDTO);
+                log.info("Recorded money flow IN: {} for order {}", paymentAmount, order.getOrderId());
+            }
+        } catch (Exception e) {
+            log.error("Failed to record money flow for order {}: {}", order.getOrderId(), e.getMessage(), e);
         }
     }
 }

@@ -41,14 +41,12 @@ public class LandingPageServiceImpl implements LandingPageService {
         log.info("Generating landing page data");
 
         try {
-            // Get all the required data in parallel for better performance
             List<LandingPageProductDTO> topSellingProducts = getTopSellingProductsList(8);
             List<LandingPageProductDTO> newProducts = getNewProductsList(8);
             List<LandingPageProductDTO> discountedProducts = getDiscountedProductsList(8);
             List<CategoryWithProductsDTO> featuredCategories = getFeaturedCategoriesWithProducts(3, 6);
             List<BrandWithProductsDTO> featuredBrands = getFeaturedBrandsWithProducts(3, 6);
 
-            // Get statistics
             long totalProducts = productRepository.count();
             long totalCategories = categoryRepository.count();
             long totalBrands = brandRepository.count();
@@ -204,22 +202,18 @@ public class LandingPageServiceImpl implements LandingPageService {
         // Calculate discount
         BigDecimal discountPercentage = calculateDiscountPercentage(product);
         
-        // Determine price and originalPrice based on discount type
         BigDecimal displayPrice;
         BigDecimal originalPrice = null;
         
         if (product.getDiscountedPrice() != null && 
             product.getDiscountedPrice().compareTo(product.getPrice()) < 0) {
-            // Product has direct discount
             displayPrice = product.getDiscountedPrice();
             originalPrice = product.getPrice();
         } else {
-            // No product discount (might have variant discounts)
             displayPrice = product.getPrice();
             originalPrice = null;
         }
 
-        // Get variant discount information
         boolean hasVariantDiscounts = hasVariantDiscounts(product);
         BigDecimal maxVariantDiscount = getMaxVariantDiscount(product);
         Integer discountedVariantsCount = getDiscountedVariantsCount(product);
@@ -254,7 +248,6 @@ public class LandingPageServiceImpl implements LandingPageService {
     }
 
     private LandingPageCategoryDTO convertToLandingPageCategoryDTO(Category category) {
-        // Count products in this category
         long productCount = productRepository.countByCategoryAndIsActiveTrue(category);
 
         return LandingPageCategoryDTO.builder()
@@ -270,7 +263,6 @@ public class LandingPageServiceImpl implements LandingPageService {
     }
 
     private LandingPageBrandDTO convertToLandingPageBrandDTO(Brand brand) {
-        // Count products for this brand
         long productCount = productRepository.countByBrandAndIsActiveTrue(brand);
 
         return LandingPageBrandDTO.builder()
