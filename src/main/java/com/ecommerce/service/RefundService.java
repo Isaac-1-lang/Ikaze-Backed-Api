@@ -251,11 +251,15 @@ public class RefundService {
         }
     }
 
-    /**
-     * Record refund in money flow system
-     */
+
     private void recordRefundInMoneyFlow(Order order, BigDecimal refundAmount, String refundType) {
         try {
+            if (refundAmount == null || refundAmount.compareTo(BigDecimal.ZERO) <= 0) {
+                log.warn("Invalid refund amount {} for order {}, skipping money flow record", 
+                        refundAmount, order.getOrderId());
+                return;
+            }
+            
             String description = String.format("%s for Order #%s", 
                     refundType,
                     order.getOrderCode() != null ? order.getOrderCode() : order.getOrderId().toString());
@@ -264,10 +268,15 @@ public class RefundService {
             moneyFlowDTO.setDescription(description);
             moneyFlowDTO.setType(com.ecommerce.enums.MoneyFlowType.OUT);
             moneyFlowDTO.setAmount(refundAmount);
-            moneyFlowService.save(moneyFlowDTO);
-            log.info("Recorded money flow OUT: {} for refund on order {}", refundAmount, order.getOrderId());
+            
+            // MoneyFlowService.save() handles createdAt and remainingBalance automatically
+            com.ecommerce.entity.MoneyFlow savedFlow = moneyFlowService.save(moneyFlowDTO);
+            
+            log.info("Recorded money flow OUT: {} for refund on order {} (MoneyFlow ID: {}, New Balance: {})", 
+                    refundAmount, order.getOrderId(), savedFlow.getId(), savedFlow.getRemainingBalance());
         } catch (Exception e) {
-            log.error("Failed to record money flow for refund on order {}: {}", order.getOrderId(), e.getMessage(), e);
+            log.error("Failed to record money flow for refund on order {}: {}", 
+                    order.getOrderId(), e.getMessage(), e);
         }
     }
 }

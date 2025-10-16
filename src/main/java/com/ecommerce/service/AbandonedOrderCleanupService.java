@@ -24,6 +24,7 @@ public class AbandonedOrderCleanupService {
     private final OrderRepository orderRepository;
     private final RewardService rewardService;
     private final EnhancedStockLockService enhancedStockLockService;
+    private final MoneyFlowService moneyFlowService;
 
     /**
      * Clean up a single abandoned order
@@ -34,7 +35,8 @@ public class AbandonedOrderCleanupService {
             log.info("Cleaning up abandoned order: {} (created: {})",
                     order.getOrderId(), order.getCreatedAt());
 
-            // Refund points if any were used
+            recordAbandonedOrderInMoneyFlow(order);
+
             refundPointsForAbandonedOrder(order);
 
             // Unlock stock batches for this order
@@ -231,8 +233,64 @@ public class AbandonedOrderCleanupService {
     }
 
     /**
-     * Result class for cleanup operations
+     * Record abandoned order cleanup in money flow system
+     * This tracks potential revenue loss from abandoned carts/orders
      */
+    private void recordAbandonedOrderInMoneyFlow(Order order) {
+        try {
+            // Only record if there was a transaction with an amount
+            if (order.getOrderTransaction() == null || order.getOrderTransaction().getOrderAmount() == null) {
+                log.debug("No transaction or amount for abandoned order {}, skipping money flow record", 
+                        order.getOrderId());
+                return;
+            }
+
+            java.math.BigDecimal orderAmount = order.getOrderTransaction().getOrderAmount();
+            
+            // Only record if amount is greater than zero
+            if (orderAmount.compareTo(java.math.BigDecimal.ZERO) <= 0) {
+                log.debug("Order amount is zero or negative for abandoned order {}, skipping money flow record", 
+                        order.getOrderId());
+                return;
+            }
+
+            // Calculate actual money amount (exclude points value for hybrid payments)
+            java.math.BigDecimal actualMoneyAmount = orderAmount;
+            if (order.getOrderTransaction().getPaymentMethod() == com.ecommerce.entity.OrderTransaction.PaymentMethod.HYBRID) {
+                java.math.BigDecimal pointsValue = order.getOrderTransaction().getPointsValue() != null ? 
+                        order.getOrderTransaction().getPointsValue() : java.math.BigDecimal.ZERO;
+                actualMoneyAmount = actualMoneyAmount.subtract(pointsValue);
+            }
+            
+            if (order.getOrderTransaction().getPaymentMethod() == com.ecommerce.entity.OrderTransaction.PaymentMethod.POINTS) {
+                log.debug("Points-only payment for abandoned order {}, skipping money flow record", 
+                        order.getOrderId());
+                return;
+            }
+
+            if (actualMoneyAmount.compareTo(java.math.BigDecimal.ZERO) > 0) {
+                String description = String.format("Abandoned order cleanup - Order #%s (Amount: %s, Payment Method: %s, Created: %s)", 
+                        order.getOrderCode() != null ? order.getOrderCode() : order.getOrderId().toString(),
+                        actualMoneyAmount,
+                        order.getOrderTransaction().getPaymentMethod().name(),
+                        order.getCreatedAt());
+                
+                com.ecommerce.dto.CreateMoneyFlowDTO moneyFlowDTO = new com.ecommerce.dto.CreateMoneyFlowDTO();
+                moneyFlowDTO.setDescription(description);
+                moneyFlowDTO.setType(com.ecommerce.enums.MoneyFlowType.OUT);
+                moneyFlowDTO.setAmount(actualMoneyAmount);
+                
+                moneyFlowService.save(moneyFlowDTO);
+                log.info("Recorded money flow OUT: {} for abandoned order cleanup {}", 
+                        actualMoneyAmount, order.getOrderId());
+            }
+        } catch (Exception e) {
+            log.error("Failed to record money flow for abandoned order {}: {}", 
+                    order.getOrderId(), e.getMessage(), e);
+        }
+    }
+
+ 
     public static class CleanupResult {
         private final int totalProcessed;
         private final int successful;

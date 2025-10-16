@@ -52,4 +52,11 @@ public interface MoneyFlowService {
      * @param id The money flow ID
      */
     void delete(Long id);
+    
+    /**
+     * Get net revenue (total inflow minus total outflow)
+     * This represents the actual revenue after refunds and other outflows
+     * @return Net revenue amount
+     */
+    BigDecimal getNetRevenue();
 }

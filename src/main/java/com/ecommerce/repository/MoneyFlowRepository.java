@@ -148,4 +148,30 @@ public interface MoneyFlowRepository extends JpaRepository<MoneyFlow, Long> {
         """, nativeQuery = true)
     List<Object[]> getDetailedTransactionsByHour(@Param("startDate") LocalDateTime startDate, 
                                                   @Param("endDate") LocalDateTime endDate);
+    
+    /**
+     * Calculate total inflow (all IN transactions)
+     */
+    @Query("SELECT COALESCE(SUM(mf.amount), 0) FROM MoneyFlow mf WHERE mf.type = 'IN'")
+    BigDecimal sumTotalInflow();
+    
+    /**
+     * Calculate total outflow (all OUT transactions)
+     */
+    @Query("SELECT COALESCE(SUM(mf.amount), 0) FROM MoneyFlow mf WHERE mf.type = 'OUT'")
+    BigDecimal sumTotalOutflow();
+    
+    /**
+     * Get the remaining balance at a specific point in time
+     * Returns the balance from the most recent money flow entry before or at the given time
+     */
+    @Query("SELECT mf.remainingBalance FROM MoneyFlow mf WHERE mf.createdAt <= :timestamp ORDER BY mf.createdAt DESC LIMIT 1")
+    Optional<BigDecimal> findBalanceAtTime(@Param("timestamp") LocalDateTime timestamp);
+    
+    /**
+     * Get the remaining balance before a specific point in time
+     * Returns the balance from the most recent money flow entry before the given time
+     */
+    @Query("SELECT mf.remainingBalance FROM MoneyFlow mf WHERE mf.createdAt < :timestamp ORDER BY mf.createdAt DESC LIMIT 1")
+    Optional<BigDecimal> findBalanceBeforeTime(@Param("timestamp") LocalDateTime timestamp);
 }

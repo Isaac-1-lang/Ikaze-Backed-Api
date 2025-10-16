@@ -18,4 +18,8 @@ public interface OrderTransactionRepository extends JpaRepository<OrderTransacti
     
     @Query("SELECT COALESCE(SUM(ot.orderAmount), 0) FROM OrderTransaction ot WHERE ot.status = 'COMPLETED'")
     BigDecimal sumCompletedRevenue();
+    
+    @Query("SELECT COALESCE(SUM(ot.orderAmount), 0) FROM OrderTransaction ot " +
+           "WHERE ot.status = 'COMPLETED' OR ot.status = 'REFUNDED'")
+    BigDecimal sumCompletedAndRefundedRevenue();
 }

@@ -144,6 +144,17 @@ public class MoneyFlowServiceImpl implements MoneyFlowService {
         moneyFlowRepository.deleteById(id);
         log.info("Money flow deleted successfully with ID: {}", id);
     }
+    
+    @Override
+    @Transactional(readOnly = true)
+    public BigDecimal getNetRevenue() {
+       
+        BigDecimal totalInflow = moneyFlowRepository.sumTotalInflow();
+        BigDecimal totalOutflow = moneyFlowRepository.sumTotalOutflow();
+        BigDecimal netRevenue = totalInflow.subtract(totalOutflow);
+        
+        return netRevenue;
+    }
 
     /**
      * Determine granularity based on time range duration

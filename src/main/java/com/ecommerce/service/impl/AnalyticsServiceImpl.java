@@ -35,6 +35,7 @@ public class AnalyticsServiceImpl implements AnalyticsService {
     private final UserRepository userRepository;
     private final ProductRepository productRepository;
     private final JwtService jwtService;
+    private final com.ecommerce.repository.MoneyFlowRepository moneyFlowRepository;
 
     @Override
     public AnalyticsResponseDTO getAnalytics(AnalyticsRequestDTO request, String bearerToken) {
@@ -69,8 +70,6 @@ public class AnalyticsServiceImpl implements AnalyticsService {
                 .count();
         Double newCustomersVs = percentChange(prevNewCustomers, newCustomers);
 
-        // Active products (all-time) and compare with previous period by creation date
-        // (approx)
         long activeProducts = productRepository.countActive();
 
         Double activeProductsVs = null;
@@ -78,29 +77,36 @@ public class AnalyticsServiceImpl implements AnalyticsService {
         BigDecimal revenue = null;
         Double revenueVs = null;
         if (isAdmin) {
-            BigDecimal rev = orders.stream()
-                    .map(o -> o.getOrderTransaction())
-                    .filter(Objects::nonNull)
-                    .filter(ot -> ot.getStatus() == OrderTransaction.TransactionStatus.COMPLETED)
-                    .map(OrderTransaction::getOrderAmount)
-                    .reduce(BigDecimal.ZERO, BigDecimal::add);
-
-            BigDecimal prevRev = prevOrders.stream()
-                    .map(o -> o.getOrderTransaction())
-                    .filter(Objects::nonNull)
-                    .filter(ot -> ot.getStatus() == OrderTransaction.TransactionStatus.COMPLETED)
-                    .map(OrderTransaction::getOrderAmount)
-                    .reduce(BigDecimal.ZERO, BigDecimal::add);
+            // Use MoneyFlow for accurate revenue calculation (accounts for refunds)
+            // Get balance at end of current period
+            BigDecimal balanceAtEnd = moneyFlowRepository.findBalanceAtTime(to)
+                    .orElse(BigDecimal.ZERO);
+            
+            // Get balance before start of current period
+            BigDecimal balanceBeforeStart = moneyFlowRepository.findBalanceBeforeTime(from)
+                    .orElse(BigDecimal.ZERO);
+            
+            // Revenue for current period = balance change
+            BigDecimal rev = balanceAtEnd.subtract(balanceBeforeStart);
+            
+            // Get balance at end of previous period
+            BigDecimal prevBalanceAtEnd = moneyFlowRepository.findBalanceAtTime(prevTo)
+                    .orElse(BigDecimal.ZERO);
+            
+            // Get balance before start of previous period
+            BigDecimal prevBalanceBeforeStart = moneyFlowRepository.findBalanceBeforeTime(prevFrom)
+                    .orElse(BigDecimal.ZERO);
+            
+            // Revenue for previous period = balance change
+            BigDecimal prevRev = prevBalanceAtEnd.subtract(prevBalanceBeforeStart);
 
             revenue = rev;
             revenueVs = percentChangeBig(prevRev, rev);
         }
 
-        // Top products (by quantity and revenue) in range
         Map<UUID, ProductAgg> productAgg = new HashMap<>();
         for (Order o : orders) {
             for (OrderItem oi : o.getOrderItems()) {
-                // Use the safe getEffectiveProduct() method
                 Product effectiveProduct = oi.getEffectiveProduct();
                 if (effectiveProduct == null) {
                     log.warn("OrderItem {} has no effective product, skipping", oi.getOrderItemId());

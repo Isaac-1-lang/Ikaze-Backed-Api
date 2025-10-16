@@ -31,6 +31,7 @@ public class DashboardServiceImpl implements DashboardService {
     private final OrderTransactionRepository orderTransactionRepository;
     private final UserRepository userRepository;
     private final JwtService jwtService;
+    private final com.ecommerce.service.MoneyFlowService moneyFlowService;
 
     @Override
     public DashboardResponseDTO getDashboardData(String bearerToken) {
@@ -51,7 +52,7 @@ public class DashboardServiceImpl implements DashboardService {
 
         BigDecimal revenue = null;
         if (role == UserRole.ADMIN) {
-            revenue = orderTransactionRepository.sumCompletedRevenue();
+            revenue = moneyFlowService.getNetRevenue();
         }
 
         List<Order> recent = orderRepository
