@@ -44,12 +44,9 @@ public interface OrderRepository extends JpaRepository<Order, Long>, OrderReposi
         @Query("SELECT COUNT(o) > 0 FROM Order o " +
                         "JOIN o.orderItems oi " +
                         "WHERE oi.productVariant.id = :variantId " +
-                        "AND o.orderStatus NOT IN ('DELIVERED', 'CANCELLED', 'REFUNDED', 'RETURNED')")
+                        "AND o.orderStatus NOT IN ('DELIVERED', 'CANCELLED', 'REFUNDED')")
         boolean existsByProductVariantAndNotDelivered(@Param("variantId") Long variantId);
 
-        /**
-         * Find all orders that contain a specific product variant
-         */
         @Query("SELECT o FROM Order o " +
                         "JOIN o.orderItems oi " +
                         "WHERE oi.productVariant.id = :variantId")

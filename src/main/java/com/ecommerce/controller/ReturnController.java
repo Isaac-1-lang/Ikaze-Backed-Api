@@ -30,10 +30,6 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
 
-/**
- * REST Controller for managing product return requests
- * Handles both authenticated customer and guest return scenarios
- */
 @RestController
 @RequestMapping("/api/v1/returns")
 @RequiredArgsConstructor
@@ -58,7 +54,6 @@ public class ReturnController {
             @ApiResponse(responseCode = "401", description = "Unauthorized - Authentication required"),
             @ApiResponse(responseCode = "403", description = "Forbidden - Customer role required"),
             @ApiResponse(responseCode = "404", description = "Order not found"),
-            @ApiResponse(responseCode = "409", description = "Return request already exists for this order"),
             @ApiResponse(responseCode = "422", description = "Order not eligible for return")
     })
     public ResponseEntity<?> submitReturnRequest(
@@ -134,6 +129,85 @@ public class ReturnController {
         }
     }
 
+
+    /**
+     * Get return requests by order ID for authenticated users
+     */
+    @GetMapping("/order/{orderId}")
+    @PreAuthorize("hasRole('CUSTOMER')")
+    @Operation(summary = "Get return requests by order ID", description = "Get all return requests for a specific order (authenticated users)", security = @SecurityRequirement(name = "bearerAuth"))
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200", description = "Return requests retrieved successfully"),
+            @ApiResponse(responseCode = "401", description = "Unauthorized - Authentication required"),
+            @ApiResponse(responseCode = "403", description = "Forbidden - Customer role required"),
+            @ApiResponse(responseCode = "404", description = "Order not found")
+    })
+    public ResponseEntity<?> getReturnRequestsByOrderId(
+            @Parameter(description = "Order ID") @PathVariable Long orderId,
+            @Parameter(description = "Customer ID") @RequestParam UUID customerId,
+            Authentication authentication) {
+
+        try {
+            log.info("Retrieving return requests for order {} and customer {}", orderId, customerId);
+
+            var returnRequests = returnService.getReturnRequestsByOrderId(orderId, customerId);
+
+            log.info("Retrieved {} return requests for order {}", returnRequests.size(), orderId);
+
+            return ResponseEntity.ok(returnRequests);
+
+        } catch (RuntimeException e) {
+            log.error("Error retrieving return requests for order {}: {}", orderId, e.getMessage(), e);
+
+            if (e.getMessage().contains("not found")) {
+                return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                        .body(createErrorResponse("ORDER_NOT_FOUND", e.getMessage()));
+            }
+
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(createErrorResponse("RETRIEVAL_ERROR", "Failed to retrieve return requests"));
+        }
+    }
+
+    /**
+     * Get return requests by order number and tracking token (for guest users)
+     */
+    @GetMapping("/order/guest")
+    @Operation(summary = "Get return requests by order number and token", description = "Get all return requests for a specific order using tracking token (guest users)")
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200", description = "Return requests retrieved successfully"),
+            @ApiResponse(responseCode = "400", description = "Invalid request parameters"),
+            @ApiResponse(responseCode = "404", description = "Order not found")
+    })
+    public ResponseEntity<?> getReturnRequestsByOrderNumberAndToken(
+            @Parameter(description = "Order number") @RequestParam String orderNumber,
+            @Parameter(description = "Tracking token") @RequestParam String token) {
+
+        try {
+            log.info("Retrieving return requests for guest order {}", orderNumber);
+
+            var returnRequests = returnService.getReturnRequestsByOrderNumberAndToken(orderNumber, token);
+
+            log.info("Retrieved {} return requests for guest order {}", returnRequests.size(), orderNumber);
+
+            return ResponseEntity.ok(returnRequests);
+
+        } catch (IllegalArgumentException e) {
+            log.warn("Invalid request parameters: {}", e.getMessage());
+            return ResponseEntity.badRequest()
+                    .body(createErrorResponse("INVALID_REQUEST", e.getMessage()));
+        } catch (RuntimeException e) {
+            log.error("Error retrieving return requests for order {}: {}", orderNumber, e.getMessage(), e);
+
+            if (e.getMessage().contains("not found")) {
+                return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                        .body(createErrorResponse("ORDER_NOT_FOUND", e.getMessage()));
+            }
+
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(createErrorResponse("RETRIEVAL_ERROR", "Failed to retrieve return requests"));
+        }
+    }
 
     /**
      * Get specific return request details
