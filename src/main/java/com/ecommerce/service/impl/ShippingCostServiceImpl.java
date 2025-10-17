@@ -272,18 +272,15 @@ public class ShippingCostServiceImpl implements ShippingCostService {
             }
         });
 
-        // Step 6: Calculate cumulative distance using hub logic
         DistanceCalculationResult distanceResult = calculateCumulativeDistance(
             involvedWarehouses, 
             customerLocation, 
             deliveryAddress.getCountry()
         );
 
-        // Step 7: Calculate total weight
         BigDecimal totalWeight = calculateTotalWeight(items);
         log.info("Total order weight: {} kg", totalWeight);
 
-        // Step 8: Calculate cost components
         CostComponents costs = calculateCostComponents(
             shippingCost, 
             distanceResult, 
