@@ -65,9 +65,11 @@ public class AuthServiceImpl implements AuthService {
             throw new CustomException("Email already exists");
         }
 
-        if (registrationDTO.getPhoneNumber() != null && !registrationDTO.getPhoneNumber().trim().isEmpty()) {
-            validatePhoneNumber(registrationDTO.getPhoneNumber());
+        if (registrationDTO.getPhoneNumber() == null || registrationDTO.getPhoneNumber().trim().isEmpty()) {
+            throw new CustomException("Phone number is required");
         }
+        
+        validatePhoneNumber(registrationDTO.getPhoneNumber());
 
         String hashedPassword = passwordEncoder.encode(registrationDTO.getPassword());
 
