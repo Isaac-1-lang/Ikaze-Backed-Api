@@ -259,6 +259,13 @@ public class CategoryServiceImpl implements CategoryService {
             dto.setParentName(category.getParent().getName());
         }
 
+        // Set product count
+        if (category.getProducts() != null) {
+            dto.setProductCount((long) category.getProducts().size());
+        } else {
+            dto.setProductCount(0L);
+        }
+
         // Set children recursively
         if (category.getChildren() != null) {
             List<CategoryDTO> childrenDTOs = category.getChildren().stream()

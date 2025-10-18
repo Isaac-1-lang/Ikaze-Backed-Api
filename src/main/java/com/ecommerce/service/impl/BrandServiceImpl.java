@@ -259,6 +259,13 @@ public class BrandServiceImpl implements BrandService {
         dto.setCreatedAt(brand.getCreatedAt());
         dto.setUpdatedAt(brand.getUpdatedAt());
         
+        // Set product count
+        if (brand.getProducts() != null) {
+            dto.setProductCount((long) brand.getProducts().size());
+        } else {
+            dto.setProductCount(0L);
+        }
+        
         return dto;
     }
 
