@@ -40,6 +40,15 @@ public class SystemResetServiceImpl implements SystemResetService {
     private final ReviewRepository reviewRepository;
     private final RewardRangeRepository rewardRangeRepository;
     private final UserPointsRepository userPointsRepository;
+    
+    // Order-related repositories
+    private final OrderDeliveryNoteRepository orderDeliveryNoteRepository;
+    private final OrderTrackingTokenRepository orderTrackingTokenRepository;
+    private final OrderItemBatchRepository orderItemBatchRepository;
+    private final ReturnRequestRepository returnRequestRepository;
+    private final ReturnItemRepository returnItemRepository;
+    private final ReturnMediaRepository returnMediaRepository;
+    private final ReturnAppealRepository returnAppealRepository;
 
     @Override
     public SystemResetResponse performSystemReset(SystemResetRequest request) {
@@ -304,8 +313,43 @@ public class SystemResetServiceImpl implements SystemResetService {
         log.info("Deleting all orders with cascading relationships");
         
         try {
-            // JPA cascading will handle OrderItems, OrderTransaction, OrderAddress, 
-            // OrderCustomerInfo, OrderInfo due to CascadeType.ALL and orphanRemoval
+            // Step 1: Delete return appeals (references return requests)
+            long appealCount = returnAppealRepository.count();
+            returnAppealRepository.deleteAll();
+            log.info("Deleted {} return appeals", appealCount);
+            
+            // Step 2: Delete return media (references return requests)
+            long mediaCount = returnMediaRepository.count();
+            returnMediaRepository.deleteAll();
+            log.info("Deleted {} return media", mediaCount);
+            
+            // Step 3: Delete return items (references return requests)
+            long returnItemCount = returnItemRepository.count();
+            returnItemRepository.deleteAll();
+            log.info("Deleted {} return items", returnItemCount);
+            
+            // Step 4: Delete return requests (references orders)
+            long returnRequestCount = returnRequestRepository.count();
+            returnRequestRepository.deleteAll();
+            log.info("Deleted {} return requests", returnRequestCount);
+            
+            // Step 5: Delete order delivery notes (references orders)
+            long deliveryNoteCount = orderDeliveryNoteRepository.count();
+            orderDeliveryNoteRepository.deleteAll();
+            log.info("Deleted {} order delivery notes", deliveryNoteCount);
+            
+            // Step 6: Delete order tracking tokens (references orders)
+            long trackingTokenCount = orderTrackingTokenRepository.count();
+            orderTrackingTokenRepository.deleteAll();
+            log.info("Deleted {} order tracking tokens", trackingTokenCount);
+            
+            // Step 7: Delete order item batches (references order items)
+            long itemBatchCount = orderItemBatchRepository.count();
+            orderItemBatchRepository.deleteAll();
+            log.info("Deleted {} order item batches", itemBatchCount);
+            
+            // Step 8: Now delete orders (JPA cascading will handle OrderItems, OrderTransaction, 
+            // OrderAddress, OrderCustomerInfo, OrderInfo due to CascadeType.ALL and orphanRemoval)
             long count = orderRepository.count();
             orderRepository.deleteAll();
             log.info("Deleted {} orders with all cascading relationships", count);
