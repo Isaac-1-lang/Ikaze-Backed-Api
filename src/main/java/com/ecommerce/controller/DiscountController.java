@@ -217,22 +217,38 @@ public class DiscountController {
     })
     @DeleteMapping("/{discountId}")
     @PreAuthorize("hasAnyRole('ADMIN', 'EMPLOYEE')")
-    public ResponseEntity<Map<String, String>> deleteDiscount(
+    public ResponseEntity<Map<String, Object>> deleteDiscount(
             @Parameter(description = "UUID of the discount to delete", required = true)
             @PathVariable UUID discountId) {
         log.info("Deleting discount with ID: {}", discountId);
 
         try {
+            // Get discount info before deletion for response
+            Discount discount = discountRepository.findById(discountId)
+                    .orElseThrow(() -> new EntityNotFoundException("Discount not found with ID: " + discountId));
+            
+            // Count affected products and variants
+            long affectedProducts = productRepository.countByDiscount(discount);
+            long affectedVariants = productVariantRepository.countByDiscount(discount);
+            
+            // Perform deletion (service will handle removing discount from products/variants)
             boolean deleted = discountService.deleteDiscount(discountId);
-            Map<String, String> response = new HashMap<>();
-            response.put("message", "Discount deleted successfully");
+            
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", true);
+            response.put("message", "Discount deleted successfully and removed from all associated products");
             response.put("discountId", discountId.toString());
+            response.put("discountName", discount.getName());
+            response.put("affectedProducts", affectedProducts);
+            response.put("affectedVariants", affectedVariants);
+            response.put("totalAffected", affectedProducts + affectedVariants);
+            
             return ResponseEntity.ok(response);
         } catch (EntityNotFoundException e) {
             log.error("Discount not found with ID: {}", discountId);
             throw e;
         } catch (Exception e) {
-            log.error("Error deleting discount: {}", e.getMessage());
+            log.error("Error deleting discount: {}", e.getMessage(), e);
             throw e;
         }
     }
