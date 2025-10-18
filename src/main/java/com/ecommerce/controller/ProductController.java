@@ -574,9 +574,7 @@ public class ProductController {
         }
     }
 
-    /**
-     * Helper method to create standardized error response
-     */
+
     private Map<String, Object> createErrorResponse(String errorCode, String message) {
         Map<String, Object> errorResponse = new HashMap<>();
         errorResponse.put("success", false);

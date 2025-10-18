@@ -38,6 +38,7 @@ public class PointsPaymentServiceImpl implements PointsPaymentService {
     private final StripeService stripeService;
     private final EnhancedStockLockService enhancedStockLockService;
     private final OrderEmailService orderEmailService;
+    private final MoneyFlowService moneyFlowService;
 
     @Override
     public PointsPaymentPreviewDTO previewPointsPayment(PointsPaymentRequest request) {
@@ -305,6 +306,9 @@ public class PointsPaymentServiceImpl implements PointsPaymentService {
             Order order = orderRepository.findById(orderId)
                     .orElseThrow(() -> new RuntimeException("Order not found"));
             
+            // Record money flow for hybrid payment (only the financial part)
+            recordHybridPaymentInMoneyFlow(order, transaction);
+            
             // Send order confirmation email for completed hybrid payment
             try {
                 orderEmailService.sendOrderConfirmationEmail(order);
@@ -350,6 +354,7 @@ public class PointsPaymentServiceImpl implements PointsPaymentService {
 
         BigDecimal subtotal = calculateSimpleSubtotal(request.getItems());
         OrderInfo orderInfo = new OrderInfo();
+        orderInfo.setSubtotal(subtotal); // Products total before discounts, taxes, shipping
         orderInfo.setShippingCost(shippingCostService.calculateOrderShippingCost(request.getShippingAddress(), request.getItems(), subtotal));
         orderInfo.setTotalAmount(totalAmount);
         orderInfo.setOrder(order);
@@ -663,6 +668,35 @@ public class PointsPaymentServiceImpl implements PointsPaymentService {
             throw new IllegalArgumentException("Sorry, we don't deliver to " + country + " as we don't have any warehouses there.");
         }
         
-        log.info("Delivery country validation passed for: {}", country);
+    }
+
+    /**
+     * Record hybrid payment in money flow system (only the financial part, not points)
+     */
+    private void recordHybridPaymentInMoneyFlow(Order order, OrderTransaction transaction) {
+        try {
+            BigDecimal pointsValue = transaction.getPointsValue() != null ? 
+                    transaction.getPointsValue() : BigDecimal.ZERO;
+            BigDecimal financialAmount = transaction.getOrderAmount().subtract(pointsValue);
+            
+            // Only record if there's actual money involved
+            if (financialAmount.compareTo(BigDecimal.ZERO) > 0) {
+                String description = String.format("Hybrid payment received for Order #%s (Points: %d, Cash: $%.2f)", 
+                        order.getOrderCode() != null ? order.getOrderCode() : order.getOrderId().toString(),
+                        transaction.getPointsUsed(),
+                        financialAmount);
+                
+                com.ecommerce.dto.CreateMoneyFlowDTO moneyFlowDTO = new com.ecommerce.dto.CreateMoneyFlowDTO();
+                moneyFlowDTO.setDescription(description);
+                moneyFlowDTO.setType(com.ecommerce.enums.MoneyFlowType.IN);
+                moneyFlowDTO.setAmount(financialAmount);
+                
+                moneyFlowService.save(moneyFlowDTO);
+                log.info("Recorded money flow IN: {} for hybrid payment order {}", financialAmount, order.getOrderId());
+            }
+        } catch (Exception e) {
+            log.error("Failed to record money flow for hybrid payment order {}: {}", order.getOrderId(), e.getMessage(), e);
+            // Don't throw exception - payment already succeeded, this is just tracking
+        }
     }
 }

@@ -216,10 +216,28 @@ public class Order {
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
     }
 
-    /**
-     * Order status enum
-     */
     public enum OrderStatus {
-        PENDING, PROCESSING, SHIPPED, DELIVERED, CANCELLED, RETURNED
+        PENDING, PROCESSING, SHIPPED, DELIVERED, CANCELLED,
+
+        @Deprecated
+        RETURNED
+    }
+
+    @Transient
+    public boolean isFullyReturned() {
+        if (orderItems == null || orderItems.isEmpty()) {
+            return false;
+        }
+        
+        for (OrderItem orderItem : orderItems) {
+            int orderedQuantity = orderItem.getQuantity();
+            int totalReturnedQuantity = 0;
+            
+            if (totalReturnedQuantity < orderedQuantity) {
+                return false;
+            }
+        }
+        
+        return true;
     }
 }

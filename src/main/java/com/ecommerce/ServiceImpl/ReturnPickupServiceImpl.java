@@ -4,6 +4,7 @@ import com.ecommerce.dto.ReturnPickupRequestDTO;
 import com.ecommerce.dto.ReturnPickupResponseDTO;
 import com.ecommerce.entity.*;
 import com.ecommerce.repository.*;
+import com.ecommerce.service.MoneyFlowService;
 import com.ecommerce.service.ReturnPickupService;
 import com.ecommerce.service.RewardService;
 import com.ecommerce.service.StripeService;
@@ -37,6 +38,7 @@ public class ReturnPickupServiceImpl implements ReturnPickupService {
     private final RewardService rewardService;
     private final StripeService stripeService;
     private final ShippingCostRepository shippingCostRepository;
+    private final MoneyFlowService moneyFlowService;
 
     @Override
     public ReturnPickupResponseDTO processReturnPickup(ReturnPickupRequestDTO pickupRequest, UUID deliveryAgentId) {
@@ -45,10 +47,11 @@ public class ReturnPickupServiceImpl implements ReturnPickupService {
                     pickupRequest.getReturnRequestId(), deliveryAgentId);
 
             validateReturnPickup(pickupRequest, deliveryAgentId);
-            
+
             ReturnRequest returnRequest = returnRequestRepository
                     .findByIdWithCompleteDeliveryDetails(pickupRequest.getReturnRequestId())
-                    .orElseThrow(() -> new RuntimeException("Return request not found with ID: " + pickupRequest.getReturnRequestId()));
+                    .orElseThrow(() -> new RuntimeException(
+                            "Return request not found with ID: " + pickupRequest.getReturnRequestId()));
 
             List<ReturnPickupResponseDTO.ReturnItemProcessingResult> itemResults = new ArrayList<>();
 
@@ -77,45 +80,45 @@ public class ReturnPickupServiceImpl implements ReturnPickupService {
         }
     }
 
-    /**
-     * Validates that the delivery agent is properly assigned to the return request
-     */
+
     private void validateDeliveryAgentAssignment(UUID deliveryAgentId, ReturnRequest returnRequest) {
         // 1. Verify delivery agent exists
         userRepository.findById(deliveryAgentId)
-                .orElseThrow(() -> new IllegalArgumentException("Delivery agent not found with ID: " + deliveryAgentId));
+                .orElseThrow(
+                        () -> new IllegalArgumentException("Delivery agent not found with ID: " + deliveryAgentId));
 
         // 2. Check if return request is assigned to this delivery agent
         if (returnRequest.getDeliveryAgent() == null) {
             throw new IllegalStateException("No delivery agent assigned to this return request");
         }
-        
+
         if (!returnRequest.getDeliveryAgent().getId().equals(deliveryAgentId)) {
             throw new IllegalStateException(String.format(
-                "Return request is assigned to different delivery agent. Expected: %s, Actual: %s",
-                deliveryAgentId, returnRequest.getDeliveryAgent().getId()));
+                    "Return request is assigned to different delivery agent. Expected: %s, Actual: %s",
+                    deliveryAgentId, returnRequest.getDeliveryAgent().getId()));
         }
 
-        log.debug("Delivery agent assignment validation passed for agent {} and request {}", 
-            deliveryAgentId, returnRequest.getId());
+        log.debug("Delivery agent assignment validation passed for agent {} and request {}",
+                deliveryAgentId, returnRequest.getId());
     }
 
     @Override
     public void validateReturnPickup(ReturnPickupRequestDTO pickupRequest, UUID deliveryAgentId) {
         validateReturnPickupRequest(pickupRequest);
-        
+
         ReturnRequest returnRequest = returnRequestRepository
                 .findByIdWithCompleteDeliveryDetails(pickupRequest.getReturnRequestId())
-                .orElseThrow(() -> new RuntimeException("Return request not found with ID: " + pickupRequest.getReturnRequestId()));
-        
+                .orElseThrow(() -> new RuntimeException(
+                        "Return request not found with ID: " + pickupRequest.getReturnRequestId()));
+
         validateDeliveryAgentAssignment(deliveryAgentId, returnRequest);
-        
+
         validateReturnRequestState(returnRequest);
-        
+
         validateReturnItems(pickupRequest, returnRequest);
-        
+
         validateReturnWindows(pickupRequest, returnRequest);
-        
+
         log.debug("Return pickup validation passed for request {}", pickupRequest.getReturnRequestId());
     }
 
@@ -146,7 +149,6 @@ public class ReturnPickupServiceImpl implements ReturnPickupService {
             }
         }
     }
-
 
     private ReturnPickupResponseDTO.ReturnItemProcessingResult processReturnItem(
             ReturnPickupRequestDTO.ReturnItemPickupDTO pickupItem,
@@ -264,58 +266,58 @@ public class ReturnPickupServiceImpl implements ReturnPickupService {
 
     private void updateReturnRequestStatus(ReturnRequest returnRequest) {
         try {
-            log.debug("Updating return request {} status from {} to COMPLETED", 
-                returnRequest.getId(), returnRequest.getStatus());
-            log.debug("Updating delivery status from {} to PICKUP_COMPLETED", 
-                returnRequest.getDeliveryStatus());
-            
+            log.debug("Updating return request {} status from {} to COMPLETED",
+                    returnRequest.getId(), returnRequest.getStatus());
+            log.debug("Updating delivery status from {} to PICKUP_COMPLETED",
+                    returnRequest.getDeliveryStatus());
+
             // Validate current state before update
             if (returnRequest.getStatus() != ReturnRequest.ReturnStatus.APPROVED) {
                 throw new IllegalStateException(String.format(
-                    "Cannot update status to COMPLETED. Current status is %s, expected APPROVED", 
-                    returnRequest.getStatus()));
+                        "Cannot update status to COMPLETED. Current status is %s, expected APPROVED",
+                        returnRequest.getStatus()));
             }
-            
+
             if (returnRequest.getDeliveryStatus() != ReturnRequest.DeliveryStatus.ASSIGNED) {
                 throw new IllegalStateException(String.format(
-                    "Cannot update delivery status to PICKUP_COMPLETED. Current status is %s, expected ASSIGNED", 
-                    returnRequest.getDeliveryStatus()));
+                        "Cannot update delivery status to PICKUP_COMPLETED. Current status is %s, expected ASSIGNED",
+                        returnRequest.getDeliveryStatus()));
             }
-            
+
             LocalDateTime now = LocalDateTime.now();
-            
+
             // Update statuses
             returnRequest.setStatus(ReturnRequest.ReturnStatus.COMPLETED);
             returnRequest.setDeliveryStatus(ReturnRequest.DeliveryStatus.PICKUP_COMPLETED);
             returnRequest.setUpdatedAt(now);
-            
+
             // Set all required timestamps for COMPLETED status
             returnRequest.setPickupCompletedAt(now);
-            
+
             // Ensure actual pickup time is set (might be required by constraint)
             if (returnRequest.getActualPickupTime() == null) {
                 returnRequest.setActualPickupTime(now);
                 log.debug("Set actualPickupTime to current timestamp");
             }
-            
+
             if (returnRequest.getPickupStartedAt() == null) {
                 returnRequest.setPickupStartedAt(now);
                 log.debug("Set pickupStartedAt to current timestamp");
             }
-            
+
             log.debug("Set all required timestamps for COMPLETED status");
             validateStatusCombination(returnRequest);
             returnRequestRepository.save(returnRequest);
-                        try {
+            try {
                 processRefundForCompletedReturn(returnRequest);
             } catch (Exception refundException) {
-                log.error("Refund processing failed for return request {}: {}", 
+                log.error("Refund processing failed for return request {}: {}",
                         returnRequest.getId(), refundException.getMessage(), refundException);
             }
-            
-            log.info("Successfully updated return request {} status to COMPLETED with delivery status PICKUP_COMPLETED", 
-                returnRequest.getId());
-            
+
+            log.info("Successfully updated return request {} status to COMPLETED with delivery status PICKUP_COMPLETED",
+                    returnRequest.getId());
+
         } catch (Exception e) {
             log.error("Failed to update return request {} status: {}", returnRequest.getId(), e.getMessage());
             throw new RuntimeException("Failed to update return request status: " + e.getMessage(), e);
@@ -324,27 +326,20 @@ public class ReturnPickupServiceImpl implements ReturnPickupService {
 
     private void updateOrderStatus(Order order) {
         try {
-            log.debug("Updating order {} status from {} to RETURNED", 
-                order.getOrderId(), order.getOrderStatus());
-            
+            log.debug("Updating order {} status from {} to RETURNED",
+                    order.getOrderId(), order.getOrderStatus());
+
             // Validate current order status
             Order.OrderStatus currentStatus = order.getOrderStatus();
             if (currentStatus == Order.OrderStatus.CANCELLED) {
                 throw new IllegalStateException(String.format(
-                    "Cannot update cancelled order %s to RETURNED status", order.getOrderId()));
+                        "Cannot update cancelled order %s status", order.getOrderId()));
             }
-            
-            if (currentStatus == Order.OrderStatus.RETURNED) {
-                log.warn("Order {} is already marked as RETURNED, skipping update", order.getOrderId());
-                return;
-            }
-            
-            order.setOrderStatus(Order.OrderStatus.RETURNED);
-            order.setUpdatedAt(LocalDateTime.now());
 
+            order.setUpdatedAt(LocalDateTime.now());
             orderRepository.save(order);
             log.info("Successfully updated order {} status to RETURNED", order.getOrderId());
-            
+
         } catch (Exception e) {
             log.error("Failed to update order {} status: {}", order.getOrderId(), e.getMessage());
             throw new RuntimeException("Failed to update order status: " + e.getMessage(), e);
@@ -386,15 +381,15 @@ public class ReturnPickupServiceImpl implements ReturnPickupService {
         if (pickupRequest == null) {
             throw new IllegalArgumentException("Pickup request cannot be null");
         }
-        
+
         if (pickupRequest.getReturnRequestId() == null) {
             throw new IllegalArgumentException("Return request ID is required");
         }
-        
+
         if (pickupRequest.getReturnItems() == null || pickupRequest.getReturnItems().isEmpty()) {
             throw new IllegalArgumentException("Return items list cannot be empty");
         }
-        
+
         // Validate each pickup item
         for (ReturnPickupRequestDTO.ReturnItemPickupDTO item : pickupRequest.getReturnItems()) {
             if (item.getReturnItemId() == null) {
@@ -404,7 +399,7 @@ public class ReturnPickupServiceImpl implements ReturnPickupService {
                 throw new IllegalArgumentException("Pickup status is required for all items");
             }
         }
-        
+
         log.debug("Pickup request validation passed for return request {}", pickupRequest.getReturnRequestId());
     }
 
@@ -415,26 +410,26 @@ public class ReturnPickupServiceImpl implements ReturnPickupService {
         if (returnRequest == null) {
             throw new IllegalArgumentException("Return request cannot be null");
         }
-        
+
         // Check return request status
         if (returnRequest.getStatus() != ReturnRequest.ReturnStatus.APPROVED) {
             throw new IllegalStateException(String.format(
-                "Return request must be APPROVED to process pickup. Current status: %s", 
-                returnRequest.getStatus()));
+                    "Return request must be APPROVED to process pickup. Current status: %s",
+                    returnRequest.getStatus()));
         }
-        
+
         // Check delivery status
         if (returnRequest.getDeliveryStatus() != ReturnRequest.DeliveryStatus.ASSIGNED) {
             throw new IllegalStateException(String.format(
-                "Return request delivery status must be ASSIGNED to process pickup. Current status: %s", 
-                returnRequest.getDeliveryStatus()));
+                    "Return request delivery status must be ASSIGNED to process pickup. Current status: %s",
+                    returnRequest.getDeliveryStatus()));
         }
-        
+
         // Check if delivery agent is assigned
         if (returnRequest.getDeliveryAgent() == null) {
             throw new IllegalStateException("No delivery agent assigned to this return request");
         }
-        
+
         log.debug("Return request state validation passed for request {}", returnRequest.getId());
     }
 
@@ -445,34 +440,34 @@ public class ReturnPickupServiceImpl implements ReturnPickupService {
         List<Long> requestReturnItemIds = pickupRequest.getReturnItems().stream()
                 .map(ReturnPickupRequestDTO.ReturnItemPickupDTO::getReturnItemId)
                 .toList();
-        
+
         List<Long> actualReturnItemIds = returnRequest.getReturnItems().stream()
                 .map(ReturnItem::getId)
                 .toList();
-        
+
         // Check if all requested items exist in the return request
         for (Long requestedId : requestReturnItemIds) {
             if (!actualReturnItemIds.contains(requestedId)) {
                 throw new IllegalArgumentException(String.format(
-                    "Return item with ID %d not found in return request %d", 
-                    requestedId, returnRequest.getId()));
+                        "Return item with ID %d not found in return request %d",
+                        requestedId, returnRequest.getId()));
             }
         }
-        
+
         // Validate each return item individually
         for (ReturnPickupRequestDTO.ReturnItemPickupDTO pickupItem : pickupRequest.getReturnItems()) {
             ReturnItem returnItem = returnItemRepository.findById(pickupItem.getReturnItemId())
                     .orElseThrow(() -> new IllegalArgumentException(
-                        "Return item not found with ID: " + pickupItem.getReturnItemId()));
-            
+                            "Return item not found with ID: " + pickupItem.getReturnItemId()));
+
             // Check if return item belongs to the correct return request
             if (!returnItem.getReturnRequest().getId().equals(returnRequest.getId())) {
                 throw new IllegalArgumentException(String.format(
-                    "Return item %d does not belong to return request %d", 
-                    pickupItem.getReturnItemId(), returnRequest.getId()));
+                        "Return item %d does not belong to return request %d",
+                        pickupItem.getReturnItemId(), returnRequest.getId()));
             }
         }
-        
+
         log.debug("Return items validation passed for {} items", requestReturnItemIds.size());
     }
 
@@ -483,30 +478,29 @@ public class ReturnPickupServiceImpl implements ReturnPickupService {
         // Check current status
         if (returnRequest.getStatus() != ReturnRequest.ReturnStatus.APPROVED) {
             throw new IllegalStateException(String.format(
-                "Cannot complete pickup for return request with status: %s. Must be APPROVED.", 
-                returnRequest.getStatus()));
+                    "Cannot complete pickup for return request with status: %s. Must be APPROVED.",
+                    returnRequest.getStatus()));
         }
-        
+
         // Check current delivery status
         if (returnRequest.getDeliveryStatus() != ReturnRequest.DeliveryStatus.ASSIGNED) {
             throw new IllegalStateException(String.format(
-                "Cannot complete pickup for return request with delivery status: %s. Must be ASSIGNED.", 
-                returnRequest.getDeliveryStatus()));
+                    "Cannot complete pickup for return request with delivery status: %s. Must be ASSIGNED.",
+                    returnRequest.getDeliveryStatus()));
         }
-        
+
         // Check if order exists and is in valid state
         if (returnRequest.getOrder() == null) {
             throw new IllegalStateException("Return request has no associated order");
         }
-        
+
         // Validate order status allows return completion
         Order.OrderStatus currentOrderStatus = returnRequest.getOrder().getOrderStatus();
-        if (currentOrderStatus == Order.OrderStatus.CANCELLED || 
-            currentOrderStatus == Order.OrderStatus.RETURNED) {
+        if (currentOrderStatus == Order.OrderStatus.CANCELLED) {
             throw new IllegalStateException(String.format(
-                "Cannot complete return pickup for order with status: %s", currentOrderStatus));
+                    "Cannot complete return pickup for order with status: %s", currentOrderStatus));
         }
-        
+
         log.debug("Status update validation passed for return request {}", returnRequest.getId());
     }
 
@@ -516,56 +510,56 @@ public class ReturnPickupServiceImpl implements ReturnPickupService {
     private void validateStatusCombination(ReturnRequest returnRequest) {
         ReturnRequest.ReturnStatus status = returnRequest.getStatus();
         ReturnRequest.DeliveryStatus deliveryStatus = returnRequest.getDeliveryStatus();
-        
+
         log.debug("Validating status combination: status={}, deliveryStatus={}", status, deliveryStatus);
-        
+
         // Check for invalid combinations based on the database constraint
         if (status == ReturnRequest.ReturnStatus.COMPLETED) {
             if (deliveryStatus != ReturnRequest.DeliveryStatus.PICKUP_COMPLETED) {
                 throw new IllegalStateException(String.format(
-                    "Invalid status combination: COMPLETED status requires PICKUP_COMPLETED delivery status, but got %s", 
-                    deliveryStatus));
+                        "Invalid status combination: COMPLETED status requires PICKUP_COMPLETED delivery status, but got %s",
+                        deliveryStatus));
             }
         }
-        
+
         if (deliveryStatus == ReturnRequest.DeliveryStatus.PICKUP_COMPLETED) {
             if (status != ReturnRequest.ReturnStatus.COMPLETED) {
                 throw new IllegalStateException(String.format(
-                    "Invalid status combination: PICKUP_COMPLETED delivery status requires COMPLETED status, but got %s", 
-                    status));
+                        "Invalid status combination: PICKUP_COMPLETED delivery status requires COMPLETED status, but got %s",
+                        status));
             }
         }
-        
+
         // Validate that required fields are not null for COMPLETED status
         if (status == ReturnRequest.ReturnStatus.COMPLETED) {
             if (returnRequest.getDeliveryAgent() == null && returnRequest.getDeliveryAgentId() == null) {
                 throw new IllegalStateException("COMPLETED status requires a delivery agent to be assigned");
             }
-            
+
             if (returnRequest.getDecisionAt() == null) {
                 throw new IllegalStateException("COMPLETED status requires decision timestamp");
             }
-            
+
             if (returnRequest.getAssignedAt() == null) {
                 throw new IllegalStateException("COMPLETED status requires assignment timestamp");
             }
-            
+
             if (returnRequest.getPickupCompletedAt() == null) {
                 throw new IllegalStateException("COMPLETED status requires pickup completion timestamp");
             }
-            
+
             // Additional validation for pickup-related timestamps
             if (deliveryStatus == ReturnRequest.DeliveryStatus.PICKUP_COMPLETED) {
                 if (returnRequest.getActualPickupTime() == null) {
                     throw new IllegalStateException("PICKUP_COMPLETED delivery status requires actual pickup time");
                 }
-                
+
                 if (returnRequest.getPickupStartedAt() == null) {
                     throw new IllegalStateException("PICKUP_COMPLETED delivery status requires pickup started time");
                 }
             }
         }
-        
+
         log.debug("Status combination validation passed");
     }
 
@@ -577,7 +571,6 @@ public class ReturnPickupServiceImpl implements ReturnPickupService {
         log.info("Processing refund for completed return request {}", returnRequest.getId());
 
         try {
-            // Get all return items that are eligible for refund (returnable items)
             List<ReturnItem> returnableItems = returnItemRepository.findByReturnRequestId(returnRequest.getId())
                     .stream()
                     .filter(item -> item.getIsReturnable() != null && item.getIsReturnable())
@@ -592,8 +585,8 @@ public class ReturnPickupServiceImpl implements ReturnPickupService {
 
             if (refundResult.isSuccess()) {
                 log.info("Refund processed successfully for return request {}: Total refund value: {}, " +
-                        "Card refund: {}, Points refunded: {}", 
-                        returnRequest.getId(), 
+                        "Card refund: {}, Points refunded: {}",
+                        returnRequest.getId(),
                         refundResult.getTotalRefundValue(),
                         refundResult.getCardRefundAmount(),
                         refundResult.getPointsRefunded());
@@ -605,13 +598,13 @@ public class ReturnPickupServiceImpl implements ReturnPickupService {
                 returnRequestRepository.save(returnRequest);
 
             } else {
-                log.error("Refund processing failed for return request {}: {}", 
+                log.error("Refund processing failed for return request {}: {}",
                         returnRequest.getId(), refundResult.getMessage());
                 throw new RuntimeException("Refund processing failed: " + refundResult.getMessage());
             }
 
         } catch (Exception e) {
-            log.error("Error processing refund for completed return {}: {}", 
+            log.error("Error processing refund for completed return {}: {}",
                     returnRequest.getId(), e.getMessage(), e);
             throw new RuntimeException("Refund processing error: " + e.getMessage(), e);
         }
@@ -624,19 +617,19 @@ public class ReturnPickupServiceImpl implements ReturnPickupService {
     @Transactional
     public RefundResult processManualRefund(Long returnRequestId) {
         log.info("Processing manual refund for return request {}", returnRequestId);
-        
+
         ReturnRequest returnRequest = returnRequestRepository.findById(returnRequestId)
                 .orElseThrow(() -> new RuntimeException("Return request not found: " + returnRequestId));
-        
+
         List<ReturnItem> returnableItems = returnItemRepository.findByReturnRequestId(returnRequestId)
                 .stream()
                 .filter(item -> item.getIsReturnable() != null && item.getIsReturnable())
                 .toList();
-        
+
         if (returnableItems.isEmpty()) {
             throw new RuntimeException("No returnable items found for return request: " + returnRequestId);
         }
-        
+
         return processReturnRefund(returnRequest, returnableItems);
     }
 
@@ -645,7 +638,7 @@ public class ReturnPickupServiceImpl implements ReturnPickupService {
      */
     @Transactional
     public RefundResult processReturnRefund(ReturnRequest returnRequest, List<ReturnItem> returnedItems) {
-        log.info("Processing refund for return request {} with {} items", 
+        log.info("Processing refund for return request {} with {} items",
                 returnRequest.getId(), returnedItems.size());
 
         try {
@@ -660,30 +653,30 @@ public class ReturnPickupServiceImpl implements ReturnPickupService {
 
             // Check if all items in the order are being returned
             boolean isFullOrderReturn = isFullOrderReturn(order, returnedItems);
-            
+
             RefundCalculation refundCalc = calculateRefundAmounts(order, returnedItems, isFullOrderReturn);
-            
+
             // Process refund based on payment method
             RefundResult result = switch (transaction.getPaymentMethod()) {
                 case POINTS -> processPointsOnlyRefund(order, transaction, refundCalc, isFullOrderReturn);
                 case HYBRID -> processHybridRefund(order, transaction, refundCalc, isFullOrderReturn);
                 case CREDIT_CARD, DEBIT_CARD -> processCardRefund(order, transaction, refundCalc, isFullOrderReturn);
-                default -> throw new IllegalArgumentException("Unsupported payment method: " + transaction.getPaymentMethod());
+                default ->
+                    throw new IllegalArgumentException("Unsupported payment method: " + transaction.getPaymentMethod());
             };
 
-            // Update transaction status if full refund
             if (isFullOrderReturn || refundCalc.getTotalRefundAmount().compareTo(transaction.getOrderAmount()) >= 0) {
                 transaction.setStatus(OrderTransaction.TransactionStatus.REFUNDED);
                 transaction.setUpdatedAt(LocalDateTime.now());
             }
 
-            log.info("Refund processed successfully for return request {}: {}", 
+            log.info("Refund processed successfully for return request {}: {}",
                     returnRequest.getId(), result);
-            
+
             return result;
 
         } catch (Exception e) {
-            log.error("Failed to process refund for return request {}: {}", 
+            log.error("Failed to process refund for return request {}: {}",
                     returnRequest.getId(), e.getMessage(), e);
             throw new RuntimeException("Refund processing failed: " + e.getMessage(), e);
         }
@@ -692,8 +685,9 @@ public class ReturnPickupServiceImpl implements ReturnPickupService {
     /**
      * Calculate refund amounts for returned items including shipping costs
      */
-    private RefundCalculation calculateRefundAmounts(Order order, List<ReturnItem> returnedItems, boolean isFullOrderReturn) {
-        log.info("Calculating refund amounts for {} items, full order return: {}", 
+    private RefundCalculation calculateRefundAmounts(Order order, List<ReturnItem> returnedItems,
+            boolean isFullOrderReturn) {
+        log.info("Calculating refund amounts for {} items, full order return: {}",
                 returnedItems.size(), isFullOrderReturn);
 
         BigDecimal totalItemRefund = BigDecimal.ZERO;
@@ -703,9 +697,11 @@ public class ReturnPickupServiceImpl implements ReturnPickupService {
         // If full order return, refund everything
         if (isFullOrderReturn) {
             totalItemRefund = order.getOrderInfo().getTotalAmount().subtract(
-                    order.getOrderInfo().getShippingCost() != null ? order.getOrderInfo().getShippingCost() : BigDecimal.ZERO);
-            totalShippingRefund = order.getOrderInfo().getShippingCost() != null ? 
-                    order.getOrderInfo().getShippingCost() : BigDecimal.ZERO;
+                    order.getOrderInfo().getShippingCost() != null ? order.getOrderInfo().getShippingCost()
+                            : BigDecimal.ZERO);
+            totalShippingRefund = order.getOrderInfo().getShippingCost() != null
+                    ? order.getOrderInfo().getShippingCost()
+                    : BigDecimal.ZERO;
         } else {
             // Calculate partial refund
             for (ReturnItem returnItem : returnedItems) {
@@ -719,7 +715,7 @@ public class ReturnPickupServiceImpl implements ReturnPickupService {
                 BigDecimal itemPrice = orderItem.getPrice();
                 int returnQuantity = returnItem.getReturnQuantity();
                 BigDecimal itemRefundAmount = itemPrice.multiply(BigDecimal.valueOf(returnQuantity));
-                
+
                 totalItemRefund = totalItemRefund.add(itemRefundAmount);
 
                 // Calculate shipping cost for this item based on weight
@@ -731,8 +727,7 @@ public class ReturnPickupServiceImpl implements ReturnPickupService {
                         returnQuantity,
                         itemPrice,
                         itemRefundAmount,
-                        itemShippingCost
-                ));
+                        itemShippingCost));
 
                 log.debug("Item refund calculated - OrderItem: {}, Quantity: {}, Price: {}, Refund: {}, Shipping: {}",
                         orderItem.getOrderItemId(), returnQuantity, itemPrice, itemRefundAmount, itemShippingCost);
@@ -740,16 +735,15 @@ public class ReturnPickupServiceImpl implements ReturnPickupService {
         }
 
         BigDecimal totalRefund = totalItemRefund.add(totalShippingRefund);
-        
+
         RefundCalculation calculation = new RefundCalculation(
                 totalItemRefund,
                 totalShippingRefund,
                 totalRefund,
                 itemDetails,
-                isFullOrderReturn
-        );
+                isFullOrderReturn);
 
-        log.info("Refund calculation completed - Items: {}, Shipping: {}, Total: {}", 
+        log.info("Refund calculation completed - Items: {}, Shipping: {}, Total: {}",
                 totalItemRefund, totalShippingRefund, totalRefund);
 
         return calculation;
@@ -793,7 +787,7 @@ public class ReturnPickupServiceImpl implements ReturnPickupService {
             return shippingRefund;
 
         } catch (Exception e) {
-            log.error("Error calculating shipping cost for order item {}: {}", 
+            log.error("Error calculating shipping cost for order item {}: {}",
                     orderItem.getOrderItemId(), e.getMessage());
             return BigDecimal.ZERO;
         }
@@ -802,8 +796,8 @@ public class ReturnPickupServiceImpl implements ReturnPickupService {
     /**
      * Process refund for points-only payment
      */
-    private RefundResult processPointsOnlyRefund(Order order, OrderTransaction transaction, 
-                                               RefundCalculation refundCalc, boolean isFullOrderReturn) {
+    private RefundResult processPointsOnlyRefund(Order order, OrderTransaction transaction,
+            RefundCalculation refundCalc, boolean isFullOrderReturn) {
         log.info("Processing points-only refund for order {}", order.getOrderId());
 
         try {
@@ -834,10 +828,9 @@ public class ReturnPickupServiceImpl implements ReturnPickupService {
             rewardService.refundPointsForCancelledOrder(
                     user.getId(),
                     pointsToRefund,
-                    String.format("Refund for return request - Order #%s", order.getOrderCode())
-            );
+                    String.format("Refund for return request - Order #%s", order.getOrderCode()));
 
-            log.info("Refunded {} points to user {} for order {}", 
+            log.info("Refunded {} points to user {} for order {}",
                     pointsToRefund, user.getId(), order.getOrderId());
 
             return new RefundResult(
@@ -846,8 +839,7 @@ public class ReturnPickupServiceImpl implements ReturnPickupService {
                     BigDecimal.ZERO, // No monetary refund
                     pointsToRefund,
                     BigDecimal.valueOf(pointsToRefund).multiply(getPointValue()),
-                    refundCalc
-            );
+                    refundCalc);
 
         } catch (Exception e) {
             log.error("Failed to process points refund: {}", e.getMessage(), e);
@@ -857,21 +849,21 @@ public class ReturnPickupServiceImpl implements ReturnPickupService {
                     BigDecimal.ZERO,
                     0,
                     BigDecimal.ZERO,
-                    refundCalc
-            );
+                    refundCalc);
         }
     }
 
     /**
      * Process refund for hybrid payment (points + card)
      */
-    private RefundResult processHybridRefund(Order order, OrderTransaction transaction, 
-                                           RefundCalculation refundCalc, boolean isFullOrderReturn) {
+    private RefundResult processHybridRefund(Order order, OrderTransaction transaction,
+            RefundCalculation refundCalc, boolean isFullOrderReturn) {
         log.info("Processing hybrid refund for order {}", order.getOrderId());
 
         try {
             BigDecimal totalRefundAmount = refundCalc.getTotalRefundAmount();
-            BigDecimal pointsValue = transaction.getPointsValue() != null ? transaction.getPointsValue() : BigDecimal.ZERO;
+            BigDecimal pointsValue = transaction.getPointsValue() != null ? transaction.getPointsValue()
+                    : BigDecimal.ZERO;
             Integer pointsUsed = transaction.getPointsUsed() != null ? transaction.getPointsUsed() : 0;
             BigDecimal cardAmount = transaction.getOrderAmount().subtract(pointsValue);
 
@@ -892,7 +884,7 @@ public class ReturnPickupServiceImpl implements ReturnPickupService {
                             .multiply(pointsRefundRatio)
                             .setScale(0, RoundingMode.HALF_UP)
                             .intValue();
-                    
+
                     remainingRefund = remainingRefund.subtract(pointsRefundValue);
                 }
 
@@ -909,8 +901,7 @@ public class ReturnPickupServiceImpl implements ReturnPickupService {
                     rewardService.refundPointsForCancelledOrder(
                             user.getId(),
                             pointsToRefund,
-                            String.format("Hybrid refund for return - Order #%s", order.getOrderCode())
-                    );
+                            String.format("Hybrid refund for return - Order #%s", order.getOrderCode()));
                     log.info("Refunded {} points to user {}", pointsToRefund, user.getId());
                 }
             }
@@ -919,6 +910,11 @@ public class ReturnPickupServiceImpl implements ReturnPickupService {
             boolean cardRefundSuccess = true;
             if (cardRefundAmount.compareTo(BigDecimal.ZERO) > 0) {
                 cardRefundSuccess = processStripeRefund(transaction, cardRefundAmount);
+                
+                // Record money flow OUT for successful card portion of hybrid refund
+                if (cardRefundSuccess) {
+                    recordMoneyFlowForRefund(order, cardRefundAmount, "Hybrid refund (card portion) for return");
+                }
             }
 
             boolean overallSuccess = (pointsToRefund == 0 || pointsToRefund > 0) && cardRefundSuccess;
@@ -929,8 +925,7 @@ public class ReturnPickupServiceImpl implements ReturnPickupService {
                     cardRefundAmount,
                     pointsToRefund,
                     BigDecimal.valueOf(pointsToRefund).multiply(getPointValue()),
-                    refundCalc
-            );
+                    refundCalc);
 
         } catch (Exception e) {
             log.error("Failed to process hybrid refund: {}", e.getMessage(), e);
@@ -940,23 +935,27 @@ public class ReturnPickupServiceImpl implements ReturnPickupService {
                     BigDecimal.ZERO,
                     0,
                     BigDecimal.ZERO,
-                    refundCalc
-            );
+                    refundCalc);
         }
     }
 
     /**
      * Process refund for card-only payment
      */
-    private RefundResult processCardRefund(Order order, OrderTransaction transaction, 
-                                         RefundCalculation refundCalc, boolean isFullOrderReturn) {
+    private RefundResult processCardRefund(Order order, OrderTransaction transaction,
+            RefundCalculation refundCalc, boolean isFullOrderReturn) {
         log.info("Processing card refund for order {}", order.getOrderId());
 
         try {
-            BigDecimal refundAmount = isFullOrderReturn ? 
-                    transaction.getOrderAmount() : refundCalc.getTotalRefundAmount();
+            BigDecimal refundAmount = isFullOrderReturn ? transaction.getOrderAmount()
+                    : refundCalc.getTotalRefundAmount();
 
             boolean success = processStripeRefund(transaction, refundAmount);
+            
+            // Record money flow OUT for successful card refund
+            if (success) {
+                recordMoneyFlowForRefund(order, refundAmount, "Card refund for return");
+            }
 
             return new RefundResult(
                     success,
@@ -964,8 +963,7 @@ public class ReturnPickupServiceImpl implements ReturnPickupService {
                     success ? refundAmount : BigDecimal.ZERO,
                     0,
                     BigDecimal.ZERO,
-                    refundCalc
-            );
+                    refundCalc);
 
         } catch (Exception e) {
             log.error("Failed to process card refund: {}", e.getMessage(), e);
@@ -975,8 +973,7 @@ public class ReturnPickupServiceImpl implements ReturnPickupService {
                     BigDecimal.ZERO,
                     0,
                     BigDecimal.ZERO,
-                    refundCalc
-            );
+                    refundCalc);
         }
     }
 
@@ -986,7 +983,7 @@ public class ReturnPickupServiceImpl implements ReturnPickupService {
     private boolean processStripeRefund(OrderTransaction transaction, BigDecimal refundAmount) {
         try {
             if (transaction.getStripePaymentIntentId() == null) {
-                log.error("No Stripe payment intent ID found for transaction {}", 
+                log.error("No Stripe payment intent ID found for transaction {}",
                         transaction.getOrderTransactionId());
                 return false;
             }
@@ -1001,14 +998,14 @@ public class ReturnPickupServiceImpl implements ReturnPickupService {
                     .build();
 
             Refund refund = Refund.create(params);
-            
-            log.info("Stripe refund created successfully - ID: {}, Amount: {}, Status: {}", 
+
+            log.info("Stripe refund created successfully - ID: {}, Amount: {}, Status: {}",
                     refund.getId(), refundAmount, refund.getStatus());
 
             return "succeeded".equals(refund.getStatus()) || "pending".equals(refund.getStatus());
 
         } catch (StripeException e) {
-            log.error("Stripe refund failed for transaction {}: {}", 
+            log.error("Stripe refund failed for transaction {}: {}",
                     transaction.getOrderTransactionId(), e.getMessage(), e);
             return false;
         } catch (Exception e) {
@@ -1037,7 +1034,7 @@ public class ReturnPickupServiceImpl implements ReturnPickupService {
             Long orderItemId = entry.getKey();
             Integer orderQuantity = entry.getValue();
             Integer returnQuantity = returnItemQuantities.getOrDefault(orderItemId, 0);
-            
+
             if (!returnQuantity.equals(orderQuantity)) {
                 return false;
             }
@@ -1062,7 +1059,8 @@ public class ReturnPickupServiceImpl implements ReturnPickupService {
     private BigDecimal getPointValue() {
         try {
             var rewardSystem = rewardService.getActiveRewardSystem();
-            return rewardSystem != null ? rewardSystem.getPointValue() : BigDecimal.valueOf(0.01); // Default 1 cent per point
+            return rewardSystem != null ? rewardSystem.getPointValue() : BigDecimal.valueOf(0.01); // Default 1 cent per
+                                                                                                   // point
         } catch (Exception e) {
             log.warn("Could not get point value, using default: {}", e.getMessage());
             return BigDecimal.valueOf(0.01);
@@ -1079,9 +1077,9 @@ public class ReturnPickupServiceImpl implements ReturnPickupService {
         private final Map<Long, RefundItemDetail> itemDetails;
         private final boolean isFullOrderReturn;
 
-        public RefundCalculation(BigDecimal itemRefundAmount, BigDecimal shippingRefundAmount, 
-                               BigDecimal totalRefundAmount, Map<Long, RefundItemDetail> itemDetails, 
-                               boolean isFullOrderReturn) {
+        public RefundCalculation(BigDecimal itemRefundAmount, BigDecimal shippingRefundAmount,
+                BigDecimal totalRefundAmount, Map<Long, RefundItemDetail> itemDetails,
+                boolean isFullOrderReturn) {
             this.itemRefundAmount = itemRefundAmount;
             this.shippingRefundAmount = shippingRefundAmount;
             this.totalRefundAmount = totalRefundAmount;
@@ -1090,11 +1088,25 @@ public class ReturnPickupServiceImpl implements ReturnPickupService {
         }
 
         // Getters
-        public BigDecimal getItemRefundAmount() { return itemRefundAmount; }
-        public BigDecimal getShippingRefundAmount() { return shippingRefundAmount; }
-        public BigDecimal getTotalRefundAmount() { return totalRefundAmount; }
-        public Map<Long, RefundItemDetail> getItemDetails() { return itemDetails; }
-        public boolean isFullOrderReturn() { return isFullOrderReturn; }
+        public BigDecimal getItemRefundAmount() {
+            return itemRefundAmount;
+        }
+
+        public BigDecimal getShippingRefundAmount() {
+            return shippingRefundAmount;
+        }
+
+        public BigDecimal getTotalRefundAmount() {
+            return totalRefundAmount;
+        }
+
+        public Map<Long, RefundItemDetail> getItemDetails() {
+            return itemDetails;
+        }
+
+        public boolean isFullOrderReturn() {
+            return isFullOrderReturn;
+        }
     }
 
     /**
@@ -1107,8 +1119,8 @@ public class ReturnPickupServiceImpl implements ReturnPickupService {
         private final BigDecimal itemRefundAmount;
         private final BigDecimal shippingRefundAmount;
 
-        public RefundItemDetail(Long orderItemId, Integer quantity, BigDecimal unitPrice, 
-                              BigDecimal itemRefundAmount, BigDecimal shippingRefundAmount) {
+        public RefundItemDetail(Long orderItemId, Integer quantity, BigDecimal unitPrice,
+                BigDecimal itemRefundAmount, BigDecimal shippingRefundAmount) {
             this.orderItemId = orderItemId;
             this.quantity = quantity;
             this.unitPrice = unitPrice;
@@ -1117,11 +1129,25 @@ public class ReturnPickupServiceImpl implements ReturnPickupService {
         }
 
         // Getters
-        public Long getOrderItemId() { return orderItemId; }
-        public Integer getQuantity() { return quantity; }
-        public BigDecimal getUnitPrice() { return unitPrice; }
-        public BigDecimal getItemRefundAmount() { return itemRefundAmount; }
-        public BigDecimal getShippingRefundAmount() { return shippingRefundAmount; }
+        public Long getOrderItemId() {
+            return orderItemId;
+        }
+
+        public Integer getQuantity() {
+            return quantity;
+        }
+
+        public BigDecimal getUnitPrice() {
+            return unitPrice;
+        }
+
+        public BigDecimal getItemRefundAmount() {
+            return itemRefundAmount;
+        }
+
+        public BigDecimal getShippingRefundAmount() {
+            return shippingRefundAmount;
+        }
     }
 
     /**
@@ -1135,8 +1161,8 @@ public class ReturnPickupServiceImpl implements ReturnPickupService {
         private final BigDecimal pointsRefundValue;
         private final RefundCalculation calculation;
 
-        public RefundResult(boolean success, String message, BigDecimal cardRefundAmount, 
-                          Integer pointsRefunded, BigDecimal pointsRefundValue, RefundCalculation calculation) {
+        public RefundResult(boolean success, String message, BigDecimal cardRefundAmount,
+                Integer pointsRefunded, BigDecimal pointsRefundValue, RefundCalculation calculation) {
             this.success = success;
             this.message = message;
             this.cardRefundAmount = cardRefundAmount;
@@ -1146,21 +1172,59 @@ public class ReturnPickupServiceImpl implements ReturnPickupService {
         }
 
         // Getters
-        public boolean isSuccess() { return success; }
-        public String getMessage() { return message; }
-        public BigDecimal getCardRefundAmount() { return cardRefundAmount; }
-        public Integer getPointsRefunded() { return pointsRefunded; }
-        public BigDecimal getPointsRefundValue() { return pointsRefundValue; }
-        public RefundCalculation getCalculation() { return calculation; }
-        
+        public boolean isSuccess() {
+            return success;
+        }
+
+        public String getMessage() {
+            return message;
+        }
+
+        public BigDecimal getCardRefundAmount() {
+            return cardRefundAmount;
+        }
+
+        public Integer getPointsRefunded() {
+            return pointsRefunded;
+        }
+
+        public BigDecimal getPointsRefundValue() {
+            return pointsRefundValue;
+        }
+
+        public RefundCalculation getCalculation() {
+            return calculation;
+        }
+
         public BigDecimal getTotalRefundValue() {
             return cardRefundAmount.add(pointsRefundValue);
         }
 
         @Override
         public String toString() {
-            return String.format("RefundResult{success=%s, cardRefund=%s, pointsRefunded=%d, pointsValue=%s, totalValue=%s}", 
+            return String.format(
+                    "RefundResult{success=%s, cardRefund=%s, pointsRefunded=%d, pointsValue=%s, totalValue=%s}",
                     success, cardRefundAmount, pointsRefunded, pointsRefundValue, getTotalRefundValue());
+        }
+    }
+
+
+    private void recordMoneyFlowForRefund(Order order, BigDecimal refundAmount, String description) {
+        try {
+            com.ecommerce.dto.CreateMoneyFlowDTO createMoneyFlowDTO = com.ecommerce.dto.CreateMoneyFlowDTO.builder()
+                    .type(com.ecommerce.enums.MoneyFlowType.OUT)
+                    .amount(refundAmount)
+                    .description(String.format("%s - Order #%s", description, order.getOrderCode()))
+                    .build();
+            com.ecommerce.entity.MoneyFlow savedFlow = moneyFlowService.save(createMoneyFlowDTO);
+            
+            log.info("Recorded money flow OUT: Amount={}, Order={}, MoneyFlow ID={}, New Balance={}, CreatedAt={}", 
+                    refundAmount, order.getOrderCode(), savedFlow.getId(), 
+                    savedFlow.getRemainingBalance(), savedFlow.getCreatedAt());
+                    
+        } catch (Exception e) {
+            log.error("Failed to record money flow for refund on order {}: {}", 
+                    order.getOrderCode(), e.getMessage(), e);
         }
     }
 
