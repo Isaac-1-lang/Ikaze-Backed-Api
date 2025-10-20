@@ -211,11 +211,14 @@ public class StripeService {
                 Session session = Session.create(params);
                 log.info("Stripe HYBRID session created with ID: {}, amount: {}", session.getId(), reducedAmount);
 
-                // update transaction with stripe session id
                 OrderTransaction tx = reloadedOrder.getOrderTransaction();
                 tx.setStripeSessionId(session.getId());
+                if (session.getPaymentIntent() != null) {
+                        tx.setStripePaymentIntentId(session.getPaymentIntent());
+                        log.info("Payment intent ID set: {}", session.getPaymentIntent());
+                }
                 txRepo.save(tx);
-                log.info("Transaction updated with Stripe session ID for hybrid payment");
+                log.info("Transaction updated with Stripe session ID and payment intent ID for hybrid payment");
 
                 return session.getUrl();
         }
