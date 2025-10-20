@@ -216,7 +216,6 @@ public class PointsPaymentServiceImpl implements PointsPaymentService {
             Order savedOrder = orderRepository.save(order);
             log.info("Order saved with ID: {}", savedOrder.getOrderId());
 
-            // Step 3: Create OrderItemBatch records for tracking (but don't commit allocation yet)
             for (Map.Entry<CartItemDTO, List<FEFOStockAllocationService.BatchAllocation>> entry : allocations.entrySet()) {
                 createOrderItemBatches(savedOrder, entry.getKey(), entry.getValue());
             }
@@ -270,16 +269,18 @@ public class PointsPaymentServiceImpl implements PointsPaymentService {
             );
             log.info("Stripe session created: {}", stripeSessionId);
 
-            // Transfer batch locks from temporary session to actual Stripe session
-            OrderTransaction transaction = savedOrder.getOrderTransaction();
+            OrderTransaction transaction = transactionRepository.findById(savedOrder.getOrderTransaction().getOrderTransactionId())
+                    .orElseThrow(() -> new RuntimeException("Transaction not found"));
+            
+            log.info("Transaction reloaded - Session ID: {}, Payment Intent ID: {}", 
+                    transaction.getStripeSessionId(), transaction.getStripePaymentIntentId());
+
             if (transaction.getStripeSessionId() != null && !transaction.getStripeSessionId().equals(sessionId)) {
                 transferBatchLocks(sessionId, transaction.getStripeSessionId());
             }
 
-            // Update the existing OrderTransaction with points info (StripeService already set the session ID)
             transaction.setPointsUsed(pointsToUse);
             transaction.setPointsValue(pointsValue);
-            // Don't set stripeSessionId here - StripeService already did it
             transactionRepository.save(transaction);
             log.info("Transaction updated with points information successfully");
 

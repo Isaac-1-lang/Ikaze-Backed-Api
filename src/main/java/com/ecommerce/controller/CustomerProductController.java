@@ -1,14 +1,11 @@
 package com.ecommerce.controller;
 
 import com.ecommerce.dto.ManyProductsDto;
-import com.ecommerce.dto.ProductDTO;
 import com.ecommerce.dto.CustomerProductDTO;
 import com.ecommerce.dto.ProductSearchDTO;
 import com.ecommerce.dto.ProductVariantDTO;
 import com.ecommerce.service.ProductService;
 import io.swagger.v3.oas.annotations.Operation;
-import io.swagger.v3.oas.annotations.media.Content;
-import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
@@ -197,9 +194,7 @@ public class CustomerProductController {
     @ApiResponse(responseCode = "404", description = "Product not found or not available to customers")
     public ResponseEntity<CustomerProductDTO> getProductById(@PathVariable UUID productId) {
         try {
-            log.info("Getting product {} for customers", productId);
-            
-            boolean isAvailable = productService.isProductAvailableForCustomers(productId);
+          boolean isAvailable = productService.isProductAvailableForCustomers(productId);
             if (!isAvailable) {
                 log.warn("Product {} is not available for customers", productId);
                 return ResponseEntity.notFound().build();
