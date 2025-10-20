@@ -1,5 +1,4 @@
 package com.ecommerce.controller;
-
 import com.ecommerce.dto.CreateDiscountDTO;
 import com.ecommerce.dto.DiscountDTO;
 import com.ecommerce.dto.UpdateDiscountDTO;
