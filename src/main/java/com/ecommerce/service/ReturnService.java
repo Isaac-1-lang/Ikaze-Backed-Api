@@ -805,16 +805,22 @@ public class ReturnService {
         } catch (Exception e) {
             log.warn("Could not load order/customer information for return request {}: {}", returnRequest.getId(),
                     e.getMessage());
-            // Set basic info if available
             dto.setOrderNumber("Order #" + returnRequest.getOrderId());
+        }
+
+        try {
+            ExpectedRefundDTO expectedRefund = refundService.calculateExpectedRefund(returnRequest);
+            dto.setExpectedRefund(expectedRefund);
+        } catch (Exception e) {
+            log.error("Could not calculate expected refund for return request {}: {}", 
+                    returnRequest.getId(), e.getMessage(), e);
+            dto.setExpectedRefund(null);
         }
 
         return dto;
     }
 
-    /**
-     * Convert ReturnMedia entity to DTO
-     */
+
     private ReturnMediaDTO convertReturnMediaToDTO(ReturnMedia media) {
         ReturnMediaDTO dto = new ReturnMediaDTO();
         dto.setId(media.getId());

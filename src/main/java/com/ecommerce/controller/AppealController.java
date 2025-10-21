@@ -39,197 +39,199 @@ import java.util.UUID;
 @Tag(name = "Appeal Management", description = "APIs for managing return request appeals")
 public class AppealController {
 
-    private final AppealService appealService;
+        private final AppealService appealService;
 
-    @PostMapping(value = "/submit", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    @Operation(summary = "Submit an appeal for a denied return request", description = "Submit an appeal with reason, description, and optional media files (images/videos)")
-    @ApiResponses(value = {
-            @ApiResponse(responseCode = "201", description = "Appeal submitted successfully", content = @Content(schema = @Schema(implementation = ReturnAppealDTO.class))),
-            @ApiResponse(responseCode = "400", description = "Invalid request data or appeal not allowed"),
-            @ApiResponse(responseCode = "401", description = "Unauthorized"),
-            @ApiResponse(responseCode = "404", description = "Return request not found"),
-            @ApiResponse(responseCode = "409", description = "Appeal already exists for this return request")
-    })
-    public ResponseEntity<ReturnAppealDTO> submitAppeal(
-            @Parameter(description = "Return request ID", required = true) @RequestParam Long returnRequestId,
+        @PostMapping(value = "/submit", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+        @PreAuthorize("hasAnyRole('CUSTOMER','DELIVERY_AGENT','ADMIN')")
+        @Operation(summary = "Submit an appeal for a denied return request", description = "Submit an appeal with reason, description, and optional media files (images/videos)")
+        @ApiResponses(value = {
+                        @ApiResponse(responseCode = "201", description = "Appeal submitted successfully", content = @Content(schema = @Schema(implementation = ReturnAppealDTO.class))),
+                        @ApiResponse(responseCode = "400", description = "Invalid request data or appeal not allowed"),
+                        @ApiResponse(responseCode = "401", description = "Unauthorized"),
+                        @ApiResponse(responseCode = "404", description = "Return request not found"),
+                        @ApiResponse(responseCode = "409", description = "Appeal already exists for this return request")
+        })
+        public ResponseEntity<ReturnAppealDTO> submitAppeal(
+                        @Parameter(description = "Return request ID", required = true) @RequestParam Long returnRequestId,
 
-            @Parameter(description = "Customer ID (optional for guest customers)") @RequestParam(required = false) UUID customerId,
+                        @Parameter(description = "Customer ID (optional for guest customers)") @RequestParam(required = false) UUID customerId,
 
-            @Parameter(description = "Appeal reason", required = true) @RequestParam String reason,
+                        @Parameter(description = "Appeal reason", required = true) @RequestParam String reason,
 
-            @Parameter(description = "Detailed appeal description") @RequestParam(required = false) String description,
+                        @Parameter(description = "Detailed appeal description") @RequestParam(required = false) String description,
 
-            @Parameter(description = "Media files (images and videos) to support the appeal") @RequestParam(value = "mediaFiles", required = false) MultipartFile[] mediaFiles) {
+                        @Parameter(description = "Media files (images and videos) to support the appeal") @RequestParam(value = "mediaFiles", required = false) MultipartFile[] mediaFiles) {
 
-        log.info("Received appeal submission request for return request {} by customer {}",
-                returnRequestId, customerId);
+                log.info("Received appeal submission request for return request {} by customer {}",
+                                returnRequestId, customerId);
 
-        SubmitAppealRequestDTO submitDTO = new SubmitAppealRequestDTO();
-        submitDTO.setReturnRequestId(returnRequestId);
-        submitDTO.setCustomerId(customerId);
-        submitDTO.setReason(reason);
-        submitDTO.setDescription(description);
+                SubmitAppealRequestDTO submitDTO = new SubmitAppealRequestDTO();
+                submitDTO.setReturnRequestId(returnRequestId);
+                submitDTO.setCustomerId(customerId);
+                submitDTO.setReason(reason);
+                submitDTO.setDescription(description);
 
-        ReturnAppealDTO appealDTO = appealService.submitAppeal(submitDTO, mediaFiles);
+                ReturnAppealDTO appealDTO = appealService.submitAppeal(submitDTO, mediaFiles);
 
-        log.info("Appeal {} submitted successfully for return request {}",
-                appealDTO.getId(), returnRequestId);
+                log.info("Appeal {} submitted successfully for return request {}",
+                                appealDTO.getId(), returnRequestId);
 
-        return ResponseEntity.status(HttpStatus.CREATED).body(appealDTO);
-    }
+                return ResponseEntity.status(HttpStatus.CREATED).body(appealDTO);
+        }
 
-    @PostMapping(value = "/submit/tokenized", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    @Operation(summary = "Submit an appeal using tracking token (for guest users)", description = "Submit an appeal with tracking token for guest users who don't have accounts")
-    @ApiResponses(value = {
-            @ApiResponse(responseCode = "201", description = "Appeal submitted successfully", content = @Content(schema = @Schema(implementation = ReturnAppealDTO.class))),
-            @ApiResponse(responseCode = "400", description = "Invalid request data, expired token, or appeal not allowed"),
-            @ApiResponse(responseCode = "404", description = "Return request not found"),
-            @ApiResponse(responseCode = "409", description = "Appeal already exists for this return request")
-    })
-    public ResponseEntity<ReturnAppealDTO> submitTokenizedAppeal(
-            @Parameter(description = "Return request ID", required = true) @RequestParam Long returnRequestId,
+        @PostMapping(value = "/submit/tokenized", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+        @Operation(summary = "Submit an appeal using tracking token (for guest users)", description = "Submit an appeal with tracking token for guest users who don't have accounts")
+        @ApiResponses(value = {
+                        @ApiResponse(responseCode = "201", description = "Appeal submitted successfully", content = @Content(schema = @Schema(implementation = ReturnAppealDTO.class))),
+                        @ApiResponse(responseCode = "400", description = "Invalid request data, expired token, or appeal not allowed"),
+                        @ApiResponse(responseCode = "404", description = "Return request not found"),
+                        @ApiResponse(responseCode = "409", description = "Appeal already exists for this return request")
+        })
+        public ResponseEntity<ReturnAppealDTO> submitTokenizedAppeal(
+                        @Parameter(description = "Return request ID", required = true) @RequestParam Long returnRequestId,
 
-            @Parameter(description = "Tracking token for guest access", required = true) @RequestParam String trackingToken,
+                        @Parameter(description = "Tracking token for guest access", required = true) @RequestParam String trackingToken,
 
-            @Parameter(description = "Appeal reason", required = true) @RequestParam String reason,
+                        @Parameter(description = "Appeal reason", required = true) @RequestParam String reason,
 
-            @Parameter(description = "Detailed appeal description") @RequestParam(required = false) String description,
+                        @Parameter(description = "Detailed appeal description") @RequestParam(required = false) String description,
 
-            @Parameter(description = "Media files (images and videos) to support the appeal") @RequestParam(value = "mediaFiles", required = false) MultipartFile[] mediaFiles) {
+                        @Parameter(description = "Media files (images and videos) to support the appeal") @RequestParam(value = "mediaFiles", required = false) MultipartFile[] mediaFiles) {
 
-        log.info("Received tokenized appeal submission request for return request {} with token",
-                returnRequestId);
+                log.info("Received tokenized appeal submission request for return request {} with token",
+                                returnRequestId);
 
-        TokenizedAppealRequestDTO submitDTO = new TokenizedAppealRequestDTO();
-        submitDTO.setReturnRequestId(returnRequestId);
-        submitDTO.setTrackingToken(trackingToken);
-        submitDTO.setReason(reason);
-        submitDTO.setDescription(description);
+                TokenizedAppealRequestDTO submitDTO = new TokenizedAppealRequestDTO();
+                submitDTO.setReturnRequestId(returnRequestId);
+                submitDTO.setTrackingToken(trackingToken);
+                submitDTO.setReason(reason);
+                submitDTO.setDescription(description);
 
-        ReturnAppealDTO appealDTO = appealService.submitTokenizedAppeal(submitDTO, mediaFiles);
+                ReturnAppealDTO appealDTO = appealService.submitTokenizedAppeal(submitDTO, mediaFiles);
 
-        log.info("Tokenized appeal {} submitted successfully for return request {}",
-                appealDTO.getId(), returnRequestId);
+                log.info("Tokenized appeal {} submitted successfully for return request {}",
+                                appealDTO.getId(), returnRequestId);
 
-        return ResponseEntity.status(HttpStatus.CREATED).body(appealDTO);
-    }
+                return ResponseEntity.status(HttpStatus.CREATED).body(appealDTO);
+        }
 
-    @GetMapping("/{appealId}")
-    @Operation(summary = "Get appeal by ID", description = "Retrieve appeal details including media attachments")
-    @ApiResponses(value = {
-            @ApiResponse(responseCode = "200", description = "Appeal found", content = @Content(schema = @Schema(implementation = ReturnAppealDTO.class))),
-            @ApiResponse(responseCode = "404", description = "Appeal not found"),
-            @ApiResponse(responseCode = "401", description = "Unauthorized")
-    })
-    public ResponseEntity<ReturnAppealDTO> getAppealById(
-            @Parameter(description = "Appeal ID", required = true) @PathVariable Long appealId) {
+        @GetMapping("/{appealId}")
+        @Operation(summary = "Get appeal by ID", description = "Retrieve appeal details including media attachments")
+        @ApiResponses(value = {
+                        @ApiResponse(responseCode = "200", description = "Appeal found", content = @Content(schema = @Schema(implementation = ReturnAppealDTO.class))),
+                        @ApiResponse(responseCode = "404", description = "Appeal not found"),
+                        @ApiResponse(responseCode = "401", description = "Unauthorized")
+        })
+        public ResponseEntity<ReturnAppealDTO> getAppealById(
+                        @Parameter(description = "Appeal ID", required = true) @PathVariable Long appealId) {
 
-        log.info("Retrieving appeal details for appeal ID: {}", appealId);
+                log.info("Retrieving appeal details for appeal ID: {}", appealId);
 
-        ReturnAppealDTO appealDTO = appealService.getAppealById(appealId);
+                ReturnAppealDTO appealDTO = appealService.getAppealById(appealId);
 
-        return ResponseEntity.ok(appealDTO);
-    }
+                return ResponseEntity.ok(appealDTO);
+        }
 
-    @GetMapping("/return-request/{returnRequestId}")
-    @Operation(summary = "Get appeal by return request ID", description = "Retrieve appeal for a specific return request")
-    @ApiResponses(value = {
-            @ApiResponse(responseCode = "200", description = "Appeal found", content = @Content(schema = @Schema(implementation = ReturnAppealDTO.class))),
-            @ApiResponse(responseCode = "404", description = "Appeal not found"),
-            @ApiResponse(responseCode = "401", description = "Unauthorized")
-    })
-    public ResponseEntity<ReturnAppealDTO> getAppealByReturnRequestId(
-            @Parameter(description = "Return request ID", required = true) @PathVariable Long returnRequestId) {
+        @GetMapping("/return-request/{returnRequestId}")
+        @Operation(summary = "Get appeal by return request ID", description = "Retrieve appeal for a specific return request")
+        @ApiResponses(value = {
+                        @ApiResponse(responseCode = "200", description = "Appeal found", content = @Content(schema = @Schema(implementation = ReturnAppealDTO.class))),
+                        @ApiResponse(responseCode = "404", description = "Appeal not found"),
+                        @ApiResponse(responseCode = "401", description = "Unauthorized")
+        })
+        public ResponseEntity<ReturnAppealDTO> getAppealByReturnRequestId(
+                        @Parameter(description = "Return request ID", required = true) @PathVariable Long returnRequestId) {
 
-        log.info("Retrieving appeal for return request ID: {}", returnRequestId);
+                log.info("Retrieving appeal for return request ID: {}", returnRequestId);
 
-        ReturnAppealDTO appealDTO = appealService.getAppealByReturnRequestId(returnRequestId);
+                ReturnAppealDTO appealDTO = appealService.getAppealByReturnRequestId(returnRequestId);
 
-        return ResponseEntity.ok(appealDTO);
-    }
+                return ResponseEntity.ok(appealDTO);
+        }
 
-    @GetMapping
-    @PreAuthorize("hasAnyRole('ADMIN', 'EMPLOYEE')")
-    @Operation(summary = "Get all appeals with filtering and pagination", description = "Admin endpoint to retrieve appeals with various filters")
-    @ApiResponses(value = {
-            @ApiResponse(responseCode = "200", description = "Appeals retrieved successfully"),
-            @ApiResponse(responseCode = "401", description = "Unauthorized"),
-            @ApiResponse(responseCode = "403", description = "Forbidden - Admin/Employee access required")
-    })
-    public ResponseEntity<Page<ReturnAppealDTO>> getAllAppeals(
-            @Parameter(description = "Appeal status filter") @RequestParam(required = false) String status,
-            @Parameter(description = "Customer name filter") @RequestParam(required = false) String customerName,
-            @Parameter(description = "Order code filter") @RequestParam(required = false) String orderCode,
-            @Parameter(description = "From date filter") @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate fromDate,
-            @Parameter(description = "To date filter") @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate toDate,
-            @Parameter(description = "Page number") @RequestParam(defaultValue = "0") int page,
-            @Parameter(description = "Page size") @RequestParam(defaultValue = "10") int size,
-            @Parameter(description = "Sort field") @RequestParam(defaultValue = "submittedAt") String sortBy,
-            @Parameter(description = "Sort direction") @RequestParam(defaultValue = "DESC") String sortDirection) {
+        @GetMapping
+        @PreAuthorize("hasAnyRole('ADMIN', 'EMPLOYEE')")
+        @Operation(summary = "Get all appeals with filtering and pagination", description = "Admin endpoint to retrieve appeals with various filters")
+        @ApiResponses(value = {
+                        @ApiResponse(responseCode = "200", description = "Appeals retrieved successfully"),
+                        @ApiResponse(responseCode = "401", description = "Unauthorized"),
+                        @ApiResponse(responseCode = "403", description = "Forbidden - Admin/Employee access required")
+        })
+        public ResponseEntity<Page<ReturnAppealDTO>> getAllAppeals(
+                        @Parameter(description = "Appeal status filter") @RequestParam(required = false) String status,
+                        @Parameter(description = "Customer name filter") @RequestParam(required = false) String customerName,
+                        @Parameter(description = "Order code filter") @RequestParam(required = false) String orderCode,
+                        @Parameter(description = "From date filter") @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate fromDate,
+                        @Parameter(description = "To date filter") @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate toDate,
+                        @Parameter(description = "Page number") @RequestParam(defaultValue = "0") int page,
+                        @Parameter(description = "Page size") @RequestParam(defaultValue = "10") int size,
+                        @Parameter(description = "Sort field") @RequestParam(defaultValue = "submittedAt") String sortBy,
+                        @Parameter(description = "Sort direction") @RequestParam(defaultValue = "DESC") String sortDirection) {
 
-        log.info("Admin retrieving appeals with filters - status: {}, customerName: {}, orderCode: {}", 
-                status, customerName, orderCode);
+                log.info("Admin retrieving appeals with filters - status: {}, customerName: {}, orderCode: {}",
+                                status, customerName, orderCode);
 
-        Sort sort = Sort.by(Sort.Direction.fromString(sortDirection), sortBy);
-        Pageable pageable = PageRequest.of(page, size, sort);
+                Sort sort = Sort.by(Sort.Direction.fromString(sortDirection), sortBy);
+                Pageable pageable = PageRequest.of(page, size, sort);
 
-        Page<ReturnAppealDTO> appeals = appealService.getAllAppealsForAdmin(
-                status, null, customerName, orderCode, fromDate, toDate, pageable);
+                Page<ReturnAppealDTO> appeals = appealService.getAllAppealsForAdmin(
+                                status, null, customerName, orderCode, fromDate, toDate, pageable);
 
-        return ResponseEntity.ok(appeals);
-    }
+                return ResponseEntity.ok(appeals);
+        }
 
-    @PostMapping("/review")
-    @PreAuthorize("hasAnyRole('ADMIN', 'EMPLOYEE')")
-    @Operation(summary = "Review and make decision on appeal", description = "Admin endpoint to approve or deny appeals")
-    @ApiResponses(value = {
-            @ApiResponse(responseCode = "200", description = "Appeal decision submitted successfully", content = @Content(schema = @Schema(implementation = ReturnAppealDTO.class))),
-            @ApiResponse(responseCode = "400", description = "Invalid decision data"),
-            @ApiResponse(responseCode = "401", description = "Unauthorized"),
-            @ApiResponse(responseCode = "403", description = "Forbidden - Admin/Employee access required"),
-            @ApiResponse(responseCode = "404", description = "Appeal not found")
-    })
-    public ResponseEntity<ReturnAppealDTO> reviewAppeal(
-            @Parameter(description = "Appeal decision data", required = true) @Valid @RequestBody AppealDecisionDTO decisionDTO) {
+        @PostMapping("/review")
+        @PreAuthorize("hasAnyRole('ADMIN', 'EMPLOYEE')")
+        @Operation(summary = "Review and make decision on appeal", description = "Admin endpoint to approve or deny appeals")
+        @ApiResponses(value = {
+                        @ApiResponse(responseCode = "200", description = "Appeal decision submitted successfully", content = @Content(schema = @Schema(implementation = ReturnAppealDTO.class))),
+                        @ApiResponse(responseCode = "400", description = "Invalid decision data"),
+                        @ApiResponse(responseCode = "401", description = "Unauthorized"),
+                        @ApiResponse(responseCode = "403", description = "Forbidden - Admin/Employee access required"),
+                        @ApiResponse(responseCode = "404", description = "Appeal not found")
+        })
+        public ResponseEntity<ReturnAppealDTO> reviewAppeal(
+                        @Parameter(description = "Appeal decision data", required = true) @Valid @RequestBody AppealDecisionDTO decisionDTO) {
 
-        log.info("Admin reviewing appeal {} with decision: {}", decisionDTO.getAppealId(), decisionDTO.getDecision());
+                log.info("Admin reviewing appeal {} with decision: {}", decisionDTO.getAppealId(),
+                                decisionDTO.getDecision());
 
-        ReturnAppealDTO appealDTO = appealService.reviewAppeal(decisionDTO);
+                ReturnAppealDTO appealDTO = appealService.reviewAppeal(decisionDTO);
 
-        log.info("Appeal {} decision completed: {}", appealDTO.getId(), appealDTO.getStatus());
+                log.info("Appeal {} decision completed: {}", appealDTO.getId(), appealDTO.getStatus());
 
-        return ResponseEntity.ok(appealDTO);
-    }
+                return ResponseEntity.ok(appealDTO);
+        }
 
-    @GetMapping("/stats")
-    @PreAuthorize("hasAnyRole('ADMIN', 'EMPLOYEE')")
-    @Operation(summary = "Get appeal statistics", description = "Admin endpoint to retrieve appeal statistics")
-    @ApiResponses(value = {
-            @ApiResponse(responseCode = "200", description = "Statistics retrieved successfully"),
-            @ApiResponse(responseCode = "401", description = "Unauthorized"),
-            @ApiResponse(responseCode = "403", description = "Forbidden - Admin/Employee access required")
-    })
-    public ResponseEntity<AppealStatisticsDTO> getAppealStats() {
-        log.info("Admin retrieving appeal statistics");
+        @GetMapping("/stats")
+        @PreAuthorize("hasAnyRole('ADMIN', 'EMPLOYEE')")
+        @Operation(summary = "Get appeal statistics", description = "Admin endpoint to retrieve appeal statistics")
+        @ApiResponses(value = {
+                        @ApiResponse(responseCode = "200", description = "Statistics retrieved successfully"),
+                        @ApiResponse(responseCode = "401", description = "Unauthorized"),
+                        @ApiResponse(responseCode = "403", description = "Forbidden - Admin/Employee access required")
+        })
+        public ResponseEntity<AppealStatisticsDTO> getAppealStats() {
+                log.info("Admin retrieving appeal statistics");
 
-        AppealStatisticsDTO stats = appealService.getAppealStatistics();
+                AppealStatisticsDTO stats = appealService.getAppealStatistics();
 
-        return ResponseEntity.ok(stats);
-    }
+                return ResponseEntity.ok(stats);
+        }
 
-    @GetMapping("/pending/count")
-    @PreAuthorize("hasAnyRole('ADMIN', 'EMPLOYEE')")
-    @Operation(summary = "Get pending appeals count", description = "Admin endpoint to get count of pending appeals for sidebar badge")
-    @ApiResponses(value = {
-            @ApiResponse(responseCode = "200", description = "Count retrieved successfully"),
-            @ApiResponse(responseCode = "401", description = "Unauthorized"),
-            @ApiResponse(responseCode = "403", description = "Forbidden - Admin/Employee access required")
-    })
-    public ResponseEntity<Long> getPendingAppealsCount() {
-        log.info("Admin retrieving pending appeals count");
+        @GetMapping("/pending/count")
+        @PreAuthorize("hasAnyRole('ADMIN', 'EMPLOYEE')")
+        @Operation(summary = "Get pending appeals count", description = "Admin endpoint to get count of pending appeals for sidebar badge")
+        @ApiResponses(value = {
+                        @ApiResponse(responseCode = "200", description = "Count retrieved successfully"),
+                        @ApiResponse(responseCode = "401", description = "Unauthorized"),
+                        @ApiResponse(responseCode = "403", description = "Forbidden - Admin/Employee access required")
+        })
+        public ResponseEntity<Long> getPendingAppealsCount() {
+                log.info("Admin retrieving pending appeals count");
 
-        Long count = appealService.getPendingAppealsCount();
+                Long count = appealService.getPendingAppealsCount();
 
-        return ResponseEntity.ok(count);
-    }
+                return ResponseEntity.ok(count);
+        }
 }

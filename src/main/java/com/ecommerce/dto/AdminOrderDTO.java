@@ -106,13 +106,15 @@ public class AdminOrderDTO {
     @Builder
     @NoArgsConstructor
     @AllArgsConstructor
-    public static class AdminPaymentInfoDTO {
+    public static class AdminPaymentInfoDTO {                     
         private String paymentMethod;
         private String paymentStatus;
-        private String stripePaymentIntentId; // Only Stripe ID, no sensitive data
+        private String stripePaymentIntentId;
         private String stripeSessionId;
         private String transactionRef;
         private LocalDateTime paymentDate;
         private String receiptUrl;
+        private Integer pointsUsed;
+        private BigDecimal pointsValue;
     }
 }
