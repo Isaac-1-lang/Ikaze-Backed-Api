@@ -829,6 +829,8 @@ public class OrderServiceImpl implements OrderService {
                 .transactionRef(tx.getTransactionRef())
                 .paymentDate(tx.getPaymentDate())
                 .receiptUrl(tx.getReceiptUrl())
+                .pointsUsed(tx.getPointsUsed())
+                .pointsValue(tx.getPointsValue())
                 .build();
     }
 

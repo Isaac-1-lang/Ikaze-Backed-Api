@@ -40,13 +40,8 @@ public class ReturnController {
     private final ReturnService returnService;
     private final ObjectMapper objectMapper;
 
-    // ==================== CUSTOMER ENDPOINTS ====================
-
-    /**
-     * Submit a return request for authenticated customers
-     */
     @PostMapping(value = "/submit", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    @PreAuthorize("hasRole('CUSTOMER')")
+    @PreAuthorize("hasAnyRole('CUSTOMER','DELIVERY_AGENT','ADMIN')")
     @Operation(summary = "Submit return request (Authenticated)", description = "Submit a return request for authenticated customers with optional media files", security = @SecurityRequirement(name = "bearerAuth"))
     @ApiResponses(value = {
             @ApiResponse(responseCode = "201", description = "Return request submitted successfully", content = @Content(schema = @Schema(implementation = ReturnRequestDTO.class))),
@@ -95,12 +90,11 @@ public class ReturnController {
         }
     }
 
-
     /**
      * Get return requests for authenticated customer
      */
     @GetMapping("/my-returns")
-    @PreAuthorize("hasRole('CUSTOMER')")
+    @PreAuthorize("hasAnyRole('CUSTOMER','DELIVERY_AGENT','ADMIN')")
     @Operation(summary = "Get customer return requests", description = "Get paginated list of return requests for authenticated customer", security = @SecurityRequirement(name = "bearerAuth"))
     @ApiResponses(value = {
             @ApiResponse(responseCode = "200", description = "Return requests retrieved successfully"),
@@ -129,12 +123,11 @@ public class ReturnController {
         }
     }
 
-
     /**
      * Get return requests by order ID for authenticated users
      */
     @GetMapping("/order/{orderId}")
-    @PreAuthorize("hasRole('CUSTOMER')")
+    @PreAuthorize("hasAnyRole('CUSTOMER','DELIVERY_AGENT','ADMIN')")
     @Operation(summary = "Get return requests by order ID", description = "Get all return requests for a specific order (authenticated users)", security = @SecurityRequirement(name = "bearerAuth"))
     @ApiResponses(value = {
             @ApiResponse(responseCode = "200", description = "Return requests retrieved successfully"),
@@ -497,41 +490,39 @@ public class ReturnController {
      * Submit return request using tracking token (secure endpoint)
      */
     @PostMapping(value = "/submit/tokenized", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    @Operation(summary = "Submit return request with tracking token", 
-               description = "Submit a return request using a valid tracking token for secure access")
+    @Operation(summary = "Submit return request with tracking token", description = "Submit a return request using a valid tracking token for secure access")
     @ApiResponses(value = {
-        @ApiResponse(responseCode = "200", description = "Return request submitted successfully"),
-        @ApiResponse(responseCode = "400", description = "Invalid request data or expired token"),
-        @ApiResponse(responseCode = "500", description = "Internal server error")
+            @ApiResponse(responseCode = "200", description = "Return request submitted successfully"),
+            @ApiResponse(responseCode = "400", description = "Invalid request data or expired token"),
+            @ApiResponse(responseCode = "500", description = "Internal server error")
     })
     public ResponseEntity<Map<String, Object>> submitTokenizedReturnRequest(
-            @Parameter(description = "Return request data as JSON")
-            @RequestPart("returnRequest") String returnRequestJson,
-            @Parameter(description = "Optional media files (images/videos)")
-            @RequestPart(value = "mediaFiles", required = false) MultipartFile[] mediaFiles) {
-        
+            @Parameter(description = "Return request data as JSON") @RequestPart("returnRequest") String returnRequestJson,
+            @Parameter(description = "Optional media files (images/videos)") @RequestPart(value = "mediaFiles", required = false) MultipartFile[] mediaFiles) {
+
         try {
             log.info("Processing tokenized return request");
-            
+
             // Parse the JSON request
-            TokenizedReturnRequestDTO returnRequest = objectMapper.readValue(returnRequestJson, TokenizedReturnRequestDTO.class);
-            
+            TokenizedReturnRequestDTO returnRequest = objectMapper.readValue(returnRequestJson,
+                    TokenizedReturnRequestDTO.class);
+
             // Submit the return request
             ReturnRequestDTO response = returnService.submitTokenizedReturnRequest(returnRequest, mediaFiles);
-            
+
             Map<String, Object> successResponse = createSuccessResponse("Return request submitted successfully");
             successResponse.put("data", response);
-            
+
             return ResponseEntity.ok(successResponse);
-            
+
         } catch (IllegalArgumentException e) {
             log.warn("Invalid tokenized return request: {}", e.getMessage());
             return ResponseEntity.badRequest()
-                .body(createErrorResponse("INVALID_REQUEST", "Invalid request: " + e.getMessage()));
+                    .body(createErrorResponse("INVALID_REQUEST", "Invalid request: " + e.getMessage()));
         } catch (Exception e) {
             log.error("Error processing tokenized return request", e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                .body(createErrorResponse("INTERNAL_ERROR", "Failed to process return request" + e.getMessage()));
+                    .body(createErrorResponse("INTERNAL_ERROR", "Failed to process return request" + e.getMessage()));
         }
     }
 
@@ -545,7 +536,7 @@ public class ReturnController {
         response.put("timestamp", System.currentTimeMillis());
         return response;
     }
-    
+
     /**
      * Get pending return requests count (Admin/Employee only)
      */
@@ -555,7 +546,7 @@ public class ReturnController {
     public ResponseEntity<?> getPendingReturnRequestsCount() {
         try {
             long count = returnService.countReturnRequestsByStatus(ReturnRequest.ReturnStatus.PENDING);
-            
+
             Map<String, Object> response = new HashMap<>();
             response.put("success", true);
             response.put("count", count);

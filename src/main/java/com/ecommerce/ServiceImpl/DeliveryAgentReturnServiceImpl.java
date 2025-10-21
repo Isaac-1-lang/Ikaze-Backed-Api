@@ -33,6 +33,7 @@ public class DeliveryAgentReturnServiceImpl implements DeliveryAgentReturnServic
 
     private final ReturnRequestRepository returnRequestRepository;
     private final UserRepository userRepository;
+    private final com.ecommerce.service.RefundService refundService;
 
     @Override
     @Transactional(readOnly = true)
@@ -368,6 +369,17 @@ public class DeliveryAgentReturnServiceImpl implements DeliveryAgentReturnServic
             dto.setDeliveryAgentId(returnRequest.getDeliveryAgent().getId());
             dto.setDeliveryAgentName(returnRequest.getDeliveryAgent().getFirstName() + " " +
                     returnRequest.getDeliveryAgent().getLastName());
+        }
+
+        // Calculate and add expected refund
+        try {
+            com.ecommerce.dto.ExpectedRefundDTO expectedRefund = refundService.calculateExpectedRefund(returnRequest);
+            dto.setExpectedRefund(expectedRefund);
+        } catch (Exception e) {
+            log.error("Could not calculate expected refund for return request {}: {}", 
+                    returnRequest.getId(), e.getMessage(), e);
+            // Set null to indicate calculation failed, but don't break the entire request
+            dto.setExpectedRefund(null);
         }
 
         return dto;

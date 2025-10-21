@@ -56,4 +56,7 @@ public class ReturnRequestDTO {
     private boolean canBeAppealed;
     private int daysUntilExpiry;
     private boolean isEligibleForReturn;
+    
+    // Expected refund breakdown
+    private ExpectedRefundDTO expectedRefund;
 }

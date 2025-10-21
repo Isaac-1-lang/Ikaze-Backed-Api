@@ -31,7 +31,6 @@ public interface OrderService {
 
     Map<String, Object> getOrderTracking(UUID userId, Long orderId);
 
-    // Customer methods
     List<CustomerOrderDTO> getCustomerOrders(UUID userId);
 
     CustomerOrderDTO getCustomerOrderById(UUID userId, Long orderId);
