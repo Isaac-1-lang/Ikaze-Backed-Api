@@ -13,7 +13,15 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
+import java.io.InputStream;
 import java.time.LocalDateTime;
+
+import org.apache.tika.metadata.Metadata;
+import org.apache.tika.parser.AutoDetectParser;
+import org.apache.tika.parser.ParseContext;
+import org.apache.tika.parser.Parser;
+import org.apache.tika.sax.BodyContentHandler;
+import org.xml.sax.ContentHandler;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -40,7 +48,7 @@ public class ReturnService {
     private static final int DEFAULT_RETURN_DAYS = 15;
     private static final int MAX_IMAGES = 5;
     private static final int MAX_VIDEOS = 1;
-    private static final int MAX_VIDEO_DURATION_SECONDS = 30;
+    private static final int MAX_VIDEO_DURATION_SECONDS = 15;
 
     /**
      * Submit a new return request for authenticated users with media files
@@ -665,9 +673,25 @@ public class ReturnService {
                     throw new IllegalArgumentException("Video file size cannot exceed 50MB");
                 }
 
-                // Note: Video duration validation would require additional processing
-                // For now, we rely on client-side validation for 30-second limit
-                log.info("Video file uploaded: {} ({})", file.getOriginalFilename(), contentType);
+                // Validate video duration (max 15 seconds)
+                try {
+                    double duration = extractVideoDuration(file);
+                    if (duration > MAX_VIDEO_DURATION_SECONDS) {
+                        throw new IllegalArgumentException(
+                                String.format("Video '%s' duration (%.1f seconds) exceeds maximum allowed (%d seconds)",
+                                        file.getOriginalFilename(), duration, MAX_VIDEO_DURATION_SECONDS));
+                    }
+                    log.info("Video file validated: {} - size: {} bytes, duration: {} seconds",
+                            file.getOriginalFilename(), file.getSize(), duration);
+                } catch (IllegalArgumentException e) {
+                    throw e;
+                } catch (Exception e) {
+                    log.error("Failed to validate video duration for '{}': {}",
+                            file.getOriginalFilename(), e.getMessage());
+                    throw new IllegalArgumentException(
+                            String.format("Failed to validate video '%s'. The file may be corrupted or in an unsupported format.",
+                                    file.getOriginalFilename()));
+                }
 
             } else {
                 throw new IllegalArgumentException("Only image and video files are allowed");
@@ -678,8 +702,59 @@ public class ReturnService {
     }
 
     /**
-     * Process media attachments by uploading to Cloudinary and saving metadata
+     * Extract video duration using Apache Tika
      */
+    private double extractVideoDuration(MultipartFile video) throws Exception {
+        try (InputStream inputStream = video.getInputStream()) {
+            Parser parser = new AutoDetectParser();
+            ContentHandler handler = new BodyContentHandler(-1);
+            Metadata metadata = new Metadata();
+            ParseContext context = new ParseContext();
+
+            if (video.getContentType() != null) {
+                metadata.set(Metadata.CONTENT_TYPE, video.getContentType());
+            }
+
+            parser.parse(inputStream, handler, metadata, context);
+
+            String[] durationKeys = {
+                "xmpDM:duration",
+                "xmpDM:Duration",
+                "duration",
+                "Duration",
+                "video:duration",
+                "Content-Duration"
+            };
+
+            String durationStr = null;
+            for (String key : durationKeys) {
+                durationStr = metadata.get(key);
+                if (durationStr != null && !durationStr.isEmpty()) {
+                    break;
+                }
+            }
+
+            if (durationStr == null || durationStr.isEmpty()) {
+                log.warn("Could not extract duration from video '{}'. Allowing upload.",
+                        video.getOriginalFilename());
+                return 0.0;
+            }
+
+            try {
+                double duration = Double.parseDouble(durationStr);
+                if (duration > 1000) {
+                    duration = duration / 1000.0;
+                }
+                return duration;
+            } catch (NumberFormatException e) {
+                log.warn("Could not parse duration value '{}' for video '{}'",
+                        durationStr, video.getOriginalFilename());
+                return 0.0;
+            }
+        }
+    }
+
+
     private void processMediaAttachments(Long returnRequestId, MultipartFile[] mediaFiles) throws IOException {
         List<ProcessedMediaFileDTO> processedFiles = new ArrayList<>();
 
