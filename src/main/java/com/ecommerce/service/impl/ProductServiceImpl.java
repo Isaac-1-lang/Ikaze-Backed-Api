@@ -98,6 +98,15 @@ import java.util.concurrent.Executors;
 
 import java.util.stream.Collectors;
 
+import org.apache.tika.metadata.Metadata;
+import org.apache.tika.parser.AutoDetectParser;
+import org.apache.tika.parser.ParseContext;
+import org.apache.tika.parser.Parser;
+import org.apache.tika.sax.BodyContentHandler;
+import org.xml.sax.ContentHandler;
+
+import java.io.InputStream;
+
 @Service
 
 @RequiredArgsConstructor
@@ -4767,12 +4776,9 @@ public class ProductServiceImpl implements ProductService {
             throw new IllegalArgumentException("At least one video must be provided");
         }
 
+        // Validate each video before uploading
         for (MultipartFile video : videos) {
-            if (video.getSize() > 100 * 1024 * 1024) {
-                throw new IllegalArgumentException(
-                        String.format("Video '%s' file size (%.2f MB) exceeds maximum allowed (100 MB)",
-                                video.getOriginalFilename(), video.getSize() / (1024.0 * 1024.0)));
-            }
+            validateVideo(video);
         }
 
         List<Map<String, String>> uploadResults = cloudinaryService.uploadMultipleVideos(videos);
@@ -4800,6 +4806,98 @@ public class ProductServiceImpl implements ProductService {
 
         log.info("Successfully uploaded {} videos for product {}", videos.size(), productId);
         return uploadedVideos;
+    }
+
+    /**
+     * Validate video file size and duration
+     */
+    private void validateVideo(MultipartFile video) {
+        String filename = video.getOriginalFilename();
+        
+        // Validate file size (max 100MB)
+        long maxSize = 100L * 1024 * 1024; // 100MB in bytes
+        if (video.getSize() > maxSize) {
+            double sizeMB = video.getSize() / (1024.0 * 1024.0);
+            throw new IllegalArgumentException(
+                    String.format("Video '%s' file size (%.2f MB) exceeds maximum allowed (100 MB)",
+                            filename, sizeMB));
+        }
+
+        // Validate video duration (max 15 seconds)
+        try {
+            double duration = extractVideoDuration(video);
+            if (duration > 15.0) {
+                throw new IllegalArgumentException(
+                        String.format("Video '%s' duration (%.1f seconds) exceeds maximum allowed (15 seconds)",
+                                filename, duration));
+            }
+            log.debug("Video '{}' validated successfully: size={} bytes, duration={} seconds",
+                    filename, video.getSize(), duration);
+        } catch (IllegalArgumentException e) {
+            // Re-throw validation errors
+            throw e;
+        } catch (Exception e) {
+            log.error("Failed to extract video duration for '{}': {}", filename, e.getMessage());
+            throw new IllegalArgumentException(
+                    String.format("Failed to validate video '%s'. The file may be corrupted or in an unsupported format.",
+                            filename));
+        }
+    }
+
+    /**
+     * Extract video duration using Apache Tika
+     */
+    private double extractVideoDuration(MultipartFile video) throws Exception {
+        try (InputStream inputStream = video.getInputStream()) {
+            Parser parser = new AutoDetectParser();
+            ContentHandler handler = new BodyContentHandler(-1);
+            Metadata metadata = new Metadata();
+            ParseContext context = new ParseContext();
+
+            if (video.getContentType() != null) {
+                metadata.set(Metadata.CONTENT_TYPE, video.getContentType());
+            }
+
+            parser.parse(inputStream, handler, metadata, context);
+
+            String durationStr = null;
+            
+            String[] durationKeys = {
+                "xmpDM:duration",
+                "xmpDM:Duration",
+                "duration",
+                "Duration",
+                "video:duration",
+                "Content-Duration"
+            };
+
+            for (String key : durationKeys) {
+                durationStr = metadata.get(key);
+                if (durationStr != null && !durationStr.isEmpty()) {
+                    break;
+                }
+            }
+
+            if (durationStr == null || durationStr.isEmpty()) {
+                log.warn("Could not extract duration from video '{}'. Available metadata: {}",
+                        video.getOriginalFilename(), metadata.names());
+                return 0.0;
+            }
+
+            double duration;
+            try {
+                duration = Double.parseDouble(durationStr);
+                if (duration > 1000) {
+                    duration = duration / 1000.0;
+                }
+            } catch (NumberFormatException e) {
+                log.warn("Could not parse duration value '{}' for video '{}'",
+                        durationStr, video.getOriginalFilename());
+                return 0.0;
+            }
+
+            return duration;
+        }
     }
 
     @Override
