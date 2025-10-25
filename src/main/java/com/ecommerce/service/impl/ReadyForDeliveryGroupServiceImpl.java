@@ -37,6 +37,7 @@ public class ReadyForDeliveryGroupServiceImpl implements ReadyForDeliveryGroupSe
     private final ReadyForDeliveryGroupRepository groupRepository;
     private final OrderRepository orderRepository;
     private final UserRepository userRepository;
+    private final com.ecommerce.service.OrderActivityLogService activityLogService;
 
     @Override
     @Transactional
@@ -225,6 +226,13 @@ public class ReadyForDeliveryGroupServiceImpl implements ReadyForDeliveryGroupSe
         ReadyForDeliveryGroup group = groupRepository.findByIdWithOrders(groupId)
                 .orElseThrow(() -> new EntityNotFoundException("Group not found with ID: " + groupId));
 
+        String deliveryAgentName = group.getDeliverer() != null
+            ? group.getDeliverer().getFirstName() + " " + group.getDeliverer().getLastName()
+            : "Unassigned";
+        String deliveryAgentPhone = group.getDeliverer() != null && group.getDeliverer().getPhoneNumber() != null
+            ? group.getDeliverer().getPhoneNumber()
+            : "N/A";
+
         for (Long orderId : orderIds) {
             Order order = orderRepository.findById(orderId)
                     .orElseThrow(() -> new EntityNotFoundException("Order not found with ID: " + orderId));
@@ -234,6 +242,15 @@ public class ReadyForDeliveryGroupServiceImpl implements ReadyForDeliveryGroupSe
             }
 
             group.addOrder(order);
+
+            // LOG ACTIVITY: Added to Delivery Group
+            activityLogService.logAddedToDeliveryGroup(
+                orderId,
+                group.getDeliveryGroupName(),
+                deliveryAgentName,
+                deliveryAgentPhone,
+                groupId
+            );
         }
 
         groupRepository.save(group);
@@ -547,6 +564,21 @@ public class ReadyForDeliveryGroupServiceImpl implements ReadyForDeliveryGroupSe
         group.setDeliveryStartedAt(java.time.LocalDateTime.now());
 
         ReadyForDeliveryGroup savedGroup = groupRepository.save(group);
+
+        // LOG ACTIVITY: Delivery Started for all orders in the group
+        String deliveryAgentName = group.getDeliverer().getFirstName() + " " + group.getDeliverer().getLastName();
+        ReadyForDeliveryGroup groupWithOrders = groupRepository.findByIdWithOrders(groupId)
+            .orElseThrow(() -> new EntityNotFoundException("Delivery group not found"));
+        
+        for (Order order : groupWithOrders.getOrders()) {
+            activityLogService.logDeliveryStarted(
+                order.getOrderId(),
+                group.getDeliveryGroupName(),
+                deliveryAgentName,
+                agentId.toString()
+            );
+        }
+
         return mapToDeliveryGroupDto(savedGroup);
     }
 
@@ -712,6 +744,20 @@ public class ReadyForDeliveryGroupServiceImpl implements ReadyForDeliveryGroupSe
         group.setHasDeliveryStarted(true);
         group.setDeliveryStartedAt(java.time.LocalDateTime.now());
         groupRepository.save(group);
+
+        // Log activity for all orders in the group
+        String agentName = group.getDeliverer() != null ? 
+            group.getDeliverer().getFirstName() + " " + group.getDeliverer().getLastName() : 
+            "Delivery Agent";
+        
+        for (Order order : orders) {
+            activityLogService.logDeliveryStarted(
+                order.getOrderId(),
+                group.getDeliveryGroupName(),
+                agentName,
+                group.getDeliverer() != null ? group.getDeliverer().getId().toString() : null
+            );
+        }
 
         // Send email notifications to customers (async)
         sendDeliveryStartNotifications(group);

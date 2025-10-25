@@ -76,6 +76,7 @@ public class CheckoutService {
     private final CartService cartService;
     private final MoneyFlowService moneyFlowService;
     private final RoadValidationService roadValidationService;
+    private final OrderActivityLogService activityLogService;
 
     public String createCheckoutSession(CheckoutRequest req) throws Exception {
         validateDeliveryCountry(req.getShippingAddress().getCountry());
@@ -188,6 +189,10 @@ public class CheckoutService {
 
         Order saved = orderRepository.save(order);
         log.info("Order created with ID: {}", saved.getOrderId());
+
+        // LOG ACTIVITY: Order Placed
+        String customerName = user.getFirstName() + " " + user.getLastName();
+        activityLogService.logOrderPlaced(saved.getOrderId(), customerName);
 
         for (Map.Entry<CartItemDTO, List<FEFOStockAllocationService.BatchAllocation>> entry : fefoAllocations
                 .entrySet()) {
@@ -324,17 +329,17 @@ public class CheckoutService {
         Order saved = orderRepository.save(order);
         log.info("Guest order created with ID: {}", saved.getOrderId());
 
-        // Step 3: Create OrderItemBatch records for tracking (but don't commit
-        // allocation yet)
+        String guestCustomerName = req.getGuestName() + " " + req.getGuestLastName();
+        activityLogService.logOrderPlaced(saved.getOrderId(), guestCustomerName + " (Guest)");
+
+
         for (Map.Entry<CartItemDTO, List<FEFOStockAllocationService.BatchAllocation>> entry : fefoAllocations
                 .entrySet()) {
             createOrderItemBatches(saved, entry.getKey(), entry.getValue());
         }
 
-        // Step 4: Lock stock at batch level using session ID
         String sessionId = saved.getOrderTransaction().getStripeSessionId();
         if (sessionId == null) {
-            // Generate temporary session ID for locking
             sessionId = "temp_guest_" + saved.getOrderId().toString();
         }
 
@@ -371,6 +376,12 @@ public class CheckoutService {
             throw new EntityNotFoundException("Session not found on Stripe");
         }
 
+        if (tx.getStatus() == OrderTransaction.TransactionStatus.COMPLETED) {
+            log.info("Transaction already completed for session: {}. Skipping duplicate verification.", sessionId);
+            Order order = tx.getOrder();
+            return buildVerificationResult(session, order, tx);
+        }
+
         if (!"paid".equalsIgnoreCase(session.getPaymentStatus())) {
             Order order = tx.getOrder();
 
@@ -399,7 +410,12 @@ public class CheckoutService {
         order.setOrderStatus(Order.OrderStatus.PROCESSING);
         orderRepository.save(order);
 
-        // Record money flow for successful payment
+        activityLogService.logPaymentCompleted(
+            order.getOrderId(),
+            tx.getPaymentMethod().toString(),
+            tx.getOrderAmount().doubleValue()
+        );
+
         recordPaymentInMoneyFlow(order, tx);
 
         log.info("Payment verification completed successfully for order: {}", order.getOrderId());
@@ -445,6 +461,29 @@ public class CheckoutService {
                 session.getCustomerDetails() != null ? session.getCustomerDetails().getEmail() : null,
                 receiptUrl,
                 intent != null ? intent.getId() : null,
+                true,
+                orderResponse);
+    }
+
+    /**
+     * Helper method to build verification result for already completed transactions
+     */
+    private CheckoutVerificationResult buildVerificationResult(Session session, Order order, OrderTransaction tx) {
+        OrderResponseDTO orderResponse = OrderResponseDTO.builder()
+                .id(order.getOrderId())
+                .orderNumber(order.getOrderCode())
+                .status(order.getOrderStatus().toString())
+                .total(order.getTotalAmount())
+                .createdAt(order.getCreatedAt())
+                .build();
+
+        return new CheckoutVerificationResult(
+                session.getPaymentStatus(),
+                session.getAmountTotal(),
+                session.getCurrency(),
+                session.getCustomerDetails() != null ? session.getCustomerDetails().getEmail() : null,
+                tx.getReceiptUrl(),
+                tx.getStripePaymentIntentId(),
                 true,
                 orderResponse);
     }

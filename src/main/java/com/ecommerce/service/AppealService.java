@@ -49,6 +49,7 @@ public class AppealService {
     // Notification and audit services
     private final NotificationService notificationService;
     private final EmailService emailService;
+    private final OrderActivityLogService activityLogService;
 
     private static final int DEFAULT_RETURN_DAYS = 15;
     private static final int MAX_IMAGES = 5;
@@ -105,6 +106,19 @@ public class AppealService {
         log.info("Appeal {} submitted successfully for return request {}",
                 savedAppeal.getId(), submitDTO.getReturnRequestId());
 
+        // LOG ACTIVITY: Appeal Submitted
+        Order order = returnRequest.getOrder();
+        String customerName = order.getUser() != null 
+            ? order.getUser().getFirstName() + " " + order.getUser().getLastName()
+            : order.getOrderCustomerInfo().getFullName();
+        activityLogService.logAppealSubmitted(
+            order.getOrderId(),
+            customerName,
+            submitDTO.getReason(),
+            savedAppeal.getId(),
+            returnRequest.getId()
+        );
+
         return convertToDTO(savedAppeal);
     }
 
@@ -155,6 +169,19 @@ public class AppealService {
 
         log.info("Tokenized appeal {} submitted successfully for return request {}",
                 savedAppeal.getId(), submitDTO.getReturnRequestId());
+
+        // LOG ACTIVITY: Appeal Submitted (Guest)
+        Order order = returnRequest.getOrder();
+        String guestCustomerName = order.getOrderCustomerInfo() != null 
+            ? order.getOrderCustomerInfo().getFullName()
+            : "Guest Customer";
+        activityLogService.logAppealSubmitted(
+            order.getOrderId(),
+            guestCustomerName + " (Guest)",
+            submitDTO.getReason(),
+            savedAppeal.getId(),
+            returnRequest.getId()
+        );
 
         return convertToDTO(savedAppeal);
     }
@@ -594,10 +621,17 @@ public class AppealService {
 
         }
 
-        // Send notifications
         notificationService.notifyAppealApproved(appeal, returnRequest);
 
         log.info("Appeal {} approved", appeal.getId());
+
+        if (returnRequest != null) {
+            activityLogService.logAppealApproved(
+                returnRequest.getOrderId(),
+                "Admin",
+                appeal.getId()
+            );
+        }
     }
 
     private void denyAppeal(ReturnAppeal appeal, AppealDecisionDTO decisionDTO) {
@@ -605,6 +639,16 @@ public class AppealService {
         notificationService.notifyAppealDenied(appeal, appeal.getReturnRequest());
 
         log.info("Appeal {} denied - final decision", appeal.getId());
+
+        ReturnRequest returnRequest = appeal.getReturnRequest();
+        if (returnRequest != null) {
+            activityLogService.logAppealDenied(
+                returnRequest.getOrderId(),
+                "Admin", 
+                decisionDTO.getDecisionNotes(),
+                appeal.getId()
+            );
+        }
     }
 
     private ReturnAppealDTO convertToDTO(ReturnAppeal appeal) {
