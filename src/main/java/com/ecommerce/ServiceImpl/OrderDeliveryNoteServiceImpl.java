@@ -13,6 +13,7 @@ import com.ecommerce.repository.OrderDeliveryNoteRepository;
 import com.ecommerce.repository.OrderRepository;
 import com.ecommerce.repository.ReadyForDeliveryGroupRepository;
 import com.ecommerce.repository.UserRepository;
+import com.ecommerce.service.OrderActivityLogService;
 import com.ecommerce.service.OrderDeliveryNoteService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -20,6 +21,8 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+
+import java.util.List;
 
 @Service
 @RequiredArgsConstructor
@@ -30,6 +33,7 @@ public class OrderDeliveryNoteServiceImpl implements OrderDeliveryNoteService {
     private final OrderRepository orderRepository;
     private final ReadyForDeliveryGroupRepository deliveryGroupRepository;
     private final UserRepository userRepository;
+    private final OrderActivityLogService activityLogService;
 
     @Override
     @Transactional
@@ -107,6 +111,36 @@ public class OrderDeliveryNoteServiceImpl implements OrderDeliveryNoteService {
 
         OrderDeliveryNote savedNote = noteRepository.save(note);
         log.info("Delivery note created successfully with ID: {}", savedNote.getNoteId());
+
+        // Log activity based on note type
+        String agentName = agent.getFirstName() + " " + agent.getLastName();
+        String categoryStr = noteCategory != null ? noteCategory.toString() : null;
+        
+        if (noteType == OrderDeliveryNote.NoteType.ORDER_SPECIFIC) {
+            // Log for specific order
+            activityLogService.logDeliveryNoteAdded(
+                savedNote.getOrder().getOrderId(),
+                savedNote.getNoteText(),
+                agentName,
+                agent.getId().toString(),
+                savedNote.getNoteId(),
+                categoryStr
+            );
+        } else if (noteType == OrderDeliveryNote.NoteType.GROUP_GENERAL) {
+            List<Long> orderIds = savedNote.getDeliveryGroup().getOrders().stream()
+                .map(Order::getOrderId)
+                .collect(java.util.stream.Collectors.toList());
+            
+            activityLogService.logGroupDeliveryNoteAdded(
+                orderIds,
+                savedNote.getNoteText(),
+                agentName,
+                agent.getId().toString(),
+                savedNote.getNoteId(),
+                categoryStr,
+                savedNote.getDeliveryGroup().getDeliveryGroupName()
+            );
+        }
 
         return OrderDeliveryNoteDTO.fromEntity(savedNote);
     }

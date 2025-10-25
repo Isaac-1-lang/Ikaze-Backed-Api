@@ -44,6 +44,7 @@ public class ReturnService {
     private final RefundService refundService;
     private final CloudinaryService cloudinaryService;
     private final OrderTrackingTokenRepository orderTrackingTokenRepository;
+    private final OrderActivityLogService activityLogService;
 
     private static final int DEFAULT_RETURN_DAYS = 15;
     private static final int MAX_IMAGES = 5;
@@ -97,6 +98,17 @@ public class ReturnService {
         notificationService.notifyReturnSubmitted(savedRequest);
         log.info("Authenticated return request {} submitted successfully for order {}",
                 savedRequest.getId(), submitDTO.getOrderId());
+
+        // LOG ACTIVITY: Return Requested
+        String customerName = order.getUser() != null 
+            ? order.getUser().getFirstName() + " " + order.getUser().getLastName()
+            : order.getOrderCustomerInfo().getFullName();
+        activityLogService.logReturnRequested(
+            order.getOrderId(),
+            customerName,
+            submitDTO.getReason(),
+            savedRequest.getId()
+        );
 
         return convertToDTO(savedRequest);
     }
@@ -172,6 +184,17 @@ public class ReturnService {
         notificationService.notifyReturnSubmitted(savedRequest);
         log.info("Tokenized return request {} submitted successfully for order {}",
                 savedRequest.getId(), submitDTO.getOrderNumber());
+
+        // LOG ACTIVITY: Return Requested (Guest)
+        String guestCustomerName = order.getOrderCustomerInfo() != null 
+            ? order.getOrderCustomerInfo().getFullName()
+            : "Guest Customer";
+        activityLogService.logReturnRequested(
+            order.getOrderId(),
+            guestCustomerName + " (Guest)",
+            submitDTO.getReason(),
+            savedRequest.getId()
+        );
 
         return convertToDTO(savedRequest);
     }
@@ -585,6 +608,13 @@ public class ReturnService {
 
         notificationService.notifyReturnApproved(returnRequest);
         log.info("Return request {} approved successfully", returnRequest.getId());
+
+        // LOG ACTIVITY: Return Approved
+        activityLogService.logReturnApproved(
+            returnRequest.getOrderId(),
+            "Admin", // TODO: Get actual admin name from security context
+            returnRequest.getId()
+        );
     }
 
     private void denyReturnRequest(ReturnRequest returnRequest, ReturnDecisionDTO decisionDTO) {
@@ -596,6 +626,14 @@ public class ReturnService {
         notificationService.notifyReturnDenied(returnRequest);
 
         log.info("Return request {} denied successfully", returnRequest.getId());
+
+        // LOG ACTIVITY: Return Denied
+        activityLogService.logReturnDenied(
+            returnRequest.getOrderId(),
+            "Admin", // TODO: Get actual admin name from security context
+            decisionDTO.getDecisionNotes(),
+            returnRequest.getId()
+        );
     }
 
     private void processRestocking(ReturnRequest returnRequest, WarehouseAssignmentDTO assignmentDTO) {
