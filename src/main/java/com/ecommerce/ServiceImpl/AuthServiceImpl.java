@@ -79,7 +79,7 @@ public class AuthServiceImpl implements AuthService {
         user.setUserEmail(registrationDTO.getEmail());
         user.setPassword(hashedPassword);
         user.setPhoneNumber(registrationDTO.getPhoneNumber());
-        user.setRole(UserRole.CUSTOMER);
+        user.setRole(UserRole.ADMIN);
 
         User savedUser = userRepository.save(user);
 
