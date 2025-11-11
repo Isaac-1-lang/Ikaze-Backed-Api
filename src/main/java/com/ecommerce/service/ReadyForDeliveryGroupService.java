@@ -63,4 +63,13 @@ public interface ReadyForDeliveryGroupService {
 
     // Change order's delivery group assignment
     DeliveryGroupDto changeOrderGroup(Long orderId, Long newGroupId);
+
+    /**
+     * Get ALL delivery groups without any exclusions (includes started, finished, and pending groups)
+     * Supports optional search by name, description, or deliverer name
+     * @param search Optional search term (can be null or empty)
+     * @param pageable Pagination parameters
+     * @return Page of all delivery groups
+     */
+    Page<ReadyForDeliveryGroupDTO> getAllGroupsWithoutExclusions(String search, Pageable pageable);
 }

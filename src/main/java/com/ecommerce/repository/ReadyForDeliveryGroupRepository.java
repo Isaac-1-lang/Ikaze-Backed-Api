@@ -73,4 +73,23 @@ public interface ReadyForDeliveryGroupRepository extends JpaRepository<ReadyForD
            "LOWER(g.deliveryGroupDescription) LIKE LOWER(CONCAT('%', :search, '%')) OR " +
            "LOWER(CONCAT(g.deliverer.firstName, ' ', g.deliverer.lastName)) LIKE LOWER(CONCAT('%', :search, '%')))")
     Page<ReadyForDeliveryGroup> searchAvailableGroups(@Param("search") String search, Pageable pageable);
+
+    /**
+     * Find ALL delivery groups with orders and deliverer - NO EXCLUSIONS
+     * This includes groups that have started, finished, or not started yet
+     */
+    @EntityGraph(attributePaths = { "orders", "deliverer" })
+    @Query("SELECT g FROM ReadyForDeliveryGroup g")
+    Page<ReadyForDeliveryGroup> findAllGroupsWithoutExclusions(Pageable pageable);
+
+    /**
+     * Search ALL delivery groups by name, description, or deliverer name - NO EXCLUSIONS
+     * This includes groups that have started, finished, or not started yet
+     */
+    @EntityGraph(attributePaths = { "orders", "deliverer" })
+    @Query("SELECT g FROM ReadyForDeliveryGroup g WHERE " +
+           "LOWER(g.deliveryGroupName) LIKE LOWER(CONCAT('%', :search, '%')) OR " +
+           "LOWER(g.deliveryGroupDescription) LIKE LOWER(CONCAT('%', :search, '%')) OR " +
+           "LOWER(CONCAT(g.deliverer.firstName, ' ', g.deliverer.lastName)) LIKE LOWER(CONCAT('%', :search, '%'))")
+    Page<ReadyForDeliveryGroup> searchAllGroupsWithoutExclusions(@Param("search") String search, Pageable pageable);
 }

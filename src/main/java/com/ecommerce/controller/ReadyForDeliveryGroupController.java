@@ -391,6 +391,46 @@ public class ReadyForDeliveryGroupController {
         }
     }
 
+    @GetMapping("/admin/all")
+    @PreAuthorize("hasAnyRole('ADMIN', 'EMPLOYEE')")
+    @Operation(summary = "Get all groups for admin", description = "Get ALL delivery groups without any exclusions (includes started, finished, and pending groups) with pagination and optional search", responses = {
+            @ApiResponse(responseCode = "200", description = "Groups retrieved successfully"),
+            @ApiResponse(responseCode = "500", description = "Internal server error")
+    })
+    public ResponseEntity<?> getAllGroupsForAdmin(
+            @RequestParam(required = false) String search,
+            Pageable pageable) {
+        try {
+            log.info("Getting all groups for admin with pagination: page={}, size={}, search={}", 
+                    pageable.getPageNumber(), pageable.getPageSize(), search);
+            Page<ReadyForDeliveryGroupDTO> groups = deliveryGroupService.getAllGroupsWithoutExclusions(search, pageable);
+
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", true);
+            response.put("message", "Groups retrieved successfully");
+            response.put("data", groups.getContent());
+            response.put("pagination", Map.of(
+                    "page", groups.getNumber(),
+                    "size", groups.getSize(),
+                    "totalElements", groups.getTotalElements(),
+                    "totalPages", groups.getTotalPages(),
+                    "hasNext", groups.hasNext(),
+                    "hasPrevious", groups.hasPrevious()));
+
+            log.info("Groups retrieved successfully: {} groups found", groups.getTotalElements());
+            return ResponseEntity.ok(response);
+
+        } catch (Exception e) {
+            log.error("Error getting all groups for admin: {}", e.getMessage(), e);
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", false);
+            response.put("message", "An unexpected error occurred while getting groups.");
+            response.put("errorCode", "INTERNAL_ERROR");
+            response.put("details", e.getMessage());
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(response);
+        }
+    }
+
     @GetMapping("/available")
     @PreAuthorize("hasAnyRole('ADMIN', 'EMPLOYEE')")
     @Operation(summary = "List available groups", description = "Get paginated list of available delivery groups with optional search", responses = {

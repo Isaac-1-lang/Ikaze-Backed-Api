@@ -222,6 +222,26 @@ public class ReadyForDeliveryGroupServiceImpl implements ReadyForDeliveryGroupSe
         return groups.stream().map(this::mapToDTO).collect(Collectors.toList());
     }
 
+    @Override
+    public Page<ReadyForDeliveryGroupDTO> getAllGroupsWithoutExclusions(String search, Pageable pageable) {
+        log.info("Getting all groups without exclusions with pagination: page={}, size={}, search={}",
+                pageable.getPageNumber(), pageable.getPageSize(), search);
+
+        Page<ReadyForDeliveryGroup> groups;
+        
+        if (search != null && !search.trim().isEmpty()) {
+            // Search across all groups (no exclusions)
+            groups = groupRepository.searchAllGroupsWithoutExclusions(search.trim(), pageable);
+            log.info("Found {} groups matching search term: '{}'", groups.getTotalElements(), search);
+        } else {
+            // Get all groups (no exclusions)
+            groups = groupRepository.findAllGroupsWithoutExclusions(pageable);
+            log.info("Found {} total groups", groups.getTotalElements());
+        }
+
+        return groups.map(this::mapToDTO);
+    }
+
     private void addOrdersToGroupInternal(Long groupId, List<Long> orderIds) {
         ReadyForDeliveryGroup group = groupRepository.findByIdWithOrders(groupId)
                 .orElseThrow(() -> new EntityNotFoundException("Group not found with ID: " + groupId));
