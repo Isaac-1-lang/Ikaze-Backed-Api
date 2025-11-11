@@ -72,4 +72,12 @@ public interface ReadyForDeliveryGroupService {
      * @return Page of all delivery groups
      */
     Page<ReadyForDeliveryGroupDTO> getAllGroupsWithoutExclusions(String search, Pageable pageable);
+
+    /**
+     * Get orders for a specific delivery group with pagination
+     * @param groupId Delivery group ID
+     * @param pageable Pagination parameters
+     * @return Page of orders in the group
+     */
+    Page<OrderDTO> getOrdersForGroupWithPagination(Long groupId, Pageable pageable);
 }

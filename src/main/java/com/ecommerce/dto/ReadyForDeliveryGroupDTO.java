@@ -20,6 +20,7 @@ public class ReadyForDeliveryGroupDTO {
     private String delivererName;
     private List<String> orderIds;
     private Integer orderCount;
+    private Integer totalOrders; // Alias for orderCount for frontend compatibility
     private LocalDateTime createdAt;
     private LocalDateTime scheduledAt;
     private Boolean hasDeliveryStarted;

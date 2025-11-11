@@ -242,6 +242,22 @@ public class ReadyForDeliveryGroupServiceImpl implements ReadyForDeliveryGroupSe
         return groups.map(this::mapToDTO);
     }
 
+    @Override
+    public Page<OrderDTO> getOrdersForGroupWithPagination(Long groupId, Pageable pageable) {
+        log.info("Getting orders for group {} with pagination: page={}, size={}",
+                groupId, pageable.getPageNumber(), pageable.getPageSize());
+
+        // Verify group exists
+        groupRepository.findById(groupId)
+                .orElseThrow(() -> new EntityNotFoundException("Group not found with ID: " + groupId));
+
+        // Get orders with pagination
+        Page<Order> orders = orderRepository.findByReadyForDeliveryGroupId(groupId, pageable);
+        log.info("Found {} orders for group {}", orders.getTotalElements(), groupId);
+
+        return orders.map(this::mapToOrderDTO);
+    }
+
     private void addOrdersToGroupInternal(Long groupId, List<Long> orderIds) {
         ReadyForDeliveryGroup group = groupRepository.findByIdWithOrders(groupId)
                 .orElseThrow(() -> new EntityNotFoundException("Group not found with ID: " + groupId));
@@ -285,6 +301,8 @@ public class ReadyForDeliveryGroupServiceImpl implements ReadyForDeliveryGroupSe
                 ? group.getDeliverer().getFirstName() + " " + group.getDeliverer().getLastName()
                 : null;
 
+        int ordersCount = group.getOrders().size();
+        
         return ReadyForDeliveryGroupDTO.builder()
                 .deliveryGroupId(group.getDeliveryGroupId())
                 .deliveryGroupName(group.getDeliveryGroupName())
@@ -292,7 +310,8 @@ public class ReadyForDeliveryGroupServiceImpl implements ReadyForDeliveryGroupSe
                 .delivererId(group.getDeliverer() != null ? group.getDeliverer().getId() : null)
                 .delivererName(delivererName)
                 .orderIds(orderIds)
-                .orderCount(group.getOrders().size())
+                .orderCount(ordersCount)
+                .totalOrders(ordersCount) // Set totalOrders for frontend compatibility
                 .createdAt(group.getCreatedAt())
                 .scheduledAt(group.getScheduledAt())
                 .hasDeliveryStarted(group.getHasDeliveryStarted())
@@ -722,6 +741,11 @@ public class ReadyForDeliveryGroupServiceImpl implements ReadyForDeliveryGroupSe
             totalAmount = order.getOrderInfo().getTotalAmount();
         }
 
+        // Calculate total items count (sum of all quantities)
+        int totalItemsCount = orderItems.stream()
+                .mapToInt(OrderItemDTO::getQuantity)
+                .sum();
+
         return OrderDTO.builder()
                 .id(order.getOrderId())
                 .orderNumber(order.getOrderCode())
@@ -730,6 +754,7 @@ public class ReadyForDeliveryGroupServiceImpl implements ReadyForDeliveryGroupSe
                 .customerPhone(customerPhone)
                 .status(order.getOrderStatus() != null ? order.getOrderStatus().toString() : "UNKNOWN")
                 .totalAmount(totalAmount)
+                .totalItems(totalItemsCount)
                 .createdAt(order.getCreatedAt())
                 .updatedAt(order.getUpdatedAt())
                 .items(orderItems)
