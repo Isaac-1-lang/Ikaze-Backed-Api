@@ -254,4 +254,25 @@ public interface OrderRepository extends JpaRepository<Order, Long>, OrderReposi
          */
         long countByOrderStatusAndReadyForDeliveryGroupIsNull(Order.OrderStatus orderStatus);
 
+        /**
+         * Find orders by delivery group ID with all details
+         */
+        @Query("SELECT DISTINCT o FROM Order o " +
+               "LEFT JOIN FETCH o.orderItems oi " +
+               "LEFT JOIN FETCH oi.productVariant pv " +
+               "LEFT JOIN FETCH pv.product p " +
+               "LEFT JOIN FETCH o.orderAddress addr " +
+               "LEFT JOIN FETCH o.orderCustomerInfo customer " +
+               "LEFT JOIN FETCH o.orderTransaction tx " +
+               "WHERE o.readyForDeliveryGroup.deliveryGroupId = :groupId " +
+               "ORDER BY o.createdAt DESC")
+        List<Order> findByReadyForDeliveryGroupIdWithDetails(@Param("groupId") Long groupId);
+
+        /**
+         * Find orders by delivery group ID with pagination
+         */
+        @Query("SELECT o FROM Order o " +
+               "WHERE o.readyForDeliveryGroup.deliveryGroupId = :groupId")
+        Page<Order> findByReadyForDeliveryGroupId(@Param("groupId") Long groupId, Pageable pageable);
+
 }

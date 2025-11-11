@@ -7,6 +7,7 @@ import com.ecommerce.dto.AddOrdersToGroupDTO;
 import com.ecommerce.dto.BulkAddResult;
 import com.ecommerce.dto.AgentDto;
 import com.ecommerce.dto.DeliveryGroupDto;
+import com.ecommerce.dto.OrderDTO;
 import com.ecommerce.service.ReadyForDeliveryGroupService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.media.Content;
@@ -382,6 +383,96 @@ public class ReadyForDeliveryGroupController {
 
         } catch (Exception e) {
             log.error("Error getting all groups: {}", e.getMessage(), e);
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", false);
+            response.put("message", "An unexpected error occurred while getting groups.");
+            response.put("errorCode", "INTERNAL_ERROR");
+            response.put("details", e.getMessage());
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(response);
+        }
+    }
+
+    @GetMapping("/{groupId}/orders")
+    @PreAuthorize("hasAnyRole('ADMIN', 'EMPLOYEE')")
+    @Operation(summary = "Get orders for group", description = "Get paginated list of orders in a delivery group", responses = {
+            @ApiResponse(responseCode = "200", description = "Orders retrieved successfully"),
+            @ApiResponse(responseCode = "404", description = "Group not found"),
+            @ApiResponse(responseCode = "500", description = "Internal server error")
+    })
+    public ResponseEntity<?> getOrdersForGroup(
+            @PathVariable Long groupId,
+            Pageable pageable) {
+        try {
+            log.info("Getting orders for group {} with pagination: page={}, size={}",
+                    groupId, pageable.getPageNumber(), pageable.getPageSize());
+            Page<OrderDTO> orders = deliveryGroupService.getOrdersForGroupWithPagination(groupId, pageable);
+
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", true);
+            response.put("message", "Orders retrieved successfully");
+            response.put("data", orders.getContent());
+            response.put("pagination", Map.of(
+                    "page", orders.getNumber(),
+                    "size", orders.getSize(),
+                    "totalElements", orders.getTotalElements(),
+                    "totalPages", orders.getTotalPages(),
+                    "hasNext", orders.hasNext(),
+                    "hasPrevious", orders.hasPrevious()));
+
+            log.info("Orders retrieved successfully: {} orders found", orders.getTotalElements());
+            return ResponseEntity.ok(response);
+
+        } catch (EntityNotFoundException e) {
+            log.warn("Group not found: {}", e.getMessage());
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", false);
+            response.put("message", "Group not found: " + e.getMessage());
+            response.put("errorCode", "NOT_FOUND");
+            response.put("details", e.getMessage());
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(response);
+
+        } catch (Exception e) {
+            log.error("Error getting orders for group: {}", e.getMessage(), e);
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", false);
+            response.put("message", "An unexpected error occurred while getting orders.");
+            response.put("errorCode", "INTERNAL_ERROR");
+            response.put("details", e.getMessage());
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(response);
+        }
+    }
+
+    @GetMapping("/admin/all")
+    @PreAuthorize("hasAnyRole('ADMIN', 'EMPLOYEE')")
+    @Operation(summary = "Get all groups for admin", description = "Get ALL delivery groups without any exclusions (includes started, finished, and pending groups) with pagination and optional search", responses = {
+            @ApiResponse(responseCode = "200", description = "Groups retrieved successfully"),
+            @ApiResponse(responseCode = "500", description = "Internal server error")
+    })
+    public ResponseEntity<?> getAllGroupsForAdmin(
+            @RequestParam(required = false) String search,
+            Pageable pageable) {
+        try {
+            log.info("Getting all groups for admin with pagination: page={}, size={}, search={}", 
+                    pageable.getPageNumber(), pageable.getPageSize(), search);
+            Page<ReadyForDeliveryGroupDTO> groups = deliveryGroupService.getAllGroupsWithoutExclusions(search, pageable);
+
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", true);
+            response.put("message", "Groups retrieved successfully");
+            response.put("data", groups.getContent());
+            response.put("pagination", Map.of(
+                    "page", groups.getNumber(),
+                    "size", groups.getSize(),
+                    "totalElements", groups.getTotalElements(),
+                    "totalPages", groups.getTotalPages(),
+                    "hasNext", groups.hasNext(),
+                    "hasPrevious", groups.hasPrevious()));
+
+            log.info("Groups retrieved successfully: {} groups found", groups.getTotalElements());
+            return ResponseEntity.ok(response);
+
+        } catch (Exception e) {
+            log.error("Error getting all groups for admin: {}", e.getMessage(), e);
             Map<String, Object> response = new HashMap<>();
             response.put("success", false);
             response.put("message", "An unexpected error occurred while getting groups.");
