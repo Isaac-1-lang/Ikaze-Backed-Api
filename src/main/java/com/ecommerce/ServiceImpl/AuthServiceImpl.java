@@ -96,6 +96,8 @@ public class AuthServiceImpl implements AuthService {
                 pointsDescription);
     }
 
+
+    //login user
     @Override
     public LoginResponseDto loginUser(String email, String password) {
         try {
