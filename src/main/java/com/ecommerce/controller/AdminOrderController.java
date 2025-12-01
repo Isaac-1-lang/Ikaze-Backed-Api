@@ -272,7 +272,6 @@ public class AdminOrderController {
         try {
             log.info("Searching orders with criteria: {}", searchRequest);
 
-            // Validate that at least one filter is provided
             if (!searchRequest.hasAtLeastOneFilter()) {
                 Map<String, Object> response = new HashMap<>();
                 response.put("success", false);
@@ -338,6 +337,26 @@ public class AdminOrderController {
             response.put("message", "An unexpected error occurred while searching orders.");
             response.put("errorCode", "INTERNAL_ERROR");
             response.put("details", e.getMessage());
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(response);
+        }
+    }
+    
+    @GetMapping("/count/pending")
+    @Operation(summary = "Get pending orders count", description = "Get count of orders with PROCESSING status and no delivery group assigned")
+    public ResponseEntity<?> getPendingOrdersCount() {
+        try {
+            long count = orderService.countProcessingOrdersWithoutDeliveryGroup();
+            
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", true);
+            response.put("count", count);
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            log.error("Error getting pending orders count: {}", e.getMessage(), e);
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", false);
+            response.put("message", "Failed to get pending orders count");
+            response.put("count", 0);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(response);
         }
     }

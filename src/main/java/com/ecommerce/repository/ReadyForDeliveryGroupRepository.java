@@ -3,6 +3,7 @@ package com.ecommerce.repository;
 import com.ecommerce.entity.ReadyForDeliveryGroup;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -23,7 +24,8 @@ public interface ReadyForDeliveryGroupRepository extends JpaRepository<ReadyForD
     @Query("SELECT g FROM ReadyForDeliveryGroup g LEFT JOIN FETCH g.orders LEFT JOIN FETCH g.deliverer")
     List<ReadyForDeliveryGroup> findAllWithOrdersAndDeliverer();
 
-    @Query("SELECT g FROM ReadyForDeliveryGroup g LEFT JOIN FETCH g.orders LEFT JOIN FETCH g.deliverer")
+    @EntityGraph(attributePaths = { "orders", "deliverer" })
+    @Query("SELECT g FROM ReadyForDeliveryGroup g WHERE g.hasDeliveryStarted = false")
     Page<ReadyForDeliveryGroup> findAllWithOrdersAndDeliverer(Pageable pageable);
 
     @Query("SELECT g FROM ReadyForDeliveryGroup g LEFT JOIN FETCH g.orders LEFT JOIN FETCH g.deliverer WHERE g.deliveryGroupId = :id")
@@ -42,14 +44,52 @@ public interface ReadyForDeliveryGroupRepository extends JpaRepository<ReadyForD
     Long countOrdersByDelivererId(@Param("delivererId") java.util.UUID delivererId);
 
     /**
+     * Count active delivery groups for a deliverer (groups that are not completed)
+     * Active means: delivery has started OR not started yet, but NOT finished
+     */
+    @Query("SELECT COUNT(g) FROM ReadyForDeliveryGroup g WHERE g.deliverer.id = :delivererId AND g.hasDeliveryFinished = false")
+    Long countActiveGroupsByDelivererId(@Param("delivererId") java.util.UUID delivererId);
+
+    /**
      * Find delivery groups by deliverer ID where delivery is not finished
      */
     @Query("SELECT g FROM ReadyForDeliveryGroup g WHERE g.deliverer.id = :delivererId AND g.hasDeliveryFinished = false")
-    List<ReadyForDeliveryGroup> findByDelivererIdAndHasDeliveryFinishedFalse(@Param("delivererId") java.util.UUID delivererId);
+    List<ReadyForDeliveryGroup> findByDelivererIdAndHasDeliveryFinishedFalse(
+            @Param("delivererId") java.util.UUID delivererId);
 
     /**
      * Find delivery groups by deliverer ID where delivery is finished
      */
     @Query("SELECT g FROM ReadyForDeliveryGroup g WHERE g.deliverer.id = :delivererId AND g.hasDeliveryFinished = true")
-    List<ReadyForDeliveryGroup> findByDelivererIdAndHasDeliveryFinishedTrue(@Param("delivererId") java.util.UUID delivererId);
+    List<ReadyForDeliveryGroup> findByDelivererIdAndHasDeliveryFinishedTrue(
+            @Param("delivererId") java.util.UUID delivererId);
+
+    /**
+     * Search delivery groups by name, description, or deliverer name
+     */
+    @EntityGraph(attributePaths = { "orders", "deliverer" })
+    @Query("SELECT g FROM ReadyForDeliveryGroup g WHERE g.hasDeliveryStarted = false AND " +
+           "(LOWER(g.deliveryGroupName) LIKE LOWER(CONCAT('%', :search, '%')) OR " +
+           "LOWER(g.deliveryGroupDescription) LIKE LOWER(CONCAT('%', :search, '%')) OR " +
+           "LOWER(CONCAT(g.deliverer.firstName, ' ', g.deliverer.lastName)) LIKE LOWER(CONCAT('%', :search, '%')))")
+    Page<ReadyForDeliveryGroup> searchAvailableGroups(@Param("search") String search, Pageable pageable);
+
+    /**
+     * Find ALL delivery groups with orders and deliverer - NO EXCLUSIONS
+     * This includes groups that have started, finished, or not started yet
+     */
+    @EntityGraph(attributePaths = { "orders", "deliverer" })
+    @Query("SELECT g FROM ReadyForDeliveryGroup g")
+    Page<ReadyForDeliveryGroup> findAllGroupsWithoutExclusions(Pageable pageable);
+
+    /**
+     * Search ALL delivery groups by name, description, or deliverer name - NO EXCLUSIONS
+     * This includes groups that have started, finished, or not started yet
+     */
+    @EntityGraph(attributePaths = { "orders", "deliverer" })
+    @Query("SELECT g FROM ReadyForDeliveryGroup g WHERE " +
+           "LOWER(g.deliveryGroupName) LIKE LOWER(CONCAT('%', :search, '%')) OR " +
+           "LOWER(g.deliveryGroupDescription) LIKE LOWER(CONCAT('%', :search, '%')) OR " +
+           "LOWER(CONCAT(g.deliverer.firstName, ' ', g.deliverer.lastName)) LIKE LOWER(CONCAT('%', :search, '%'))")
+    Page<ReadyForDeliveryGroup> searchAllGroupsWithoutExclusions(@Param("search") String search, Pageable pageable);
 }

@@ -24,10 +24,13 @@ public interface ReturnRequestRepository extends JpaRepository<ReturnRequest, Lo
         * Find return requests by order ID
         */
        List<ReturnRequest> findByOrderId(Long orderId);
-
+       
        /**
-        * Find return requests by customer ID
+        * Find return requests by order ID ordered by submitted date descending
         */
+       List<ReturnRequest> findByOrderIdOrderBySubmittedAtDesc(Long orderId);
+
+  
        List<ReturnRequest> findByCustomerId(UUID customerId);
 
        /**

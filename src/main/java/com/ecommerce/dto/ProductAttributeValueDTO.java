@@ -22,4 +22,7 @@ public class ProductAttributeValueDTO {
     private Long attributeTypeId;
 
     private String attributeTypeName;
+    
+    @Builder.Default
+    private Long productCount = 0L;
 }

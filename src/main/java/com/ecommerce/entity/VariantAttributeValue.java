@@ -3,7 +3,9 @@ package com.ecommerce.entity;
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
 import lombok.Data;
+import lombok.EqualsAndHashCode;
 import lombok.NoArgsConstructor;
+import lombok.ToString;
 
 import java.io.Serializable;
 
@@ -12,6 +14,8 @@ import java.io.Serializable;
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
+@EqualsAndHashCode(exclude = {"productVariant", "attributeValue"})
+@ToString(exclude = {"productVariant", "attributeValue"})
 public class VariantAttributeValue {
 
     @EmbeddedId

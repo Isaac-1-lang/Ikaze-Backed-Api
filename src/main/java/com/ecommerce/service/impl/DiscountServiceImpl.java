@@ -4,7 +4,11 @@ import com.ecommerce.dto.CreateDiscountDTO;
 import com.ecommerce.dto.DiscountDTO;
 import com.ecommerce.dto.UpdateDiscountDTO;
 import com.ecommerce.entity.Discount;
+import com.ecommerce.entity.Product;
+import com.ecommerce.entity.ProductVariant;
 import com.ecommerce.repository.DiscountRepository;
+import com.ecommerce.repository.ProductRepository;
+import com.ecommerce.repository.ProductVariantRepository;
 import com.ecommerce.service.DiscountService;
 import jakarta.persistence.EntityNotFoundException;
 import lombok.RequiredArgsConstructor;
@@ -25,6 +29,8 @@ import java.util.UUID;
 public class DiscountServiceImpl implements DiscountService {
 
     private final DiscountRepository discountRepository;
+    private final ProductRepository productRepository;
+    private final ProductVariantRepository productVariantRepository;
 
     @Override
     public DiscountDTO createDiscount(CreateDiscountDTO createDiscountDTO) {
@@ -134,12 +140,32 @@ public class DiscountServiceImpl implements DiscountService {
     public boolean deleteDiscount(UUID discountId) {
         log.info("Deleting discount with ID: {}", discountId);
 
-        if (!discountRepository.existsById(discountId)) {
-            throw new EntityNotFoundException("Discount not found with ID: " + discountId);
+        Discount discount = discountRepository.findById(discountId)
+                .orElseThrow(() -> new EntityNotFoundException("Discount not found with ID: " + discountId));
+
+        List<Product> productsWithDiscount = productRepository.findByDiscount(discount, Pageable.unpaged()).getContent();
+        if (!productsWithDiscount.isEmpty()) {
+            log.info("Removing discount from {} products", productsWithDiscount.size());
+            for (Product product : productsWithDiscount) {
+                product.setDiscount(null);
+            }
+            productRepository.saveAll(productsWithDiscount);
+            log.info("Successfully removed discount from {} products", productsWithDiscount.size());
+        }
+
+        List<ProductVariant> variantsWithDiscount = productVariantRepository.findByDiscount(discount, Pageable.unpaged()).getContent();
+        if (!variantsWithDiscount.isEmpty()) {
+            log.info("Removing discount from {} product variants", variantsWithDiscount.size());
+            for (ProductVariant variant : variantsWithDiscount) {
+                variant.setDiscount(null);
+            }
+            productVariantRepository.saveAll(variantsWithDiscount);
+            log.info("Successfully removed discount from {} product variants", variantsWithDiscount.size());
         }
 
         discountRepository.deleteById(discountId);
-        log.info("Discount deleted successfully with ID: {}", discountId);
+        log.info("Discount deleted successfully with ID: {} (removed from {} products and {} variants)", 
+                discountId, productsWithDiscount.size(), variantsWithDiscount.size());
 
         return true;
     }
@@ -147,8 +173,6 @@ public class DiscountServiceImpl implements DiscountService {
     @Override
     @Transactional(readOnly = true)
     public DiscountDTO getDiscountById(UUID discountId) {
-        log.info("Fetching discount with ID: {}", discountId);
-
         Discount discount = discountRepository.findById(discountId)
                 .orElseThrow(() -> new EntityNotFoundException("Discount not found with ID: " + discountId));
 

@@ -33,6 +33,7 @@ public class DeliveryAgentReturnServiceImpl implements DeliveryAgentReturnServic
 
     private final ReturnRequestRepository returnRequestRepository;
     private final UserRepository userRepository;
+    private final com.ecommerce.service.RefundService refundService;
 
     @Override
     @Transactional(readOnly = true)
@@ -247,12 +248,31 @@ public class DeliveryAgentReturnServiceImpl implements DeliveryAgentReturnServic
                 }
             }
 
-            // Filter by delivery status
+            // Filter by delivery status (supports comma-separated values)
             if (deliveryStatus != null && !deliveryStatus.trim().isEmpty()) {
                 try {
-                    ReturnRequest.DeliveryStatus status = ReturnRequest.DeliveryStatus
-                            .valueOf(deliveryStatus.toUpperCase());
-                    predicates.add(criteriaBuilder.equal(root.get("deliveryStatus"), status));
+                    // Check if multiple statuses are provided (comma-separated)
+                    if (deliveryStatus.contains(",")) {
+                        String[] statuses = deliveryStatus.split(",");
+                        List<ReturnRequest.DeliveryStatus> statusList = new ArrayList<>();
+                        
+                        for (String status : statuses) {
+                            try {
+                                statusList.add(ReturnRequest.DeliveryStatus.valueOf(status.trim().toUpperCase()));
+                            } catch (IllegalArgumentException e) {
+                                log.warn("Invalid delivery status in filter: {}", status);
+                            }
+                        }
+                        
+                        if (!statusList.isEmpty()) {
+                            predicates.add(root.get("deliveryStatus").in(statusList));
+                        }
+                    } else {
+                        // Single status
+                        ReturnRequest.DeliveryStatus status = ReturnRequest.DeliveryStatus
+                                .valueOf(deliveryStatus.toUpperCase());
+                        predicates.add(criteriaBuilder.equal(root.get("deliveryStatus"), status));
+                    }
                 } catch (IllegalArgumentException e) {
                     log.warn("Invalid delivery status filter: {}", deliveryStatus);
                 }
@@ -349,6 +369,17 @@ public class DeliveryAgentReturnServiceImpl implements DeliveryAgentReturnServic
             dto.setDeliveryAgentId(returnRequest.getDeliveryAgent().getId());
             dto.setDeliveryAgentName(returnRequest.getDeliveryAgent().getFirstName() + " " +
                     returnRequest.getDeliveryAgent().getLastName());
+        }
+
+        // Calculate and add expected refund
+        try {
+            com.ecommerce.dto.ExpectedRefundDTO expectedRefund = refundService.calculateExpectedRefund(returnRequest);
+            dto.setExpectedRefund(expectedRefund);
+        } catch (Exception e) {
+            log.error("Could not calculate expected refund for return request {}: {}", 
+                    returnRequest.getId(), e.getMessage(), e);
+            // Set null to indicate calculation failed, but don't break the entire request
+            dto.setExpectedRefund(null);
         }
 
         return dto;

@@ -45,6 +45,7 @@ public class ShippingCost {
     private BigDecimal freeShippingThreshold;
 
     @Column(name = "is_active", nullable = false)
+    @Builder.Default
     private Boolean isActive = true;
 
     @CreatedDate

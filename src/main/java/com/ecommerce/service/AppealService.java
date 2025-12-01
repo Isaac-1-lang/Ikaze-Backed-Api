@@ -18,8 +18,16 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
+import java.io.InputStream;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+
+import org.apache.tika.metadata.Metadata;
+import org.apache.tika.parser.AutoDetectParser;
+import org.apache.tika.parser.ParseContext;
+import org.apache.tika.parser.Parser;
+import org.apache.tika.sax.BodyContentHandler;
+import org.xml.sax.ContentHandler;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -41,10 +49,12 @@ public class AppealService {
     // Notification and audit services
     private final NotificationService notificationService;
     private final EmailService emailService;
+    private final OrderActivityLogService activityLogService;
 
     private static final int DEFAULT_RETURN_DAYS = 15;
     private static final int MAX_IMAGES = 5;
     private static final int MAX_VIDEOS = 1;
+    private static final int MAX_VIDEO_DURATION_SECONDS = 15;
 
     /**
      * Submit an appeal for a denied return request with media files
@@ -71,13 +81,13 @@ public class AppealService {
         ReturnAppeal appeal = new ReturnAppeal();
         appeal.setReturnRequestId(submitDTO.getReturnRequestId());
         appeal.setCustomerId(submitDTO.getCustomerId()); // This can be null for guest customers
-        appeal.setLevel(1); 
+        appeal.setLevel(1);
         appeal.setReason(submitDTO.getReason());
         appeal.setDescription(submitDTO.getDescription());
         appeal.setStatus(ReturnAppeal.AppealStatus.PENDING);
         appeal.setSubmittedAt(LocalDateTime.now());
 
-        log.debug("Creating appeal with customerId: {} for return request: {}", 
+        log.debug("Creating appeal with customerId: {} for return request: {}",
                 submitDTO.getCustomerId(), submitDTO.getReturnRequestId());
 
         ReturnAppeal savedAppeal = returnAppealRepository.save(appeal);
@@ -96,19 +106,28 @@ public class AppealService {
         log.info("Appeal {} submitted successfully for return request {}",
                 savedAppeal.getId(), submitDTO.getReturnRequestId());
 
+        // LOG ACTIVITY: Appeal Submitted
+        Order order = returnRequest.getOrder();
+        String customerName = order.getUser() != null 
+            ? order.getUser().getFirstName() + " " + order.getUser().getLastName()
+            : order.getOrderCustomerInfo().getFullName();
+        activityLogService.logAppealSubmitted(
+            order.getOrderId(),
+            customerName,
+            submitDTO.getReason(),
+            savedAppeal.getId(),
+            returnRequest.getId()
+        );
+
         return convertToDTO(savedAppeal);
     }
 
-    /**
-     * Submit an appeal for a denied return request using tracking token (for guest users)
-     */
     public ReturnAppealDTO submitTokenizedAppeal(TokenizedAppealRequestDTO submitDTO, MultipartFile[] mediaFiles) {
         log.info("Processing tokenized appeal submission for return request {} with token",
                 submitDTO.getReturnRequestId());
 
-        // Validate tracking token first
         String customerEmail = validateTrackingToken(submitDTO.getTrackingToken());
-        
+
         ReturnRequest returnRequest = validateReturnForTokenizedAppeal(submitDTO.getReturnRequestId(), customerEmail);
 
         if (returnAppealRepository.existsByReturnRequestId(submitDTO.getReturnRequestId())) {
@@ -122,21 +141,20 @@ public class AppealService {
             validateMediaFiles(mediaFiles);
         }
 
-        // Create appeal (customerId will be null for guest users)
         ReturnAppeal appeal = new ReturnAppeal();
         appeal.setReturnRequestId(submitDTO.getReturnRequestId());
-        appeal.setCustomerId(null); // Guest users don't have customerId
-        appeal.setLevel(1); 
+        appeal.setCustomerId(null);
+        appeal.setLevel(1);
         appeal.setReason(submitDTO.getReason());
         appeal.setDescription(submitDTO.getDescription());
         appeal.setStatus(ReturnAppeal.AppealStatus.PENDING);
         appeal.setSubmittedAt(LocalDateTime.now());
 
-        log.debug("Creating tokenized appeal for return request: {} by email: {}", 
+        log.debug("Creating tokenized appeal for return request: {} by email: {}",
                 submitDTO.getReturnRequestId(), customerEmail);
 
         ReturnAppeal savedAppeal = returnAppealRepository.save(appeal);
-        
+
         if (mediaFiles != null && mediaFiles.length > 0) {
             try {
                 processAppealMediaAttachments(savedAppeal.getId(), mediaFiles);
@@ -151,6 +169,19 @@ public class AppealService {
 
         log.info("Tokenized appeal {} submitted successfully for return request {}",
                 savedAppeal.getId(), submitDTO.getReturnRequestId());
+
+        // LOG ACTIVITY: Appeal Submitted (Guest)
+        Order order = returnRequest.getOrder();
+        String guestCustomerName = order.getOrderCustomerInfo() != null 
+            ? order.getOrderCustomerInfo().getFullName()
+            : "Guest Customer";
+        activityLogService.logAppealSubmitted(
+            order.getOrderId(),
+            guestCustomerName + " (Guest)",
+            submitDTO.getReason(),
+            savedAppeal.getId(),
+            returnRequest.getId()
+        );
 
         return convertToDTO(savedAppeal);
     }
@@ -178,7 +209,6 @@ public class AppealService {
 
         ReturnAppeal updatedAppeal = returnAppealRepository.save(appeal);
 
-        // Send email notification to customer
         sendAppealDecisionEmailToCustomer(updatedAppeal, decisionDTO);
 
         log.info("Appeal {} decision completed: {}",
@@ -187,9 +217,6 @@ public class AppealService {
         return convertToDTO(updatedAppeal);
     }
 
-    /**
-     * Escalate appeal to higher level review
-     */
     public ReturnAppealDTO escalateAppeal(Long appealId, String escalationReason, String escalatedBy) {
         log.info("Escalating appeal {} for higher level review", appealId);
 
@@ -312,11 +339,11 @@ public class AppealService {
     private String validateTrackingToken(String trackingToken) {
         Optional<OrderTrackingToken> tokenOpt = orderTrackingTokenRepository
                 .findValidToken(trackingToken, LocalDateTime.now());
-        
+
         if (tokenOpt.isEmpty()) {
             throw new IllegalArgumentException("Invalid or expired tracking token");
         }
-        
+
         return tokenOpt.get().getEmail();
     }
 
@@ -336,9 +363,9 @@ public class AppealService {
         // Validate that the order belongs to the email associated with the token
         Order order = orderRepository.findById(returnRequest.getOrderId())
                 .orElseThrow(() -> new RuntimeException("Order not found: " + returnRequest.getOrderId()));
-        
-        if (order.getOrderCustomerInfo() == null || 
-            !customerEmail.equalsIgnoreCase(order.getOrderCustomerInfo().getEmail())) {
+
+        if (order.getOrderCustomerInfo() == null ||
+                !customerEmail.equalsIgnoreCase(order.getOrderCustomerInfo().getEmail())) {
             throw new com.ecommerce.Exception.ReturnException.AppealNotAllowedException(
                     "Token does not match the order's customer email");
         }
@@ -362,7 +389,7 @@ public class AppealService {
 
         LocalDateTime deliveryDate = order.getDeliveredAt();
         if (deliveryDate == null) {
-            throw new RuntimeException("Order delivery date not found");
+            throw new RuntimeException("Order not delivered yet for return");
         }
 
         List<ReturnItem> returnItems = returnRequest.getReturnItems();
@@ -450,8 +477,82 @@ public class AppealService {
                 if (file.getSize() > 50 * 1024 * 1024) {
                     throw new IllegalArgumentException("Video file size must be less than 50MB");
                 }
+
+                // Validate video duration (max 15 seconds)
+                try {
+                    double duration = extractVideoDuration(file);
+                    if (duration > MAX_VIDEO_DURATION_SECONDS) {
+                        throw new IllegalArgumentException(
+                                String.format("Video '%s' duration (%.1f seconds) exceeds maximum allowed (%d seconds)",
+                                        file.getOriginalFilename(), duration, MAX_VIDEO_DURATION_SECONDS));
+                    }
+                    log.info("Video file validated for appeal: {} - size: {} bytes, duration: {} seconds",
+                            file.getOriginalFilename(), file.getSize(), duration);
+                } catch (IllegalArgumentException e) {
+                    // Re-throw validation errors
+                    throw e;
+                } catch (Exception e) {
+                    log.error("Failed to validate video duration for '{}': {}",
+                            file.getOriginalFilename(), e.getMessage());
+                    throw new IllegalArgumentException(
+                            String.format("Failed to validate video '%s'. The file may be corrupted or in an unsupported format.",
+                                    file.getOriginalFilename()));
+                }
             } else {
                 throw new IllegalArgumentException("Only image and video files are allowed");
+            }
+        }
+    }
+
+    /**
+     * Extract video duration using Apache Tika
+     */
+    private double extractVideoDuration(MultipartFile video) throws Exception {
+        try (InputStream inputStream = video.getInputStream()) {
+            Parser parser = new AutoDetectParser();
+            ContentHandler handler = new BodyContentHandler(-1);
+            Metadata metadata = new Metadata();
+            ParseContext context = new ParseContext();
+
+            if (video.getContentType() != null) {
+                metadata.set(Metadata.CONTENT_TYPE, video.getContentType());
+            }
+
+            parser.parse(inputStream, handler, metadata, context);
+
+            String[] durationKeys = {
+                "xmpDM:duration",
+                "xmpDM:Duration",
+                "duration",
+                "Duration",
+                "video:duration",
+                "Content-Duration"
+            };
+
+            String durationStr = null;
+            for (String key : durationKeys) {
+                durationStr = metadata.get(key);
+                if (durationStr != null && !durationStr.isEmpty()) {
+                    break;
+                }
+            }
+
+            if (durationStr == null || durationStr.isEmpty()) {
+                log.warn("Could not extract duration from video '{}'. Allowing upload.",
+                        video.getOriginalFilename());
+                return 0.0;
+            }
+
+            try {
+                double duration = Double.parseDouble(durationStr);
+                if (duration > 1000) {
+                    duration = duration / 1000.0;
+                }
+                return duration;
+            } catch (NumberFormatException e) {
+                log.warn("Could not parse duration value '{}' for video '{}'",
+                        durationStr, video.getOriginalFilename());
+                return 0.0;
             }
         }
     }
@@ -518,17 +619,19 @@ public class AppealService {
             returnRequest.approve("Appeal approved: " + decisionDTO.getDecisionNotes());
             returnRequestRepository.save(returnRequest);
 
-            // Process refund if specified
-            if (decisionDTO.getRefundDetails() != null) {
-                // Integrate with refund service
-                log.info("Processing refund for approved appeal {}", appeal.getId());
-            }
         }
 
-        // Send notifications
         notificationService.notifyAppealApproved(appeal, returnRequest);
 
         log.info("Appeal {} approved", appeal.getId());
+
+        if (returnRequest != null) {
+            activityLogService.logAppealApproved(
+                returnRequest.getOrderId(),
+                "Admin",
+                appeal.getId()
+            );
+        }
     }
 
     private void denyAppeal(ReturnAppeal appeal, AppealDecisionDTO decisionDTO) {
@@ -536,6 +639,16 @@ public class AppealService {
         notificationService.notifyAppealDenied(appeal, appeal.getReturnRequest());
 
         log.info("Appeal {} denied - final decision", appeal.getId());
+
+        ReturnRequest returnRequest = appeal.getReturnRequest();
+        if (returnRequest != null) {
+            activityLogService.logAppealDenied(
+                returnRequest.getOrderId(),
+                "Admin", 
+                decisionDTO.getDecisionNotes(),
+                appeal.getId()
+            );
+        }
     }
 
     private ReturnAppealDTO convertToDTO(ReturnAppeal appeal) {
@@ -584,40 +697,41 @@ public class AppealService {
             // Get customer email from OrderCustomerInfo
             Order order = orderRepository.findById(returnRequest.getOrderId())
                     .orElseThrow(() -> new RuntimeException("Order not found: " + returnRequest.getOrderId()));
-            
+
             String customerEmail = null;
             String customerName = null;
-            
-            // Try to get email from OrderCustomerInfo first (for both guest and registered users)
+
+            // Try to get email from OrderCustomerInfo first (for both guest and registered
+            // users)
             if (order.getOrderCustomerInfo() != null) {
                 customerEmail = order.getOrderCustomerInfo().getEmail();
                 customerName = order.getOrderCustomerInfo().getFullName();
             }
-            
+
             // If no email found, skip sending email
             if (customerEmail == null || customerEmail.trim().isEmpty()) {
                 log.warn("No customer email found for appeal {}, skipping confirmation email", appeal.getId());
                 return;
             }
-            
-            String trackingUrl = String.format("https://shopsphere-frontend.vercel.app/returns/info?returnId=%d", returnRequest.getId());
-            
+
+            String trackingUrl = String.format("https://shopsphere-frontend.vercel.app/returns/info?returnId=%d",
+                    returnRequest.getId());
+
             String formattedSubmittedAt = appeal.getSubmittedAt()
-                .format(java.time.format.DateTimeFormatter.ofPattern("MMMM dd, yyyy 'at' HH:mm"));
-            
+                    .format(java.time.format.DateTimeFormatter.ofPattern("MMMM dd, yyyy 'at' HH:mm"));
+
             emailService.sendAppealConfirmationEmail(
-                customerEmail,
-                customerName != null ? customerName : "Customer",
-                appeal.getId(),
-                returnRequest.getId(),
-                order.getOrderCode(),
-                appeal.getReason(),
-                formattedSubmittedAt,
-                trackingUrl
-            );
-            
+                    customerEmail,
+                    customerName != null ? customerName : "Customer",
+                    appeal.getId(),
+                    returnRequest.getId(),
+                    order.getOrderCode(),
+                    appeal.getReason(),
+                    formattedSubmittedAt,
+                    trackingUrl);
+
             log.info("Appeal confirmation email sent successfully to {} for appeal {}", customerEmail, appeal.getId());
-            
+
         } catch (Exception e) {
             log.error("Failed to send appeal confirmation email for appeal {}: {}", appeal.getId(), e.getMessage(), e);
             // Don't throw exception - email failure shouldn't break appeal submission
@@ -627,18 +741,18 @@ public class AppealService {
     /**
      * Get all appeals for admin with filtering and pagination
      */
-    public Page<ReturnAppealDTO> getAllAppealsForAdmin(String status, Integer level, String customerName, 
-                                                      String orderCode, LocalDate fromDate, LocalDate toDate, 
-                                                      Pageable pageable) {
-        log.info("Retrieving appeals for admin with filters - status: {}, level: {}, customerName: {}, orderCode: {}", 
+    public Page<ReturnAppealDTO> getAllAppealsForAdmin(String status, Integer level, String customerName,
+            String orderCode, LocalDate fromDate, LocalDate toDate,
+            Pageable pageable) {
+        log.info("Retrieving appeals for admin with filters - status: {}, level: {}, customerName: {}, orderCode: {}",
                 status, level, customerName, orderCode);
 
         // Build dynamic query using Specification
         Specification<ReturnAppeal> spec = Specification.where(null);
 
         if (status != null && !status.trim().isEmpty()) {
-            spec = spec.and((root, query, cb) -> 
-                cb.equal(root.get("status"), ReturnAppeal.AppealStatus.valueOf(status.toUpperCase())));
+            spec = spec.and((root, query, cb) -> cb.equal(root.get("status"),
+                    ReturnAppeal.AppealStatus.valueOf(status.toUpperCase())));
         }
 
         if (level != null) {
@@ -651,14 +765,14 @@ public class AppealService {
                 var returnRequestJoin = root.join("returnRequest");
                 var orderJoin = returnRequestJoin.join("order");
                 var customerInfoJoin = orderJoin.join("orderCustomerInfo");
-                
+
                 // Search in both firstName and lastName
                 String searchTerm = "%" + customerName.toLowerCase() + "%";
                 return cb.or(
-                    cb.like(cb.lower(customerInfoJoin.get("firstName")), searchTerm),
-                    cb.like(cb.lower(customerInfoJoin.get("lastName")), searchTerm),
-                    cb.like(cb.lower(cb.concat(cb.concat(customerInfoJoin.get("firstName"), " "), customerInfoJoin.get("lastName"))), searchTerm)
-                );
+                        cb.like(cb.lower(customerInfoJoin.get("firstName")), searchTerm),
+                        cb.like(cb.lower(customerInfoJoin.get("lastName")), searchTerm),
+                        cb.like(cb.lower(cb.concat(cb.concat(customerInfoJoin.get("firstName"), " "),
+                                customerInfoJoin.get("lastName"))), searchTerm));
             });
         }
 
@@ -666,19 +780,19 @@ public class AppealService {
             spec = spec.and((root, query, cb) -> {
                 var returnRequestJoin = root.join("returnRequest");
                 var orderJoin = returnRequestJoin.join("order");
-                return cb.like(cb.lower(orderJoin.get("orderCode")), 
-                              "%" + orderCode.toLowerCase() + "%");
+                return cb.like(cb.lower(orderJoin.get("orderCode")),
+                        "%" + orderCode.toLowerCase() + "%");
             });
         }
 
         if (fromDate != null) {
-            spec = spec.and((root, query, cb) -> 
-                cb.greaterThanOrEqualTo(root.get("submittedAt"), fromDate.atStartOfDay()));
+            spec = spec.and(
+                    (root, query, cb) -> cb.greaterThanOrEqualTo(root.get("submittedAt"), fromDate.atStartOfDay()));
         }
 
         if (toDate != null) {
-            spec = spec.and((root, query, cb) -> 
-                cb.lessThanOrEqualTo(root.get("submittedAt"), toDate.atTime(23, 59, 59)));
+            spec = spec
+                    .and((root, query, cb) -> cb.lessThanOrEqualTo(root.get("submittedAt"), toDate.atTime(23, 59, 59)));
         }
 
         Page<ReturnAppeal> appeals = returnAppealRepository.findAll(spec, pageable);
@@ -706,61 +820,60 @@ public class AppealService {
 
             Order order = orderRepository.findById(returnRequest.getOrderId())
                     .orElseThrow(() -> new RuntimeException("Order not found: " + returnRequest.getOrderId()));
-            
+
             String customerEmail = null;
             String customerName = null;
-            
+
             // Get email from OrderCustomerInfo
             if (order.getOrderCustomerInfo() != null) {
                 customerEmail = order.getOrderCustomerInfo().getEmail();
                 customerName = order.getOrderCustomerInfo().getFullName();
             }
-            
+
             // If no email found, skip sending email
             if (customerEmail == null || customerEmail.trim().isEmpty()) {
                 log.warn("No customer email found for appeal {}, skipping decision email", appeal.getId());
                 return;
             }
-            
+
             // Format dates
             String formattedSubmittedAt = appeal.getSubmittedAt()
-                .format(java.time.format.DateTimeFormatter.ofPattern("MMMM dd, yyyy 'at' HH:mm"));
+                    .format(java.time.format.DateTimeFormatter.ofPattern("MMMM dd, yyyy 'at' HH:mm"));
             String formattedDecisionAt = appeal.getDecisionAt()
-                .format(java.time.format.DateTimeFormatter.ofPattern("MMMM dd, yyyy 'at' HH:mm"));
-            
+                    .format(java.time.format.DateTimeFormatter.ofPattern("MMMM dd, yyyy 'at' HH:mm"));
+
             // Create tracking URL for return request
-            String trackingUrl = String.format("https://shopsphere-frontend.vercel.app/returns/info?returnId=%d", returnRequest.getId());
-            
+            String trackingUrl = String.format("https://shopsphere-frontend.vercel.app/returns/info?returnId=%d",
+                    returnRequest.getId());
+
             // Send appropriate email based on decision
             if ("APPROVED".equals(decisionDTO.getDecision())) {
                 emailService.sendAppealApprovalEmail(
-                    customerEmail,
-                    customerName != null ? customerName : "Customer",
-                    appeal.getId(),
-                    returnRequest.getId(),
-                    order.getOrderCode(),
-                    appeal.getReason(),
-                    decisionDTO.getDecisionNotes(),
-                    formattedSubmittedAt,
-                    formattedDecisionAt,
-                    trackingUrl
-                );
+                        customerEmail,
+                        customerName != null ? customerName : "Customer",
+                        appeal.getId(),
+                        returnRequest.getId(),
+                        order.getOrderCode(),
+                        appeal.getReason(),
+                        decisionDTO.getDecisionNotes(),
+                        formattedSubmittedAt,
+                        formattedDecisionAt,
+                        trackingUrl);
                 log.info("Appeal approval email sent successfully to {} for appeal {}", customerEmail, appeal.getId());
             } else if ("DENIED".equals(decisionDTO.getDecision())) {
                 emailService.sendAppealDenialEmail(
-                    customerEmail,
-                    customerName != null ? customerName : "Customer",
-                    appeal.getId(),
-                    returnRequest.getId(),
-                    order.getOrderCode(),
-                    appeal.getReason(),
-                    decisionDTO.getDecisionNotes(),
-                    formattedSubmittedAt,
-                    formattedDecisionAt
-                );
+                        customerEmail,
+                        customerName != null ? customerName : "Customer",
+                        appeal.getId(),
+                        returnRequest.getId(),
+                        order.getOrderCode(),
+                        appeal.getReason(),
+                        decisionDTO.getDecisionNotes(),
+                        formattedSubmittedAt,
+                        formattedDecisionAt);
                 log.info("Appeal denial email sent successfully to {} for appeal {}", customerEmail, appeal.getId());
             }
-            
+
         } catch (Exception e) {
             log.error("Failed to send appeal decision email for appeal {}: {}", appeal.getId(), e.getMessage(), e);
             // Don't throw exception - email failure shouldn't break appeal processing

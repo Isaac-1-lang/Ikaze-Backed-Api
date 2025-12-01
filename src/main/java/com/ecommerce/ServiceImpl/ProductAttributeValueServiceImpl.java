@@ -216,11 +216,21 @@ public class ProductAttributeValueServiceImpl implements ProductAttributeValueSe
      * @return the converted DTO
      */
     private ProductAttributeValueDTO convertToDTO(ProductAttributeValue attributeValue) {
+        // Calculate product count from variant attribute values
+        long productCount = 0L;
+        if (attributeValue.getVariantAttributeValues() != null) {
+            productCount = attributeValue.getVariantAttributeValues().stream()
+                    .map(vav -> vav.getProductVariant().getProduct().getProductId())
+                    .distinct()
+                    .count();
+        }
+        
         return ProductAttributeValueDTO.builder()
                 .attributeValueId(attributeValue.getAttributeValueId())
                 .value(attributeValue.getValue())
                 .attributeTypeId(attributeValue.getAttributeType().getAttributeTypeId())
                 .attributeTypeName(attributeValue.getAttributeType().getName())
+                .productCount(productCount)
                 .build();
     }
 }

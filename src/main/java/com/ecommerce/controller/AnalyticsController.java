@@ -18,7 +18,7 @@ import java.util.HashMap;
 import java.util.Map;
 
 @RestController
-@RequestMapping("/api/analytics")
+@RequestMapping("/api/v1/analytics")
 @RequiredArgsConstructor
 @Slf4j
 @Tag(name = "Analytics", description = "System analytics with time range filtering")
@@ -35,14 +35,11 @@ public class AnalyticsController {
             @RequestBody AnalyticsRequestDTO request,
             @RequestHeader(value = "Authorization", required = false) String authorization) {
         try {
-            log.info("Fetching analytics: {} - {}", request.getStartDate(), request.getEndDate());
             AnalyticsResponseDTO dto = analyticsService.getAnalytics(request, authorization);
             return ResponseEntity.ok(dto);
         } catch (IllegalArgumentException e) {
-            log.warn("Invalid analytics request: {}", e.getMessage());
             return ResponseEntity.badRequest().body(error("VALIDATION_ERROR", e.getMessage()));
         } catch (Exception e) {
-            log.error("Error fetching analytics: {}", e.getMessage(), e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                     .body(error("INTERNAL_ERROR", "Failed to fetch analytics data"));
         }

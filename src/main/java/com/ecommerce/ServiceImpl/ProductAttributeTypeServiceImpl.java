@@ -150,10 +150,21 @@ public class ProductAttributeTypeServiceImpl implements ProductAttributeTypeServ
      * @return the converted DTO
      */
     private ProductAttributeTypeDTO convertToDTO(ProductAttributeType attributeType) {
+        // Calculate product count from attribute values
+        long productCount = 0L;
+        if (attributeType.getAttributeValues() != null) {
+            productCount = attributeType.getAttributeValues().stream()
+                    .flatMap(av -> av.getVariantAttributeValues().stream())
+                    .map(vav -> vav.getProductVariant().getProduct().getProductId())
+                    .distinct()
+                    .count();
+        }
+        
         return ProductAttributeTypeDTO.builder()
                 .attributeTypeId(attributeType.getAttributeTypeId())
                 .name(attributeType.getName())
                 .isRequired(attributeType.isRequired())
+                .productCount(productCount)
                 .build();
     }
 

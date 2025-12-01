@@ -29,13 +29,13 @@ public class PointsPaymentController {
     private final PointsPaymentService pointsPaymentService;
 
     @PostMapping("/preview")
-    @PreAuthorize("hasRole('CUSTOMER')")
+    @PreAuthorize("hasAnyRole('CUSTOMER','DELIVERY_AGENT','ADMIN')")
     public ResponseEntity<?> previewPointsPayment(@Valid @RequestBody PointsPaymentRequest request) {
         try {
             log.info("Previewing points payment for user: {}", request.getUserId());
             PointsPaymentPreviewDTO preview = pointsPaymentService.previewPointsPayment(request);
             return ResponseEntity.ok(preview);
-            
+
         } catch (IllegalArgumentException e) {
             log.warn("Invalid request for points payment preview: {}", e.getMessage());
             Map<String, Object> response = new HashMap<>();
@@ -44,7 +44,7 @@ public class PointsPaymentController {
             response.put("errorCode", "VALIDATION_ERROR");
             response.put("details", e.getMessage());
             return ResponseEntity.badRequest().body(response);
-            
+
         } catch (EntityNotFoundException e) {
             log.warn("Entity not found during points payment preview: {}", e.getMessage());
             Map<String, Object> response = new HashMap<>();
@@ -53,7 +53,7 @@ public class PointsPaymentController {
             response.put("errorCode", "NOT_FOUND");
             response.put("details", e.getMessage());
             return ResponseEntity.status(HttpStatus.NOT_FOUND).body(response);
-            
+
         } catch (RuntimeException e) {
             log.error("Runtime error previewing points payment: {}", e.getMessage(), e);
             Map<String, Object> response = new HashMap<>();
@@ -62,7 +62,7 @@ public class PointsPaymentController {
             response.put("errorCode", "RUNTIME_ERROR");
             response.put("details", e.getMessage());
             return ResponseEntity.badRequest().body(response);
-            
+
         } catch (Exception e) {
             log.error("Error previewing points payment: {}", e.getMessage(), e);
             Map<String, Object> response = new HashMap<>();
@@ -75,46 +75,46 @@ public class PointsPaymentController {
     }
 
     @PostMapping("/process")
-    @PreAuthorize("hasRole('CUSTOMER')")
+    @PreAuthorize("hasAnyRole('CUSTOMER','DELIVERY_AGENT','ADMIN')")
     public ResponseEntity<?> processPointsPayment(@Valid @RequestBody PointsPaymentRequest request) {
         try {
             log.info("Processing points payment for user: {}", request.getUserId());
             PointsPaymentResult result = pointsPaymentService.processPointsPayment(request);
-            
+
             if (result.isSuccess()) {
                 return ResponseEntity.ok(result);
             } else {
                 return ResponseEntity.badRequest().body(result);
             }
-            
+
         } catch (IllegalArgumentException e) {
             log.warn("Invalid request for points payment processing: {}", e.getMessage());
-            PointsPaymentResult errorResult = new PointsPaymentResult(false, e.getMessage(), 
+            PointsPaymentResult errorResult = new PointsPaymentResult(false, e.getMessage(),
                     null, null, 0, BigDecimal.ZERO, BigDecimal.ZERO, null, false);
             return ResponseEntity.badRequest().body(errorResult);
-            
+
         } catch (EntityNotFoundException e) {
             log.warn("Entity not found during points payment processing: {}", e.getMessage());
-            PointsPaymentResult errorResult = new PointsPaymentResult(false, "Resource not found: " + e.getMessage(), 
+            PointsPaymentResult errorResult = new PointsPaymentResult(false, "Resource not found: " + e.getMessage(),
                     null, null, 0, BigDecimal.ZERO, BigDecimal.ZERO, null, false);
             return ResponseEntity.status(HttpStatus.NOT_FOUND).body(errorResult);
-            
+
         } catch (RuntimeException e) {
             log.error("Error processing points payment: {}", e.getMessage(), e);
-            PointsPaymentResult errorResult = new PointsPaymentResult(false, e.getMessage(), 
+            PointsPaymentResult errorResult = new PointsPaymentResult(false, e.getMessage(),
                     null, null, 0, BigDecimal.ZERO, BigDecimal.ZERO, null, false);
             return ResponseEntity.badRequest().body(errorResult);
-            
+
         } catch (Exception e) {
             log.error("Unexpected error processing points payment: {}", e.getMessage(), e);
-            PointsPaymentResult errorResult = new PointsPaymentResult(false, "Payment processing failed", 
+            PointsPaymentResult errorResult = new PointsPaymentResult(false, "Payment processing failed",
                     null, null, 0, BigDecimal.ZERO, BigDecimal.ZERO, null, false);
             return ResponseEntity.internalServerError().body(errorResult);
         }
     }
 
     @PostMapping("/complete-hybrid/{userId}/{orderId}")
-    @PreAuthorize("hasRole('CUSTOMER')")
+    @PreAuthorize("hasAnyRole('CUSTOMER','DELIVERY_AGENT','ADMIN')")
     public ResponseEntity<PointsPaymentResult> completeHybridPayment(
             @PathVariable UUID userId,
             @PathVariable Long orderId,
@@ -122,7 +122,7 @@ public class PointsPaymentController {
         try {
             log.info("Completing hybrid payment for user: {}, order: {}", userId, orderId);
             PointsPaymentResult result = pointsPaymentService.completeHybridPayment(userId, orderId, stripeSessionId);
-            
+
             if (result.isSuccess()) {
                 return ResponseEntity.ok(result);
             } else {
@@ -130,7 +130,7 @@ public class PointsPaymentController {
             }
         } catch (Exception e) {
             log.error("Error completing hybrid payment: {}", e.getMessage(), e);
-            PointsPaymentResult errorResult = new PointsPaymentResult(false, "Failed to complete payment", 
+            PointsPaymentResult errorResult = new PointsPaymentResult(false, "Failed to complete payment",
                     null, null, 0, BigDecimal.ZERO, BigDecimal.ZERO, null, false);
             return ResponseEntity.badRequest().body(errorResult);
         }
