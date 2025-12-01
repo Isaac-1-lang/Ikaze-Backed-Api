@@ -96,6 +96,8 @@ public class AuthServiceImpl implements AuthService {
                 pointsDescription);
     }
 
+
+    //login user
     @Override
     public LoginResponseDto loginUser(String email, String password) {
         try {
@@ -151,6 +153,44 @@ public class AuthServiceImpl implements AuthService {
         User user = userRepository.findByUserEmail(email)
                 .orElseThrow(() -> new RuntimeException("User not found"));
 
+        user.setPassword(passwordEncoder.encode(newPassword));
+        user.clearResetToken();
+        userRepository.save(user);
+    }
+
+    @Override
+    public boolean verifyResetToken(String token) {
+        if (token == null || token.trim().isEmpty()) {
+            return false;
+        }
+        
+        User user = userRepository.findByResetToken(token)
+                .orElse(null);
+        
+        if (user == null) {
+            return false;
+        }
+        
+        return user.isResetTokenValid(token);
+    }
+
+    @Override
+    public void resetPasswordByToken(String token, String newPassword) {
+        if (token == null || token.trim().isEmpty()) {
+            throw new CustomException("Reset token is required");
+        }
+        
+        if (newPassword == null || newPassword.length() < 8) {
+            throw new CustomException("Password must be at least 8 characters long");
+        }
+        
+        User user = userRepository.findByResetToken(token)
+                .orElseThrow(() -> new CustomException("Invalid or expired reset token"));
+        
+        if (!user.isResetTokenValid(token)) {
+            throw new CustomException("Invalid or expired reset token");
+        }
+        
         user.setPassword(passwordEncoder.encode(newPassword));
         user.clearResetToken();
         userRepository.save(user);
