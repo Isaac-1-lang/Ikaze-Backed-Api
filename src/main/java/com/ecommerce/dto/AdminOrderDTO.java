@@ -35,6 +35,7 @@ public class AdminOrderDTO {
     private LocalDateTime updatedAt;
     private String estimatedDelivery;
     private String trackingNumber;
+    private DeliveryGroupInfoDTO deliveryGroup; // Delivery group assignment info
 
     @Data
     @Builder
@@ -105,13 +106,15 @@ public class AdminOrderDTO {
     @Builder
     @NoArgsConstructor
     @AllArgsConstructor
-    public static class AdminPaymentInfoDTO {
+    public static class AdminPaymentInfoDTO {                     
         private String paymentMethod;
         private String paymentStatus;
-        private String stripePaymentIntentId; // Only Stripe ID, no sensitive data
+        private String stripePaymentIntentId;
         private String stripeSessionId;
         private String transactionRef;
         private LocalDateTime paymentDate;
         private String receiptUrl;
+        private Integer pointsUsed;
+        private BigDecimal pointsValue;
     }
 }

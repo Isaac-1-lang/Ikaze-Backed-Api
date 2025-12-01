@@ -21,6 +21,7 @@ public class OrderDTO {
     private String customerPhone;
     private String status;
     private BigDecimal totalAmount;
+    private Integer totalItems; // Total count of items in the order
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
     private List<OrderItemDTO> items;

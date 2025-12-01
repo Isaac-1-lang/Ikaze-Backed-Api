@@ -16,11 +16,9 @@ public class AppealDecisionDTO {
     private Long appealId;
     
     @NotBlank(message = "Decision is required")
-    private String decision; // APPROVED or DENIED
+    private String decision;
     
     private String decisionNotes;
     private String reviewerId;
     
-    // For approved appeals
-    private ReturnDecisionDTO.RefundDetailsDTO refundDetails;
-}
+    }

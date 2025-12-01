@@ -26,11 +26,12 @@ public class EmailServiceImpl implements EmailService {
 
     @Value("${spring.mail.username}")
     private String fromEmail;
+    
 
-    @Value("${app.frontend.url:https://shopsphere-frontend.vercel.app/}")
+    @Value("${app.frontend.url:https://shopsphere-frontend.vercel.app}")
     private String frontendUrl;
 
-    @Value("${app.frontend.url:https://shopsphere-adm.vercel.app/}")
+    @Value("${app.frontend.admin.url:https://shopsphere-adm.vercel.app}")
     private String frontendAdminUrl;
 
     @Value("${app.name:E-Commerce Platform}")
@@ -492,8 +493,6 @@ public class EmailServiceImpl implements EmailService {
     @Async
     public void sendOrderTrackingEmail(String toEmail, String token, String trackingUrl, String expiresAt) {
         try {
-            log.info("Sending order tracking email to: {}", toEmail);
-
             String subject = "Track Your Orders - Secure Access Link";
             
             Context context = new Context();
@@ -514,15 +513,12 @@ public class EmailServiceImpl implements EmailService {
         }
     }
 
-    /**
-     * Generate appeal denial email HTML using Thymeleaf template
-     */
+
     private String generateAppealDenialHtml(String customerName, Long appealId, Long returnRequestId,
                                           String orderNumber, String appealReason, String decisionNotes,
                                           String submittedAt, String deniedAt) {
         Context context = new Context();
         
-        // Set template variables
         context.setVariable("customerName", customerName);
         context.setVariable("appealId", appealId);
         context.setVariable("returnRequestId", returnRequestId);

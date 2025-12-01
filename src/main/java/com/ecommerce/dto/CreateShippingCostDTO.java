@@ -41,5 +41,6 @@ public class CreateShippingCostDTO {
     private BigDecimal freeShippingThreshold;
 
     @NotNull(message = "Active status is required")
+    @Builder.Default
     private Boolean isActive = true;
 }

@@ -12,7 +12,9 @@ import com.ecommerce.repository.OrderTransactionRepository;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.stripe.Stripe;
 import com.stripe.exception.StripeException;
+import com.stripe.model.Refund;
 import com.stripe.model.checkout.Session;
+import com.stripe.param.RefundCreateParams;
 import com.stripe.param.checkout.SessionCreateParams;
 import com.stripe.param.checkout.SessionRetrieveParams;
 import lombok.RequiredArgsConstructor;
@@ -209,11 +211,14 @@ public class StripeService {
                 Session session = Session.create(params);
                 log.info("Stripe HYBRID session created with ID: {}, amount: {}", session.getId(), reducedAmount);
 
-                // update transaction with stripe session id
                 OrderTransaction tx = reloadedOrder.getOrderTransaction();
                 tx.setStripeSessionId(session.getId());
+                if (session.getPaymentIntent() != null) {
+                        tx.setStripePaymentIntentId(session.getPaymentIntent());
+                        log.info("Payment intent ID set: {}", session.getPaymentIntent());
+                }
                 txRepo.save(tx);
-                log.info("Transaction updated with Stripe session ID for hybrid payment");
+                log.info("Transaction updated with Stripe session ID and payment intent ID for hybrid payment");
 
                 return session.getUrl();
         }
@@ -230,5 +235,31 @@ public class StripeService {
                 log.info("Stripe session retrieved successfully: {}", sessionId);
 
                 return session;
+        }
+
+        /**
+         * Process refund via Stripe
+         * @param paymentIntentId The Stripe payment intent ID
+         * @param refundAmount The amount to refund
+         * @return The Stripe Refund object
+         * @throws StripeException if refund fails
+         */
+        @Transactional
+        public Refund processRefund(String paymentIntentId, BigDecimal refundAmount) throws StripeException {
+                log.info("Processing Stripe refund for payment intent: {}, amount: {}", paymentIntentId, refundAmount);
+
+                long amountInCents = refundAmount.multiply(BigDecimal.valueOf(100)).longValue();
+
+                RefundCreateParams params = RefundCreateParams.builder()
+                                .setPaymentIntent(paymentIntentId)
+                                .setAmount(amountInCents)
+                                .build();
+
+                Refund refund = Refund.create(params);
+                
+                log.info("Stripe refund created successfully. Refund ID: {}, Status: {}, Amount: {}", 
+                                refund.getId(), refund.getStatus(), refund.getAmount());
+
+                return refund;
         }
 }

@@ -24,7 +24,6 @@ public class AbandonedOrderCleanupService {
     private final OrderRepository orderRepository;
     private final RewardService rewardService;
     private final EnhancedStockLockService enhancedStockLockService;
-
     /**
      * Clean up a single abandoned order
      */
@@ -34,7 +33,6 @@ public class AbandonedOrderCleanupService {
             log.info("Cleaning up abandoned order: {} (created: {})",
                     order.getOrderId(), order.getCreatedAt());
 
-            // Refund points if any were used
             refundPointsForAbandonedOrder(order);
 
             // Unlock stock batches for this order
@@ -229,10 +227,7 @@ public class AbandonedOrderCleanupService {
             throw new IllegalArgumentException("Order " + orderId + " not found");
         }
     }
-
-    /**
-     * Result class for cleanup operations
-     */
+ 
     public static class CleanupResult {
         private final int totalProcessed;
         private final int successful;

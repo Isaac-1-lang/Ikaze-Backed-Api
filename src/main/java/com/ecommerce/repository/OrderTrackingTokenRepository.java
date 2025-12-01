@@ -41,4 +41,9 @@ public interface OrderTrackingTokenRepository extends JpaRepository<OrderTrackin
     @Modifying
     @Query("UPDATE OrderTrackingToken t SET t.used = true, t.usedAt = :now WHERE t.email = :email AND t.used = false")
     void markAllTokensAsUsedForEmail(@Param("email") String email, @Param("now") LocalDateTime now);
+    
+    /**
+     * Find any token by email (regardless of validity)
+     */
+    Optional<OrderTrackingToken> findByEmail(String email);
 }

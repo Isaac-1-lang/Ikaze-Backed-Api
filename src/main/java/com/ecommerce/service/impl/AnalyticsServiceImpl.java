@@ -6,6 +6,7 @@ import com.ecommerce.dto.*;
 import com.ecommerce.entity.Order;
 import com.ecommerce.entity.OrderItem;
 import com.ecommerce.entity.OrderTransaction;
+import com.ecommerce.entity.Product;
 import com.ecommerce.entity.User;
 import com.ecommerce.repository.OrderRepository;
 import com.ecommerce.repository.OrderTransactionRepository;
@@ -13,6 +14,7 @@ import com.ecommerce.repository.ProductRepository;
 import com.ecommerce.repository.UserRepository;
 import com.ecommerce.service.AnalyticsService;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
@@ -23,6 +25,7 @@ import java.time.LocalTime;
 import java.util.*;
 import java.util.stream.Collectors;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class AnalyticsServiceImpl implements AnalyticsService {
@@ -32,6 +35,7 @@ public class AnalyticsServiceImpl implements AnalyticsService {
     private final UserRepository userRepository;
     private final ProductRepository productRepository;
     private final JwtService jwtService;
+    private final com.ecommerce.repository.MoneyFlowRepository moneyFlowRepository;
 
     @Override
     public AnalyticsResponseDTO getAnalytics(AnalyticsRequestDTO request, String bearerToken) {
@@ -66,43 +70,54 @@ public class AnalyticsServiceImpl implements AnalyticsService {
                 .count();
         Double newCustomersVs = percentChange(prevNewCustomers, newCustomers);
 
-        // Active products (all-time) and compare with previous period by creation date
-        // (approx)
         long activeProducts = productRepository.countActive();
 
         Double activeProductsVs = null;
 
-        // Revenue (completed transactions) in range
         BigDecimal revenue = null;
         Double revenueVs = null;
         if (isAdmin) {
-            BigDecimal rev = orders.stream()
-                    .map(o -> o.getOrderTransaction())
-                    .filter(Objects::nonNull)
-                    .filter(ot -> ot.getStatus() == OrderTransaction.TransactionStatus.COMPLETED)
-                    .map(OrderTransaction::getOrderAmount)
-                    .reduce(BigDecimal.ZERO, BigDecimal::add);
-
-            BigDecimal prevRev = prevOrders.stream()
-                    .map(o -> o.getOrderTransaction())
-                    .filter(Objects::nonNull)
-                    .filter(ot -> ot.getStatus() == OrderTransaction.TransactionStatus.COMPLETED)
-                    .map(OrderTransaction::getOrderAmount)
-                    .reduce(BigDecimal.ZERO, BigDecimal::add);
+            // Use MoneyFlow for accurate revenue calculation (accounts for refunds)
+            // Get balance at end of current period
+            BigDecimal balanceAtEnd = moneyFlowRepository.findBalanceAtTime(to)
+                    .orElse(BigDecimal.ZERO);
+            
+            // Get balance before start of current period
+            BigDecimal balanceBeforeStart = moneyFlowRepository.findBalanceBeforeTime(from)
+                    .orElse(BigDecimal.ZERO);
+            
+            // Revenue for current period = balance change
+            BigDecimal rev = balanceAtEnd.subtract(balanceBeforeStart);
+            
+            // Get balance at end of previous period
+            BigDecimal prevBalanceAtEnd = moneyFlowRepository.findBalanceAtTime(prevTo)
+                    .orElse(BigDecimal.ZERO);
+            
+            // Get balance before start of previous period
+            BigDecimal prevBalanceBeforeStart = moneyFlowRepository.findBalanceBeforeTime(prevFrom)
+                    .orElse(BigDecimal.ZERO);
+            
+            // Revenue for previous period = balance change
+            BigDecimal prevRev = prevBalanceAtEnd.subtract(prevBalanceBeforeStart);
 
             revenue = rev;
             revenueVs = percentChangeBig(prevRev, rev);
         }
 
-        // Top products (by quantity and revenue) in range
         Map<UUID, ProductAgg> productAgg = new HashMap<>();
         for (Order o : orders) {
             for (OrderItem oi : o.getOrderItems()) {
-                UUID productId = oi.getProductVariant().getProduct().getProductId();
+                Product effectiveProduct = oi.getEffectiveProduct();
+                if (effectiveProduct == null) {
+                    log.warn("OrderItem {} has no effective product, skipping", oi.getOrderItemId());
+                    continue;
+                }
+                
+                UUID productId = effectiveProduct.getProductId();
                 ProductAgg agg = productAgg.computeIfAbsent(productId, k -> new ProductAgg());
                 agg.count += oi.getQuantity();
                 agg.amount = agg.amount.add(oi.getSubtotal());
-                agg.name = oi.getProductVariant().getProduct().getProductName();
+                agg.name = effectiveProduct.getProductName();
             }
         }
         long totalUnits = productAgg.values().stream().mapToLong(a -> a.count).sum();
@@ -122,10 +137,14 @@ public class AnalyticsServiceImpl implements AnalyticsService {
         Map<Long, CatAgg> catAgg = new HashMap<>();
         for (Order o : orders) {
             for (OrderItem oi : o.getOrderItems()) {
-                if (oi.getProductVariant().getProduct().getCategory() == null)
+                // Use the safe getEffectiveProduct() method
+                Product effectiveProduct = oi.getEffectiveProduct();
+                if (effectiveProduct == null || effectiveProduct.getCategory() == null) {
                     continue;
-                Long cid = oi.getProductVariant().getProduct().getCategory().getId();
-                String cname = oi.getProductVariant().getProduct().getCategory().getName();
+                }
+                
+                Long cid = effectiveProduct.getCategory().getId();
+                String cname = effectiveProduct.getCategory().getName();
                 CatAgg agg = catAgg.computeIfAbsent(cid, k -> new CatAgg());
                 agg.name = cname;
                 agg.amount = agg.amount.add(oi.getSubtotal());

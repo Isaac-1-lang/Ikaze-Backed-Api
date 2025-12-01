@@ -30,18 +30,18 @@ import java.util.stream.Collectors;
 @Slf4j
 @Transactional
 public class OrderTrackingServiceImpl implements OrderTrackingService {
-    
+
     private final OrderRepository orderRepository;
     private final OrderTrackingTokenRepository tokenRepository;
     private final ReturnRequestRepository returnRequestRepository;
     private final EmailService emailService;
-    
+
     @Value("${app.frontend.url:https://shopsphere-frontend.vercel.app/}")
     private String frontendUrl;
-    
+
     private static final int TOKEN_EXPIRY_MINUTES = 60;
     private static final SecureRandom secureRandom = new SecureRandom();
-    
+
     @Override
     public OrderTrackingResponseDTO requestTrackingAccess(OrderTrackingRequestDTO request) {
         String email = request.getEmail().toLowerCase().trim();
@@ -51,153 +51,165 @@ public class OrderTrackingServiceImpl implements OrderTrackingService {
             List<Order> orders = orderRepository.findByCustomerInfoEmail(email);
             
             if (orders.isEmpty()) {
-                log.warn("No orders found for email: {}", email);
                 return new OrderTrackingResponseDTO(
                     false, 
                     "No orders found for this email address", 
-                    null, 
                     null, 
                     null
                 );
             }
             
-            // Check if user already has a valid token
-            Optional<OrderTrackingToken> existingToken = tokenRepository
-                .findValidTokenByEmail(email, LocalDateTime.now());
+            // Check if there's an existing token record for this email
+            Optional<OrderTrackingToken> existingTokenOpt = tokenRepository.findByEmail(email);
             
-            if (existingToken.isPresent()) {
-                log.info("Valid token already exists for email: {}", email);
-                OrderTrackingToken token = existingToken.get();
-                String trackingUrl = frontendUrl + "/track-order?token=" + token.getToken();
+            if (existingTokenOpt.isPresent()) {
+                OrderTrackingToken existingToken = existingTokenOpt.get();
+                
+                // If the token is still valid, return it
+                if (existingToken.isValid()) {
+                    log.info("Valid token already exists for email: {}", email);
+                    return new OrderTrackingResponseDTO(
+                        true,
+                        "A valid tracking link was already sent to your email. Please check your inbox.",
+                        existingToken.getToken(),
+                        existingToken.getExpiresAt()
+                    );
+                }
+                
+                // Token exists but is invalid (expired or used), update it
+                log.info("Updating expired/used token for email: {}", email);
+                String newToken = generateSecureToken();
+                LocalDateTime newExpiresAt = LocalDateTime.now().plusMinutes(TOKEN_EXPIRY_MINUTES);
+                
+                existingToken.setToken(newToken);
+                existingToken.setExpiresAt(newExpiresAt);
+                existingToken.setUsed(false);
+                existingToken.setUsedAt(null);
+                existingToken.setCreatedAt(LocalDateTime.now());
+                
+                tokenRepository.save(existingToken);
+                
+                String trackingUrl = frontendUrl + "/track-order?token=" + newToken;
+                sendTrackingEmail(email, trackingUrl, newExpiresAt, orders.size());
                 
                 return new OrderTrackingResponseDTO(
                     true,
-                    "A valid tracking link was already sent to your email. Please check your inbox.",
-                    token.getToken(),
-                    token.getExpiresAt(),
-                    trackingUrl
+                    "Tracking link sent to your email successfully!",
+                    newToken,
+                    newExpiresAt
                 );
             }
             
-            // Mark all existing tokens for this email as used
-            tokenRepository.markAllTokensAsUsedForEmail(email, LocalDateTime.now());
-            
-            // Generate new secure token
+            // No existing token record, create a new one
+            log.info("Creating new token for email: {}", email);
             String token = generateSecureToken();
             LocalDateTime expiresAt = LocalDateTime.now().plusMinutes(TOKEN_EXPIRY_MINUTES);
             
-            // Save token to database
             OrderTrackingToken trackingToken = new OrderTrackingToken();
             trackingToken.setToken(token);
             trackingToken.setEmail(email);
             trackingToken.setExpiresAt(expiresAt);
+            trackingToken.setUsed(false);
             tokenRepository.save(trackingToken);
-            
-            // Generate tracking URL
+
             String trackingUrl = frontendUrl + "/track-order?token=" + token;
-            
-            // Send email with tracking link
             sendTrackingEmail(email, trackingUrl, expiresAt, orders.size());
-            
-            log.info("Generated tracking token for email: {} with {} orders", email, orders.size());
-            
+
             return new OrderTrackingResponseDTO(
                 true,
                 "Tracking link sent to your email successfully!",
                 token,
-                expiresAt,
-                trackingUrl
+                expiresAt
             );
             
         } catch (Exception e) {
-            log.error("Error generating tracking access for email: {}", email, e);
+            log.error("Failed to generate tracking access", e);
             return new OrderTrackingResponseDTO(
                 false,
                 "Failed to generate tracking access. Please try again later.",
-                null,
                 null,
                 null
             );
         }
     }
-    
+
     @Override
     @Transactional(readOnly = true)
     public Page<OrderSummaryDTO> getOrdersByToken(String token, Pageable pageable) {
         // Validate token
         Optional<OrderTrackingToken> trackingToken = tokenRepository
-            .findValidToken(token, LocalDateTime.now());
-        
+                .findValidToken(token, LocalDateTime.now());
+
         if (trackingToken.isEmpty()) {
             throw new IllegalArgumentException("Invalid or expired tracking token");
         }
-        
+
         String email = trackingToken.get().getEmail();
-        
+
         // Get orders for this email with pagination
         Page<Order> orders = orderRepository.findByCustomerInfoEmailWithPagination(email, pageable);
-        
+
         // Convert to DTOs
         List<OrderSummaryDTO> orderSummaries = orders.getContent().stream()
-            .map(this::convertToOrderSummary)
-            .collect(Collectors.toList());
-        
+                .map(this::convertToOrderSummary)
+                .collect(Collectors.toList());
+
         return new PageImpl<>(orderSummaries, pageable, orders.getTotalElements());
     }
-    
+
     @Override
     @Transactional(readOnly = true)
     public OrderResponseDTO getOrderByTokenAndId(String token, Long orderId) {
         // Validate token
         Optional<OrderTrackingToken> trackingToken = tokenRepository
-            .findValidToken(token, LocalDateTime.now());
-        
+                .findValidToken(token, LocalDateTime.now());
+
         if (trackingToken.isEmpty()) {
             throw new IllegalArgumentException("Invalid or expired tracking token");
         }
-        
+
         String email = trackingToken.get().getEmail();
-        
+
         // Get order and verify it belongs to this email
         Optional<Order> orderOpt = orderRepository.findById(orderId);
-        
+
         if (orderOpt.isEmpty()) {
             throw new IllegalArgumentException("Order not found");
         }
-        
+
         Order order = orderOpt.get();
-        
+
         // Verify order belongs to the email associated with token
-        if (order.getOrderCustomerInfo() == null || 
-            !email.equalsIgnoreCase(order.getOrderCustomerInfo().getEmail())) {
+        if (order.getOrderCustomerInfo() == null ||
+                !email.equalsIgnoreCase(order.getOrderCustomerInfo().getEmail())) {
             throw new IllegalArgumentException("Order does not belong to this email address");
         }
-        
+
         // Convert to detailed DTO
         return convertToOrderResponseDTO(order);
     }
-    
+
     @Override
     @Transactional(readOnly = true)
     public boolean isValidToken(String token) {
         return tokenRepository.findValidToken(token, LocalDateTime.now()).isPresent();
     }
-    
+
     @Override
     @Transactional(readOnly = true)
     public String getEmailByToken(String token) {
         return tokenRepository.findValidToken(token, LocalDateTime.now())
-            .map(OrderTrackingToken::getEmail)
-            .orElse(null);
+                .map(OrderTrackingToken::getEmail)
+                .orElse(null);
     }
-    
+
     @Override
     @Transactional
     public void cleanupExpiredTokens() {
         tokenRepository.deleteExpiredTokens(LocalDateTime.now());
         log.info("Cleaned up expired tracking tokens");
     }
-    
+
     /**
      * Generate secure random token
      */
@@ -206,25 +218,21 @@ public class OrderTrackingServiceImpl implements OrderTrackingService {
         secureRandom.nextBytes(randomBytes);
         return Base64.getUrlEncoder().withoutPadding().encodeToString(randomBytes);
     }
-    
-    /**
-     * Send tracking email to customer
-     */
+
     private void sendTrackingEmail(String email, String trackingUrl, LocalDateTime expiresAt, int orderCount) {
         try {
-            // Extract token from tracking URL for email display
             String token = trackingUrl.substring(trackingUrl.lastIndexOf("token=") + 6);
             String formattedExpiryTime = expiresAt.toString().replace("T", " ");
-            
+
             emailService.sendOrderTrackingEmail(email, token, trackingUrl, formattedExpiryTime);
             log.info("Tracking email sent successfully to: {}", email);
-            
+
         } catch (Exception e) {
             log.error("Failed to send tracking email to: {}", email, e);
-            // Don't throw exception here - token is already generated
+            throw new Error("Failed to send the tracking email to the customer");
         }
     }
-    
+
     /**
      * Convert Order to OrderSummaryDTO
      */
@@ -236,18 +244,18 @@ public class OrderTrackingServiceImpl implements OrderTrackingService {
         summary.setCreatedAt(order.getCreatedAt());
         summary.setTotal(order.getTotalAmount());
         summary.setItemCount(order.getOrderItems() != null ? order.getOrderItems().size() : 0);
-        
+
         if (order.getOrderCustomerInfo() != null) {
             summary.setCustomerName(order.getOrderCustomerInfo().getFullName());
             summary.setCustomerEmail(order.getOrderCustomerInfo().getEmail());
         }
-        
+
         // Check if order has return request
         summary.setHasReturnRequest(hasReturnRequest(order.getOrderCode()));
-        
+
         return summary;
     }
-    
+
     /**
      * Convert Order to detailed OrderResponseDTO
      */
@@ -260,7 +268,7 @@ public class OrderTrackingServiceImpl implements OrderTrackingService {
         dto.setCreatedAt(order.getCreatedAt());
         dto.setUpdatedAt(order.getUpdatedAt());
         dto.setTotal(order.getTotalAmount());
-        
+
         // Set order info from OrderInfo entity
         if (order.getOrderInfo() != null) {
             dto.setSubtotal(order.getOrderInfo().getTotalAmount());
@@ -277,7 +285,7 @@ public class OrderTrackingServiceImpl implements OrderTrackingService {
         }
         dto.setPickupToken(order.getPickupToken());
         dto.setPickupTokenUsed(order.getPickupTokenUsed());
-        
+
         // Set customer info
         if (order.getOrderCustomerInfo() != null) {
             OrderResponseDTO.CustomerInfo customerInfo = new OrderResponseDTO.CustomerInfo();
@@ -289,7 +297,7 @@ public class OrderTrackingServiceImpl implements OrderTrackingService {
         } else {
             log.warn("OrderCustomerInfo is null for order: {}", order.getId());
         }
-        
+
         // Set shipping address with coordinates
         if (order.getOrderCustomerInfo() != null) {
             OrderResponseDTO.ShippingAddress shippingAddress = new OrderResponseDTO.ShippingAddress();
@@ -297,34 +305,34 @@ public class OrderTrackingServiceImpl implements OrderTrackingService {
             shippingAddress.setCity(order.getOrderCustomerInfo().getCity());
             shippingAddress.setState(order.getOrderCustomerInfo().getState());
             shippingAddress.setCountry(order.getOrderCustomerInfo().getCountry());
-            
+
             // Add coordinates from OrderAddress if available
             if (order.getOrderAddress() != null) {
                 shippingAddress.setLatitude(order.getOrderAddress().getLatitude());
                 shippingAddress.setLongitude(order.getOrderAddress().getLongitude());
             }
-            
+
             dto.setShippingAddress(shippingAddress);
         }
-        
+
         // Set payment info
         if (order.getOrderTransaction() != null) {
             dto.setPaymentStatus(order.getOrderTransaction().getStatus().toString());
             dto.setPaymentMethod(order.getOrderTransaction().getPaymentMethod().toString());
             dto.setTransaction(convertToTransactionDTO(order.getOrderTransaction()));
         }
-        
+
         // Set order items (simplified - you may want to add more details)
         if (order.getOrderItems() != null) {
             List<OrderResponseDTO.OrderItem> items = order.getOrderItems().stream()
-                .map(this::convertToOrderItemDTO)
-                .collect(Collectors.toList());
+                    .map(this::convertToOrderItemDTO)
+                    .collect(Collectors.toList());
             dto.setItems(items);
         }
-        
+
         return dto;
     }
-    
+
     /**
      * Convert OrderTransaction to OrderTransactionDTO
      */
@@ -345,7 +353,7 @@ public class OrderTrackingServiceImpl implements OrderTrackingService {
         dto.setUpdatedAt(transaction.getUpdatedAt());
         return dto;
     }
-    
+
     /**
      * Convert OrderItem to OrderResponseDTO.OrderItem
      */
@@ -355,78 +363,85 @@ public class OrderTrackingServiceImpl implements OrderTrackingService {
         dto.setQuantity(orderItem.getQuantity());
         dto.setPrice(orderItem.getPrice());
         dto.setTotalPrice(orderItem.getSubtotal()); // Use getSubtotal() method
-        
+
         // Set product info
         if (orderItem.getProduct() != null) {
             OrderResponseDTO.Product product = new OrderResponseDTO.Product();
             product.setId(orderItem.getProduct().getProductId());
             product.setName(orderItem.getProduct().getProductName());
-            
+
             // Add product images if available
             if (orderItem.getProduct().getImages() != null && !orderItem.getProduct().getImages().isEmpty()) {
                 List<String> imageUrls = orderItem.getProduct().getImages().stream()
-                    .sorted((img1, img2) -> {
-                        if (img1.isPrimary() && !img2.isPrimary()) return -1;
-                        if (!img1.isPrimary() && img2.isPrimary()) return 1;
-                        int sortOrder1 = img1.getSortOrder() != null ? img1.getSortOrder() : 0;
-                        int sortOrder2 = img2.getSortOrder() != null ? img2.getSortOrder() : 0;
-                        return Integer.compare(sortOrder1, sortOrder2);
-                    })
-                    .map(img -> img.getImageUrl())
-                    .filter(url -> url != null && !url.trim().isEmpty())
-                    .collect(Collectors.toList());
+                        .sorted((img1, img2) -> {
+                            if (img1.isPrimary() && !img2.isPrimary())
+                                return -1;
+                            if (!img1.isPrimary() && img2.isPrimary())
+                                return 1;
+                            int sortOrder1 = img1.getSortOrder() != null ? img1.getSortOrder() : 0;
+                            int sortOrder2 = img2.getSortOrder() != null ? img2.getSortOrder() : 0;
+                            return Integer.compare(sortOrder1, sortOrder2);
+                        })
+                        .map(img -> img.getImageUrl())
+                        .filter(url -> url != null && !url.trim().isEmpty())
+                        .collect(Collectors.toList());
                 product.setImages(imageUrls);
             }
-            
+
             dto.setProduct(product);
         }
-        
+
         // Set variant info if available
         if (orderItem.getProductVariant() != null) {
             OrderResponseDTO.Variant variant = new OrderResponseDTO.Variant();
             variant.setId(orderItem.getProductVariant().getId());
             variant.setName(orderItem.getProductVariant().getVariantName());
-            
+
             // Add variant images if available (variants may have their own images)
-            if (orderItem.getProductVariant().getImages() != null && !orderItem.getProductVariant().getImages().isEmpty()) {
+            if (orderItem.getProductVariant().getImages() != null
+                    && !orderItem.getProductVariant().getImages().isEmpty()) {
                 List<String> variantImageUrls = orderItem.getProductVariant().getImages().stream()
-                    .sorted((img1, img2) -> {
-                        if (img1.isPrimary() && !img2.isPrimary()) return -1;
-                        if (!img1.isPrimary() && img2.isPrimary()) return 1;
-                        int sortOrder1 = img1.getSortOrder() != null ? img1.getSortOrder() : 0;
-                        int sortOrder2 = img2.getSortOrder() != null ? img2.getSortOrder() : 0;
-                        return Integer.compare(sortOrder1, sortOrder2);
-                    })
-                    .map(img -> img.getImageUrl())
-                    .filter(url -> url != null && !url.trim().isEmpty())
-                    .collect(Collectors.toList());
+                        .sorted((img1, img2) -> {
+                            if (img1.isPrimary() && !img2.isPrimary())
+                                return -1;
+                            if (!img1.isPrimary() && img2.isPrimary())
+                                return 1;
+                            int sortOrder1 = img1.getSortOrder() != null ? img1.getSortOrder() : 0;
+                            int sortOrder2 = img2.getSortOrder() != null ? img2.getSortOrder() : 0;
+                            return Integer.compare(sortOrder1, sortOrder2);
+                        })
+                        .map(img -> img.getImageUrl())
+                        .filter(url -> url != null && !url.trim().isEmpty())
+                        .collect(Collectors.toList());
                 variant.setImages(variantImageUrls);
             }
-            
+
             dto.setVariant(variant);
         }
-        
-        // Set return eligibility - calculate based on order date and product return policy
+
+        // Set return eligibility - calculate based on order date and product return
+        // policy
         int maxReturnDays = 30; // Default return period
         dto.setMaxReturnDays(maxReturnDays);
-        
+
         // Calculate days remaining for return based on order creation date
         LocalDateTime orderDate = orderItem.getOrder().getCreatedAt();
         LocalDateTime now = LocalDateTime.now();
         long daysSinceOrder = java.time.temporal.ChronoUnit.DAYS.between(orderDate, now);
         int daysRemaining = (int) (maxReturnDays - daysSinceOrder);
-        
-        // Item is return eligible if within return window and order is delivered/processing
-        boolean isReturnEligible = daysRemaining > 0 && 
-            (orderItem.getOrder().getOrderStatus() == Order.OrderStatus.DELIVERED || 
-             orderItem.getOrder().getOrderStatus() == Order.OrderStatus.PROCESSING);
-        
+
+        // Item is return eligible if within return window and order is
+        // delivered/processing
+        boolean isReturnEligible = daysRemaining > 0 &&
+                (orderItem.getOrder().getOrderStatus() == Order.OrderStatus.DELIVERED ||
+                        orderItem.getOrder().getOrderStatus() == Order.OrderStatus.PROCESSING);
+
         dto.setReturnEligible(isReturnEligible);
         dto.setDaysRemainingForReturn(Math.max(0, daysRemaining));
-        
+
         return dto;
     }
-    
+
     /**
      * Check if order has return request
      */
@@ -438,38 +453,38 @@ public class OrderTrackingServiceImpl implements OrderTrackingService {
             return false;
         }
     }
-    
+
     @Override
     public String getEmailFromToken(String token) {
         return getEmailByToken(token);
     }
-    
+
     @Override
     @Transactional(readOnly = true)
     public OrderResponseDTO getOrderByNumberWithToken(String orderNumber, String token) {
         Optional<OrderTrackingToken> trackingToken = tokenRepository
-            .findValidToken(token, LocalDateTime.now());
-        
+                .findValidToken(token, LocalDateTime.now());
+
         if (trackingToken.isEmpty()) {
             throw new IllegalArgumentException("Invalid or expired tracking token");
         }
-        
+
         String email = trackingToken.get().getEmail();
-        
+
         // Find order by order number and verify it belongs to the email
         Optional<Order> orderOpt = orderRepository.findByOrderCode(orderNumber);
         if (orderOpt.isEmpty()) {
             throw new IllegalArgumentException("Order not found");
         }
-        
+
         Order order = orderOpt.get();
-        
+
         // Verify the order belongs to the email associated with the token
-        if (order.getOrderCustomerInfo() == null || 
-            !email.equalsIgnoreCase(order.getOrderCustomerInfo().getEmail())) {
+        if (order.getOrderCustomerInfo() == null ||
+                !email.equalsIgnoreCase(order.getOrderCustomerInfo().getEmail())) {
             throw new IllegalArgumentException("Order not found for this email");
         }
-        
+
         return convertToOrderResponseDTO(order);
     }
 }

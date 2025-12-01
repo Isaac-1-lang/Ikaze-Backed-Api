@@ -13,7 +13,15 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
+import java.io.InputStream;
 import java.time.LocalDateTime;
+
+import org.apache.tika.metadata.Metadata;
+import org.apache.tika.parser.AutoDetectParser;
+import org.apache.tika.parser.ParseContext;
+import org.apache.tika.parser.Parser;
+import org.apache.tika.sax.BodyContentHandler;
+import org.xml.sax.ContentHandler;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -36,11 +44,12 @@ public class ReturnService {
     private final RefundService refundService;
     private final CloudinaryService cloudinaryService;
     private final OrderTrackingTokenRepository orderTrackingTokenRepository;
+    private final OrderActivityLogService activityLogService;
 
     private static final int DEFAULT_RETURN_DAYS = 15;
     private static final int MAX_IMAGES = 5;
     private static final int MAX_VIDEOS = 1;
-    private static final int MAX_VIDEO_DURATION_SECONDS = 30;
+    private static final int MAX_VIDEO_DURATION_SECONDS = 15;
 
     /**
      * Submit a new return request for authenticated users with media files
@@ -56,15 +65,11 @@ public class ReturnService {
 
         Order order = validateOrderForAuthenticatedUser(submitDTO.getOrderId(), submitDTO.getCustomerId());
 
-        if (returnRequestRepository.existsByOrderIdAndCustomerId(submitDTO.getOrderId(),
-                submitDTO.getCustomerId())) {
-            throw new RuntimeException("Return request already exists for order " + submitDTO.getOrderId());
-        }
-
         validateReturnEligibility(order);
         validateCustomerReturnHistory(submitDTO.getCustomerId());
         validateReturnItems(submitDTO.getReturnItems(), order);
         validateReturnItemsEligibility(submitDTO.getReturnItems(), order);
+        validateReturnRequestLimit(submitDTO.getReturnItems());
         if (mediaFiles != null && mediaFiles.length > 0) {
             validateMediaFiles(mediaFiles);
         }
@@ -94,13 +99,26 @@ public class ReturnService {
         log.info("Authenticated return request {} submitted successfully for order {}",
                 savedRequest.getId(), submitDTO.getOrderId());
 
+        // LOG ACTIVITY: Return Requested
+        String customerName = order.getUser() != null 
+            ? order.getUser().getFirstName() + " " + order.getUser().getLastName()
+            : order.getOrderCustomerInfo().getFullName();
+        activityLogService.logReturnRequested(
+            order.getOrderId(),
+            customerName,
+            submitDTO.getReason(),
+            savedRequest.getId()
+        );
+
         return convertToDTO(savedRequest);
     }
 
     /**
-     * Submit a return request using tracking token (for guest users with email verification)
+     * Submit a return request using tracking token (for guest users with email
+     * verification)
      */
-    public ReturnRequestDTO submitTokenizedReturnRequest(TokenizedReturnRequestDTO submitDTO, MultipartFile[] mediaFiles) {
+    public ReturnRequestDTO submitTokenizedReturnRequest(TokenizedReturnRequestDTO submitDTO,
+            MultipartFile[] mediaFiles) {
         log.info("Processing tokenized return request for order number {} with tracking token",
                 submitDTO.getOrderNumber());
 
@@ -114,29 +132,28 @@ public class ReturnService {
 
         // Validate tracking token and get associated email
         String email = validateTrackingToken(submitDTO.getTrackingToken());
-        
+
         // Find order by order number
         Order order = orderRepository.findByOrderCode(submitDTO.getOrderNumber())
-                .orElseThrow(() -> new RuntimeException("Order not found with order number: " + submitDTO.getOrderNumber()));
+                .orElseThrow(
+                        () -> new RuntimeException("Order not found with order number: " + submitDTO.getOrderNumber()));
 
         // Verify the order belongs to the email associated with the token
-        if (order.getOrderCustomerInfo() == null || 
-            !email.equalsIgnoreCase(order.getOrderCustomerInfo().getEmail())) {
+        if (order.getOrderCustomerInfo() == null ||
+                !email.equalsIgnoreCase(order.getOrderCustomerInfo().getEmail())) {
             throw new RuntimeException("Order does not belong to the email associated with this tracking token");
         }
 
         // Ensure this is actually a guest order (no associated user)
         if (order.getUser() != null) {
-            throw new RuntimeException("This order belongs to a registered user and cannot be returned using tracking token");
-        }
-
-        if (returnRequestRepository.existsByOrderIdAndCustomerId(order.getOrderId(), null)) {
-            throw new RuntimeException("Return request already exists for order " + submitDTO.getOrderNumber());
+            throw new RuntimeException(
+                    "This order belongs to a registered user and cannot be returned using tracking token");
         }
 
         validateReturnEligibility(order);
         validateReturnItems(submitDTO.getReturnItems(), order);
         validateReturnItemsEligibility(submitDTO.getReturnItems(), order);
+        validateReturnRequestLimit(submitDTO.getReturnItems());
         if (mediaFiles != null && mediaFiles.length > 0) {
             validateMediaFiles(mediaFiles);
         }
@@ -167,6 +184,17 @@ public class ReturnService {
         notificationService.notifyReturnSubmitted(savedRequest);
         log.info("Tokenized return request {} submitted successfully for order {}",
                 savedRequest.getId(), submitDTO.getOrderNumber());
+
+        // LOG ACTIVITY: Return Requested (Guest)
+        String guestCustomerName = order.getOrderCustomerInfo() != null 
+            ? order.getOrderCustomerInfo().getFullName()
+            : "Guest Customer";
+        activityLogService.logReturnRequested(
+            order.getOrderId(),
+            guestCustomerName + " (Guest)",
+            submitDTO.getReason(),
+            savedRequest.getId()
+        );
 
         return convertToDTO(savedRequest);
     }
@@ -274,6 +302,73 @@ public class ReturnService {
     }
 
     /**
+     * Get return requests by order ID for authenticated users
+     */
+    @Transactional(readOnly = true)
+    public List<ReturnRequestDTO> getReturnRequestsByOrderId(Long orderId, UUID customerId) {
+        log.info("Fetching return requests for order {} and customer {}", orderId, customerId);
+        
+        // Validate order belongs to customer
+        Order order = orderRepository.findById(orderId)
+                .orElseThrow(() -> new RuntimeException("Order not found: " + orderId));
+        
+        if (order.getUser() == null || !order.getUser().getId().equals(customerId)) {
+            throw new RuntimeException("Order does not belong to this customer");
+        }
+        
+        // Get all return requests for this order
+        List<ReturnRequest> requests = returnRequestRepository.findByOrderIdOrderBySubmittedAtDesc(orderId);
+        
+        log.info("Found {} return requests for order {}", requests.size(), orderId);
+        
+        return requests.stream()
+                .map(this::convertToDTO)
+                .collect(Collectors.toList());
+    }
+    
+    /**
+     * Get return requests by order number and tracking token (for guest users)
+     */
+    @Transactional(readOnly = true)
+    public List<ReturnRequestDTO> getReturnRequestsByOrderNumberAndToken(String orderNumber, String token) {
+        log.info("Fetching return requests for guest order {}", orderNumber);
+        
+        if (orderNumber == null || orderNumber.trim().isEmpty()) {
+            throw new IllegalArgumentException("Order number is required");
+        }
+        if (token == null || token.trim().isEmpty()) {
+            throw new IllegalArgumentException("Tracking token is required");
+        }
+        
+        // Validate tracking token
+        String email = validateTrackingToken(token);
+        
+        // Find order by order number
+        Order order = orderRepository.findByOrderCode(orderNumber)
+                .orElseThrow(() -> new RuntimeException("Order not found with order number: " + orderNumber));
+        
+        // Verify the order belongs to the email associated with the token
+        if (order.getOrderCustomerInfo() == null ||
+                !email.equalsIgnoreCase(order.getOrderCustomerInfo().getEmail())) {
+            throw new RuntimeException("Order does not belong to the email associated with this tracking token");
+        }
+        
+        // Ensure this is actually a guest order (no associated user)
+        if (order.getUser() != null) {
+            throw new RuntimeException("This order belongs to a registered user and cannot be accessed using tracking token");
+        }
+        
+        // Get all return requests for this order
+        List<ReturnRequest> requests = returnRequestRepository.findByOrderIdOrderBySubmittedAtDesc(order.getOrderId());
+        
+        log.info("Found {} return requests for guest order {}", requests.size(), orderNumber);
+        
+        return requests.stream()
+                .map(this::convertToDTO)
+                .collect(Collectors.toList());
+    }
+
+    /**
      * Get return request by ID with all related data
      */
     @Transactional(readOnly = true)
@@ -308,7 +403,6 @@ public class ReturnService {
 
         return convertToDTO(request);
     }
-
 
     /**
      * Get all return requests with pagination (Admin use only)
@@ -440,18 +534,18 @@ public class ReturnService {
      */
     private String validateTrackingToken(String trackingToken) {
         log.info("Validating tracking token for return request submission");
-        
+
         // Find valid token
         Optional<OrderTrackingToken> tokenOpt = orderTrackingTokenRepository
                 .findValidToken(trackingToken, LocalDateTime.now());
-        
+
         if (tokenOpt.isEmpty()) {
             throw new IllegalArgumentException("Invalid or expired tracking token");
         }
-        
+
         OrderTrackingToken token = tokenOpt.get();
         String email = token.getEmail();
-        
+
         log.info("Tracking token validated successfully for email: {}", email);
         return email;
     }
@@ -475,21 +569,16 @@ public class ReturnService {
         if (order.getOrderStatus() != Order.OrderStatus.DELIVERED) {
             throw new RuntimeException("Order must be delivered to be eligible for return");
         }
-        if (order.getOrderStatus() == Order.OrderStatus.RETURNED) {
-            throw new RuntimeException("Order is already returned");
-        }
-
         if (order.getOrderTransaction().getStatus() != OrderTransaction.TransactionStatus.COMPLETED) {
             throw new RuntimeException("Order transaction is not completed");
         }
         return order;
     }
 
-
     private void validateReturnEligibility(Order order) {
         LocalDateTime deliveryDate = order.getDeliveredAt();
         if (deliveryDate == null) {
-            throw new RuntimeException("Order delivery date not found");
+            throw new RuntimeException("Order not delivered yet for return");
         }
         // Note: Individual item return period validation is now handled in
         // validateReturnItemsEligibility()
@@ -505,7 +594,7 @@ public class ReturnService {
         LocalDateTime thirtyDaysAgo = LocalDateTime.now().minusDays(30);
         List<ReturnRequest> recentReturns = returnRequestRepository.findRecentByCustomerId(customerId, thirtyDaysAgo);
 
-        if (recentReturns.size() > 5) { // Configurable threshold
+        if (recentReturns.size() > 5) {
             log.warn("Customer {} has {} returns in the last 30 days - flagging for review",
                     customerId, recentReturns.size());
         }
@@ -517,14 +606,15 @@ public class ReturnService {
 
         returnRequest.approve(decisionDTO.getDecisionNotes());
 
-        if (decisionDTO.getRefundDetails() != null) {
-            refundService.processRefund(returnRequest, decisionDTO.getRefundDetails());
-        }
-
-        // Send comprehensive approval notification with HTML email
         notificationService.notifyReturnApproved(returnRequest);
-
         log.info("Return request {} approved successfully", returnRequest.getId());
+
+        // LOG ACTIVITY: Return Approved
+        activityLogService.logReturnApproved(
+            returnRequest.getOrderId(),
+            "Admin", // TODO: Get actual admin name from security context
+            returnRequest.getId()
+        );
     }
 
     private void denyReturnRequest(ReturnRequest returnRequest, ReturnDecisionDTO decisionDTO) {
@@ -533,10 +623,17 @@ public class ReturnService {
 
         returnRequest.deny(decisionDTO.getDecisionNotes());
 
-        // Send comprehensive denial notification with HTML email (customer can appeal)
         notificationService.notifyReturnDenied(returnRequest);
 
         log.info("Return request {} denied successfully", returnRequest.getId());
+
+        // LOG ACTIVITY: Return Denied
+        activityLogService.logReturnDenied(
+            returnRequest.getOrderId(),
+            "Admin", // TODO: Get actual admin name from security context
+            decisionDTO.getDecisionNotes(),
+            returnRequest.getId()
+        );
     }
 
     private void processRestocking(ReturnRequest returnRequest, WarehouseAssignmentDTO assignmentDTO) {
@@ -614,9 +711,25 @@ public class ReturnService {
                     throw new IllegalArgumentException("Video file size cannot exceed 50MB");
                 }
 
-                // Note: Video duration validation would require additional processing
-                // For now, we rely on client-side validation for 30-second limit
-                log.info("Video file uploaded: {} ({})", file.getOriginalFilename(), contentType);
+                // Validate video duration (max 15 seconds)
+                try {
+                    double duration = extractVideoDuration(file);
+                    if (duration > MAX_VIDEO_DURATION_SECONDS) {
+                        throw new IllegalArgumentException(
+                                String.format("Video '%s' duration (%.1f seconds) exceeds maximum allowed (%d seconds)",
+                                        file.getOriginalFilename(), duration, MAX_VIDEO_DURATION_SECONDS));
+                    }
+                    log.info("Video file validated: {} - size: {} bytes, duration: {} seconds",
+                            file.getOriginalFilename(), file.getSize(), duration);
+                } catch (IllegalArgumentException e) {
+                    throw e;
+                } catch (Exception e) {
+                    log.error("Failed to validate video duration for '{}': {}",
+                            file.getOriginalFilename(), e.getMessage());
+                    throw new IllegalArgumentException(
+                            String.format("Failed to validate video '%s'. The file may be corrupted or in an unsupported format.",
+                                    file.getOriginalFilename()));
+                }
 
             } else {
                 throw new IllegalArgumentException("Only image and video files are allowed");
@@ -627,8 +740,59 @@ public class ReturnService {
     }
 
     /**
-     * Process media attachments by uploading to Cloudinary and saving metadata
+     * Extract video duration using Apache Tika
      */
+    private double extractVideoDuration(MultipartFile video) throws Exception {
+        try (InputStream inputStream = video.getInputStream()) {
+            Parser parser = new AutoDetectParser();
+            ContentHandler handler = new BodyContentHandler(-1);
+            Metadata metadata = new Metadata();
+            ParseContext context = new ParseContext();
+
+            if (video.getContentType() != null) {
+                metadata.set(Metadata.CONTENT_TYPE, video.getContentType());
+            }
+
+            parser.parse(inputStream, handler, metadata, context);
+
+            String[] durationKeys = {
+                "xmpDM:duration",
+                "xmpDM:Duration",
+                "duration",
+                "Duration",
+                "video:duration",
+                "Content-Duration"
+            };
+
+            String durationStr = null;
+            for (String key : durationKeys) {
+                durationStr = metadata.get(key);
+                if (durationStr != null && !durationStr.isEmpty()) {
+                    break;
+                }
+            }
+
+            if (durationStr == null || durationStr.isEmpty()) {
+                log.warn("Could not extract duration from video '{}'. Allowing upload.",
+                        video.getOriginalFilename());
+                return 0.0;
+            }
+
+            try {
+                double duration = Double.parseDouble(durationStr);
+                if (duration > 1000) {
+                    duration = duration / 1000.0;
+                }
+                return duration;
+            } catch (NumberFormatException e) {
+                log.warn("Could not parse duration value '{}' for video '{}'",
+                        durationStr, video.getOriginalFilename());
+                return 0.0;
+            }
+        }
+    }
+
+
     private void processMediaAttachments(Long returnRequestId, MultipartFile[] mediaFiles) throws IOException {
         List<ProcessedMediaFileDTO> processedFiles = new ArrayList<>();
 
@@ -754,16 +918,22 @@ public class ReturnService {
         } catch (Exception e) {
             log.warn("Could not load order/customer information for return request {}: {}", returnRequest.getId(),
                     e.getMessage());
-            // Set basic info if available
             dto.setOrderNumber("Order #" + returnRequest.getOrderId());
+        }
+
+        try {
+            ExpectedRefundDTO expectedRefund = refundService.calculateExpectedRefund(returnRequest);
+            dto.setExpectedRefund(expectedRefund);
+        } catch (Exception e) {
+            log.error("Could not calculate expected refund for return request {}: {}", 
+                    returnRequest.getId(), e.getMessage(), e);
+            dto.setExpectedRefund(null);
         }
 
         return dto;
     }
 
-    /**
-     * Convert ReturnMedia entity to DTO
-     */
+
     private ReturnMediaDTO convertReturnMediaToDTO(ReturnMedia media) {
         ReturnMediaDTO dto = new ReturnMediaDTO();
         dto.setId(media.getId());
@@ -837,15 +1007,12 @@ public class ReturnService {
         return dto;
     }
 
-    /**
-     * Validate that all return items are valid for the given order
-     */
+
     private void validateReturnItems(List<ReturnItemDTO> returnItems, Order order) {
         if (returnItems == null || returnItems.isEmpty()) {
             throw new IllegalArgumentException("At least one item must be specified for return");
         }
 
-        // Get all order items for this order
         List<OrderItem> orderItems = order.getOrderItems();
         if (orderItems == null || orderItems.isEmpty()) {
             throw new RuntimeException("No items found in the order");
@@ -855,7 +1022,6 @@ public class ReturnService {
             validateSingleReturnItem(returnItemDTO, orderItems);
         }
 
-        // Check for duplicate return items
         Set<Long> orderItemIds = returnItems.stream()
                 .map(ReturnItemDTO::getOrderItemId)
                 .collect(Collectors.toSet());
@@ -865,11 +1031,7 @@ public class ReturnService {
         }
     }
 
-    /**
-     * Validate a single return item against order items
-     */
     private void validateSingleReturnItem(ReturnItemDTO returnItemDTO, List<OrderItem> orderItems) {
-        // Find the corresponding order item
         OrderItem orderItem = orderItems.stream()
                 .filter(oi -> oi.getOrderItemId().equals(returnItemDTO.getOrderItemId()))
                 .findFirst()
@@ -889,7 +1051,6 @@ public class ReturnService {
                             orderItem.getQuantity()));
         }
 
-        // Check if there are already existing returns for this order item
         Integer alreadyReturned = returnItemRepository.getTotalReturnQuantityForOrderItem(orderItem.getOrderItemId());
         int availableForReturn = orderItem.getQuantity() - alreadyReturned;
 
@@ -967,7 +1128,7 @@ public class ReturnService {
     private void validateReturnItemsEligibility(List<ReturnItemDTO> returnItems, Order order) {
         LocalDateTime deliveryDate = order.getDeliveredAt();
         if (deliveryDate == null) {
-            throw new RuntimeException("Order delivery date not found");
+            throw new RuntimeException("Order not delivered yet for return");
         }
 
         List<OrderItem> orderItems = order.getOrderItems();
@@ -1013,5 +1174,41 @@ public class ReturnService {
                     + orderItem.getProductVariant().getVariantName() + ")";
         }
         return orderItem.getEffectiveProduct().getProductName();
+    }
+
+    /**
+     * Validate that no OrderItem exceeds the maximum of 2 return requests
+     * This enforces the business rule that each item can only be returned twice
+     */
+    private void validateReturnRequestLimit(List<ReturnItemDTO> returnItems) {
+        log.info("Validating return request limit (max 2 per item) for {} items", returnItems.size());
+
+        for (ReturnItemDTO returnItemDTO : returnItems) {
+            Long orderItemId = returnItemDTO.getOrderItemId();
+
+            Long existingReturnRequestCount = returnItemRepository
+                    .countDistinctReturnRequestsByOrderItemId(orderItemId);
+
+            log.debug("OrderItem {} has {} existing return request(s)", orderItemId, existingReturnRequestCount);
+
+            if (existingReturnRequestCount >= 2) {
+                throw new IllegalArgumentException(
+                        String.format("Maximum return limit exceeded for item %s. " +
+                                "Each item can only be included in 2 return requests. " +
+                                "This item already has %d return request(s).",
+                                returnItemDTO.getProductName() != null ? returnItemDTO.getProductName()
+                                        : "ID: " + orderItemId,
+                                existingReturnRequestCount));
+            }
+        }
+
+        log.info("Return request limit validation passed for all items");
+    }
+
+    /**
+     * Count return requests by status
+     */
+    public long countReturnRequestsByStatus(ReturnRequest.ReturnStatus status) {
+        return returnRequestRepository.countByStatus(status);
     }
 }

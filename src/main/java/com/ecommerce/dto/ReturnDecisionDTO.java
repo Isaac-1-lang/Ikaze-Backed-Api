@@ -19,16 +19,5 @@ public class ReturnDecisionDTO {
     private String decision;
     
     private String decisionNotes;
-    
-    // For approved returns
-    private RefundDetailsDTO refundDetails;
-    
-    @Data
-    @NoArgsConstructor
-    @AllArgsConstructor
-    public static class RefundDetailsDTO {
-        private String refundMethod;
-        private Double refundAmount;
-        private String refundReason;
-    }
+
 }

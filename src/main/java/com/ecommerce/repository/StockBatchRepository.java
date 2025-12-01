@@ -40,6 +40,7 @@ public interface StockBatchRepository extends JpaRepository<StockBatch, Long> {
         @Query("SELECT sb FROM StockBatch sb WHERE sb.stock.warehouse.id = :warehouseId AND sb.stock.productVariant.id = :variantId")
         List<StockBatch> findByWarehouseAndVariant(@Param("warehouseId") Long warehouseId,
                         @Param("variantId") Long variantId);
+
         List<StockBatch> findByStockInOrderByCreatedAtDesc(List<Stock> stocks);
 
         @Query("SELECT sb FROM StockBatch sb WHERE sb.stock.id = :stockId AND sb.status = 'ACTIVE' AND sb.quantity > 0 ORDER BY sb.expiryDate ASC NULLS LAST")

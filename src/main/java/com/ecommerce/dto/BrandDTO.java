@@ -45,6 +45,8 @@ public class BrandDTO {
     
     private LocalDateTime updatedAt;
     
+    private Long productCount = 0L;
+    
     /**
      * Simplified constructor for creating a new brand
      * 

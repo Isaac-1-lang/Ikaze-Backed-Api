@@ -24,6 +24,7 @@ public class ProductVariantDTO {
     private Boolean isActive;
     private Boolean isInStock;
     private Boolean isLowStock;
+    private Integer stockQuantity; 
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 

@@ -26,4 +26,7 @@ public class ProductAttributeTypeDTO {
 
     @Builder.Default
     private List<ProductAttributeValueDTO> attributeValues = new ArrayList<>();
+    
+    @Builder.Default
+    private Long productCount = 0L;
 }

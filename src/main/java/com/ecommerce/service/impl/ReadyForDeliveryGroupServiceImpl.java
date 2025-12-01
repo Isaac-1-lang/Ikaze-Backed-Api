@@ -37,6 +37,7 @@ public class ReadyForDeliveryGroupServiceImpl implements ReadyForDeliveryGroupSe
     private final ReadyForDeliveryGroupRepository groupRepository;
     private final OrderRepository orderRepository;
     private final UserRepository userRepository;
+    private final com.ecommerce.service.OrderActivityLogService activityLogService;
 
     @Override
     @Transactional
@@ -46,6 +47,14 @@ public class ReadyForDeliveryGroupServiceImpl implements ReadyForDeliveryGroupSe
         User deliverer = userRepository.findById(request.getDelivererId())
                 .orElseThrow(
                         () -> new EntityNotFoundException("Deliverer not found with ID: " + request.getDelivererId()));
+        
+        // Check if the deliverer already has 5 or more active groups
+        Long activeGroupCount = groupRepository.countActiveGroupsByDelivererId(deliverer.getId());
+        if (activeGroupCount >= 5) {
+            throw new IllegalStateException(
+                "Delivery agent already has " + activeGroupCount + " active delivery groups. Maximum allowed is 5.");
+        }
+        
         ReadyForDeliveryGroup group = new ReadyForDeliveryGroup();
         group.setDeliveryGroupName(request.getDeliveryGroupName());
         group.setDeliveryGroupDescription(request.getDeliveryGroupDescription());
@@ -127,6 +136,17 @@ public class ReadyForDeliveryGroupServiceImpl implements ReadyForDeliveryGroupSe
             User deliverer = userRepository.findById(request.getDelivererId())
                     .orElseThrow(() -> new EntityNotFoundException(
                             "Deliverer not found with ID: " + request.getDelivererId()));
+            
+            // Check if the new deliverer already has 5 or more active groups
+            // Only check if we're actually changing the deliverer
+            if (!deliverer.getId().equals(group.getDeliverer().getId())) {
+                Long activeGroupCount = groupRepository.countActiveGroupsByDelivererId(deliverer.getId());
+                if (activeGroupCount >= 5) {
+                    throw new IllegalStateException(
+                        "Delivery agent already has " + activeGroupCount + " active delivery groups. Maximum allowed is 5.");
+                }
+            }
+            
             group.setDeliverer(deliverer);
         }
 
@@ -202,9 +222,52 @@ public class ReadyForDeliveryGroupServiceImpl implements ReadyForDeliveryGroupSe
         return groups.stream().map(this::mapToDTO).collect(Collectors.toList());
     }
 
+    @Override
+    public Page<ReadyForDeliveryGroupDTO> getAllGroupsWithoutExclusions(String search, Pageable pageable) {
+        log.info("Getting all groups without exclusions with pagination: page={}, size={}, search={}",
+                pageable.getPageNumber(), pageable.getPageSize(), search);
+
+        Page<ReadyForDeliveryGroup> groups;
+        
+        if (search != null && !search.trim().isEmpty()) {
+            // Search across all groups (no exclusions)
+            groups = groupRepository.searchAllGroupsWithoutExclusions(search.trim(), pageable);
+            log.info("Found {} groups matching search term: '{}'", groups.getTotalElements(), search);
+        } else {
+            // Get all groups (no exclusions)
+            groups = groupRepository.findAllGroupsWithoutExclusions(pageable);
+            log.info("Found {} total groups", groups.getTotalElements());
+        }
+
+        return groups.map(this::mapToDTO);
+    }
+
+    @Override
+    public Page<OrderDTO> getOrdersForGroupWithPagination(Long groupId, Pageable pageable) {
+        log.info("Getting orders for group {} with pagination: page={}, size={}",
+                groupId, pageable.getPageNumber(), pageable.getPageSize());
+
+        // Verify group exists
+        groupRepository.findById(groupId)
+                .orElseThrow(() -> new EntityNotFoundException("Group not found with ID: " + groupId));
+
+        // Get orders with pagination
+        Page<Order> orders = orderRepository.findByReadyForDeliveryGroupId(groupId, pageable);
+        log.info("Found {} orders for group {}", orders.getTotalElements(), groupId);
+
+        return orders.map(this::mapToOrderDTO);
+    }
+
     private void addOrdersToGroupInternal(Long groupId, List<Long> orderIds) {
         ReadyForDeliveryGroup group = groupRepository.findByIdWithOrders(groupId)
                 .orElseThrow(() -> new EntityNotFoundException("Group not found with ID: " + groupId));
+
+        String deliveryAgentName = group.getDeliverer() != null
+            ? group.getDeliverer().getFirstName() + " " + group.getDeliverer().getLastName()
+            : "Unassigned";
+        String deliveryAgentPhone = group.getDeliverer() != null && group.getDeliverer().getPhoneNumber() != null
+            ? group.getDeliverer().getPhoneNumber()
+            : "N/A";
 
         for (Long orderId : orderIds) {
             Order order = orderRepository.findById(orderId)
@@ -215,6 +278,15 @@ public class ReadyForDeliveryGroupServiceImpl implements ReadyForDeliveryGroupSe
             }
 
             group.addOrder(order);
+
+            // LOG ACTIVITY: Added to Delivery Group
+            activityLogService.logAddedToDeliveryGroup(
+                orderId,
+                group.getDeliveryGroupName(),
+                deliveryAgentName,
+                deliveryAgentPhone,
+                groupId
+            );
         }
 
         groupRepository.save(group);
@@ -229,6 +301,8 @@ public class ReadyForDeliveryGroupServiceImpl implements ReadyForDeliveryGroupSe
                 ? group.getDeliverer().getFirstName() + " " + group.getDeliverer().getLastName()
                 : null;
 
+        int ordersCount = group.getOrders().size();
+        
         return ReadyForDeliveryGroupDTO.builder()
                 .deliveryGroupId(group.getDeliveryGroupId())
                 .deliveryGroupName(group.getDeliveryGroupName())
@@ -236,7 +310,8 @@ public class ReadyForDeliveryGroupServiceImpl implements ReadyForDeliveryGroupSe
                 .delivererId(group.getDeliverer() != null ? group.getDeliverer().getId() : null)
                 .delivererName(delivererName)
                 .orderIds(orderIds)
-                .orderCount(group.getOrders().size())
+                .orderCount(ordersCount)
+                .totalOrders(ordersCount) // Set totalOrders for frontend compatibility
                 .createdAt(group.getCreatedAt())
                 .scheduledAt(group.getScheduledAt())
                 .hasDeliveryStarted(group.getHasDeliveryStarted())
@@ -250,6 +325,19 @@ public class ReadyForDeliveryGroupServiceImpl implements ReadyForDeliveryGroupSe
                 pageable.getPageSize());
 
         Page<ReadyForDeliveryGroup> groups = groupRepository.findAllWithOrdersAndDeliverer(pageable);
+        return groups.map(this::mapToDeliveryGroupDto);
+    }
+
+    @Override
+    public Page<DeliveryGroupDto> listAvailableGroups(String search, Pageable pageable) {
+        log.info("Listing available groups with search='{}', page={}, size={}", 
+                search, pageable.getPageNumber(), pageable.getPageSize());
+
+        if (search == null || search.trim().isEmpty()) {
+            return listAvailableGroups(pageable);
+        }
+
+        Page<ReadyForDeliveryGroup> groups = groupRepository.searchAvailableGroups(search.trim(), pageable);
         return groups.map(this::mapToDeliveryGroupDto);
     }
 
@@ -344,10 +432,23 @@ public class ReadyForDeliveryGroupServiceImpl implements ReadyForDeliveryGroupSe
 
     @Override
     public Page<AgentDto> listAvailableAgents(Pageable pageable, Sort sort) {
-        log.info("Listing available agents with pagination: page={}, size={}", pageable.getPageNumber(),
-                pageable.getPageSize());
-
         Page<User> users = userRepository.findByRole(UserRole.DELIVERY_AGENT, pageable);
+        return users.map(this::mapToAgentDto);
+    }
+
+    @Override
+    public Page<AgentDto> listAvailableAgents(String search, Pageable pageable, Sort sort) {
+        log.info("Listing available agents with search='{}', page={}, size={}", 
+                search, pageable.getPageNumber(), pageable.getPageSize());
+
+        if (search == null || search.trim().isEmpty()) {
+            return listAvailableAgents(pageable, sort);
+        }
+
+        Page<User> users = userRepository.findByRoleAndSearchTerm(
+                UserRole.DELIVERY_AGENT, 
+                search.trim().toLowerCase(), 
+                pageable);
         return users.map(this::mapToAgentDto);
     }
 
@@ -379,8 +480,16 @@ public class ReadyForDeliveryGroupServiceImpl implements ReadyForDeliveryGroupSe
                 ? group.getDeliverer().getFirstName() + " " + group.getDeliverer().getLastName()
                 : null;
 
-        String status = group.getHasDeliveryStarted() ? "IN_PROGRESS" : "READY";
-
+        String status = "IN_PROGRESS";
+        if(group.getHasDeliveryStarted() && group.getHasDeliveryFinished()){
+            status = "COMPLETED";
+        }
+        else if (group.getHasDeliveryStarted() && !group.getHasDeliveryFinished()){
+            status="DELIVERING";
+        }
+        else{
+            status =  "READY";
+        }
         return DeliveryGroupDto.builder()
                 .deliveryGroupId(group.getDeliveryGroupId())
                 .deliveryGroupName(group.getDeliveryGroupName())
@@ -400,8 +509,12 @@ public class ReadyForDeliveryGroupServiceImpl implements ReadyForDeliveryGroupSe
     }
 
     private AgentDto mapToAgentDto(User user) {
-        Long currentGroupCount = groupRepository.countByDelivererId(user.getId());
-        boolean hasAGroup = currentGroupCount > 0;
+        // Count only active (non-completed) delivery groups
+        Long activeGroupCount = groupRepository.countActiveGroupsByDelivererId(user.getId());
+        
+        // Agent is busy if they have 5 or more active groups
+        boolean hasAGroup = activeGroupCount >= 5;
+        boolean isAvailable = activeGroupCount < 5;
 
         return AgentDto.builder()
                 .agentId(user.getId())
@@ -409,8 +522,9 @@ public class ReadyForDeliveryGroupServiceImpl implements ReadyForDeliveryGroupSe
                 .lastName(user.getLastName())
                 .email(user.getUserEmail())
                 .phoneNumber(user.getPhoneNumber())
-                .isAvailable(!hasAGroup) // Agent is available if they don't have a group
+                .isAvailable(isAvailable)
                 .hasAGroup(hasAGroup)
+                .activeGroupCount(activeGroupCount)
                 .lastActiveAt(user.getUpdatedAt())
                 .build();
     }
@@ -489,6 +603,21 @@ public class ReadyForDeliveryGroupServiceImpl implements ReadyForDeliveryGroupSe
         group.setDeliveryStartedAt(java.time.LocalDateTime.now());
 
         ReadyForDeliveryGroup savedGroup = groupRepository.save(group);
+
+        // LOG ACTIVITY: Delivery Started for all orders in the group
+        String deliveryAgentName = group.getDeliverer().getFirstName() + " " + group.getDeliverer().getLastName();
+        ReadyForDeliveryGroup groupWithOrders = groupRepository.findByIdWithOrders(groupId)
+            .orElseThrow(() -> new EntityNotFoundException("Delivery group not found"));
+        
+        for (Order order : groupWithOrders.getOrders()) {
+            activityLogService.logDeliveryStarted(
+                order.getOrderId(),
+                group.getDeliveryGroupName(),
+                deliveryAgentName,
+                agentId.toString()
+            );
+        }
+
         return mapToDeliveryGroupDto(savedGroup);
     }
 
@@ -521,12 +650,9 @@ public class ReadyForDeliveryGroupServiceImpl implements ReadyForDeliveryGroupSe
 
     @Override
     public OrderDTO getOrderDetailsForAgent(Long orderId, UUID agentId) {
-        log.info("Getting order details for order {} by agent {}", orderId, agentId);
-
         Order order = orderRepository.findById(orderId)
                 .orElseThrow(() -> new EntityNotFoundException("Order not found"));
 
-        // Verify the agent has access to this order through a delivery group
         if (order.getReadyForDeliveryGroup() == null ||
                 !order.getReadyForDeliveryGroup().getDeliverer().getId().equals(agentId)) {
             throw new IllegalStateException("Agent does not have access to this order");
@@ -546,7 +672,6 @@ public class ReadyForDeliveryGroupServiceImpl implements ReadyForDeliveryGroupSe
 
                     SimpleProductDTO productDto = new SimpleProductDTO();
 
-                    // Handle variant-based items
                     if (item.getProductVariant() != null) {
                         dto.setVariantId(item.getProductVariant().getId().toString());
                         dto.setProductId(item.getProductVariant().getProduct().getProductId().toString());
@@ -573,15 +698,19 @@ public class ReadyForDeliveryGroupServiceImpl implements ReadyForDeliveryGroupSe
 
         AddressDto shippingAddress = new AddressDto();
         if (order.getOrderAddress() != null) {
-            shippingAddress.setStreetAddress(order.getOrderAddress().getStreet());
-            shippingAddress.setCity(order.getOrderAddress().getRegions());
-            shippingAddress.setState(order.getOrderAddress().getRegions());
-            shippingAddress.setCountry(order.getOrderAddress().getCountry());
+            shippingAddress.setStreetAddress(order.getOrderAddress().getStreet() != null ? order.getOrderAddress().getStreet() : "N/A");
+            shippingAddress.setCity(order.getOrderAddress().getRegions() != null ? order.getOrderAddress().getRegions() : "N/A");
+            shippingAddress.setState(order.getOrderAddress().getRegions() != null ? order.getOrderAddress().getRegions() : "N/A");
+            shippingAddress.setCountry(order.getOrderAddress().getCountry() != null ? order.getOrderAddress().getCountry() : "N/A");
+            shippingAddress.setLatitude(order.getOrderAddress().getLatitude());
+            shippingAddress.setLongitude(order.getOrderAddress().getLongitude());
         } else {
             shippingAddress.setStreetAddress("N/A");
             shippingAddress.setCity("N/A");
             shippingAddress.setState("N/A");
             shippingAddress.setCountry("N/A");
+            shippingAddress.setLatitude(null);
+            shippingAddress.setLongitude(null);
         }
 
         String customerName = "N/A";
@@ -612,6 +741,11 @@ public class ReadyForDeliveryGroupServiceImpl implements ReadyForDeliveryGroupSe
             totalAmount = order.getOrderInfo().getTotalAmount();
         }
 
+        // Calculate total items count (sum of all quantities)
+        int totalItemsCount = orderItems.stream()
+                .mapToInt(OrderItemDTO::getQuantity)
+                .sum();
+
         return OrderDTO.builder()
                 .id(order.getOrderId())
                 .orderNumber(order.getOrderCode())
@@ -620,6 +754,7 @@ public class ReadyForDeliveryGroupServiceImpl implements ReadyForDeliveryGroupSe
                 .customerPhone(customerPhone)
                 .status(order.getOrderStatus() != null ? order.getOrderStatus().toString() : "UNKNOWN")
                 .totalAmount(totalAmount)
+                .totalItems(totalItemsCount)
                 .createdAt(order.getCreatedAt())
                 .updatedAt(order.getUpdatedAt())
                 .items(orderItems)
@@ -654,6 +789,20 @@ public class ReadyForDeliveryGroupServiceImpl implements ReadyForDeliveryGroupSe
         group.setHasDeliveryStarted(true);
         group.setDeliveryStartedAt(java.time.LocalDateTime.now());
         groupRepository.save(group);
+
+        // Log activity for all orders in the group
+        String agentName = group.getDeliverer() != null ? 
+            group.getDeliverer().getFirstName() + " " + group.getDeliverer().getLastName() : 
+            "Delivery Agent";
+        
+        for (Order order : orders) {
+            activityLogService.logDeliveryStarted(
+                order.getOrderId(),
+                group.getDeliveryGroupName(),
+                agentName,
+                group.getDeliverer() != null ? group.getDeliverer().getId().toString() : null
+            );
+        }
 
         // Send email notifications to customers (async)
         sendDeliveryStartNotifications(group);
@@ -800,5 +949,51 @@ public class ReadyForDeliveryGroupServiceImpl implements ReadyForDeliveryGroupSe
         content.append("</body></html>");
 
         return content.toString();
+    }
+
+    @Override
+    @Transactional
+    public DeliveryGroupDto changeOrderGroup(Long orderId, Long newGroupId) {
+        log.info("Changing order {} to group {}", orderId, newGroupId);
+
+        // Find the order
+        Order order = orderRepository.findById(orderId)
+                .orElseThrow(() -> new EntityNotFoundException("Order not found with ID: " + orderId));
+
+        // Find the new group
+        ReadyForDeliveryGroup newGroup = groupRepository.findByIdWithDeliverer(newGroupId)
+                .orElseThrow(() -> new EntityNotFoundException("Delivery group not found with ID: " + newGroupId));
+
+        // Validate that the new group hasn't started delivery
+        if (newGroup.getHasDeliveryStarted()) {
+            throw new IllegalStateException("Cannot assign order to a group that has already started delivery");
+        }
+
+        // Get the old group if exists
+        ReadyForDeliveryGroup oldGroup = order.getReadyForDeliveryGroup();
+
+        // Validate that the old group (if exists) hasn't started delivery
+        if (oldGroup != null && oldGroup.getHasDeliveryStarted()) {
+            throw new IllegalStateException("Cannot change order from a group that has already started delivery");
+        }
+
+        // Remove from old group if exists
+        if (oldGroup != null) {
+            oldGroup.getOrders().remove(order);
+            groupRepository.save(oldGroup);
+            log.info("Removed order {} from old group {}", orderId, oldGroup.getDeliveryGroupId());
+        }
+
+        // Add to new group
+        order.setReadyForDeliveryGroup(newGroup);
+        newGroup.getOrders().add(order);
+        
+        // Save both entities
+        orderRepository.save(order);
+        ReadyForDeliveryGroup savedGroup = groupRepository.save(newGroup);
+
+        log.info("Successfully changed order {} to group {}", orderId, newGroupId);
+
+        return mapToDeliveryGroupDto(savedGroup);
     }
 }

@@ -10,18 +10,24 @@ import com.ecommerce.entity.Product;
 import com.ecommerce.entity.ProductImage;
 import com.ecommerce.dto.OrderResponseDTO;
 import com.ecommerce.dto.OrderItemDTO;
-import com.ecommerce.dto.OrderAddressDTO;
-import com.ecommerce.dto.OrderCustomerInfoDTO;
 import com.ecommerce.dto.OrderTransactionDTO;
 import com.ecommerce.dto.SimpleProductDTO;
 import com.ecommerce.dto.CreateOrderDTO;
 import com.ecommerce.dto.OrderTrackingRequestDTO;
 import com.ecommerce.dto.OrderTrackingResponseDTO;
 import com.ecommerce.dto.OrderSummaryDTO;
+import com.ecommerce.dto.OrderSearchDTO;
+import com.ecommerce.dto.AdminOrderDTO;
 import com.ecommerce.service.OrderService;
 import com.ecommerce.service.OrderTrackingService;
 import java.time.LocalDateTime;
 import com.ecommerce.repository.UserRepository;
+import com.ecommerce.repository.ReturnRequestRepository;
+import com.ecommerce.repository.ReturnAppealRepository;
+import com.ecommerce.repository.ReturnItemRepository;
+import com.ecommerce.entity.ReturnRequest;
+import com.ecommerce.entity.ReturnAppeal;
+import com.ecommerce.entity.ReturnItem;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.Schema;
@@ -46,6 +52,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.Optional;
 
 @RestController
 @RequestMapping("/api/v1/orders")
@@ -60,21 +67,89 @@ public class OrderController {
     @GetMapping("/all")
     @PreAuthorize("hasAnyRole('ADMIN','EMPLOYEE')")
     @Operation(summary = "Get all orders", description = "Retrieve all orders (admin/employee only)", responses = {
-            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "Orders retrieved successfully", content = @Content(schema = @Schema(implementation = OrderResponseDTO.class)))
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "Orders retrieved successfully", content = @Content(schema = @Schema(implementation = AdminOrderDTO.class)))
     })
-    public ResponseEntity<?> getAllOrders() {
+    public ResponseEntity<?> getAllOrders(
+            @RequestParam(required = false, defaultValue = "0") int page,
+            @RequestParam(required = false, defaultValue = "15") int size,
+            @RequestParam(required = false, defaultValue = "createdAt") String sortBy,
+            @RequestParam(required = false, defaultValue = "desc") String sortDir) {
         try {
-            List<Order> orders = orderService.getAllOrders();
-            List<OrderResponseDTO> dtoList = orders.stream().map(this::toDto).toList();
+            Pageable pageable = PageRequest.of(page, size, 
+                sortDir.equalsIgnoreCase("asc") ? 
+                    org.springframework.data.domain.Sort.by(sortBy).ascending() : 
+                    org.springframework.data.domain.Sort.by(sortBy).descending());
+            
+            Page<AdminOrderDTO> ordersPage = orderService.getAllAdminOrdersPaginated(pageable);
+            
             Map<String, Object> res = new HashMap<>();
             res.put("success", true);
-            res.put("data", dtoList);
+            res.put("data", ordersPage.getContent());
+            res.put("pagination", Map.of(
+                "currentPage", ordersPage.getNumber(),
+                "totalPages", ordersPage.getTotalPages(),
+                "totalElements", ordersPage.getTotalElements(),
+                "pageSize", ordersPage.getSize(),
+                "hasNext", ordersPage.hasNext(),
+                "hasPrevious", ordersPage.hasPrevious(),
+                "isFirst", ordersPage.isFirst(),
+                "isLast", ordersPage.isLast()
+            ));
             return ResponseEntity.ok(res);
         } catch (Exception e) {
             log.error("Failed to fetch all orders", e);
             Map<String, Object> res = new HashMap<>();
             res.put("success", false);
             res.put("message", "An unexpected error occurred while fetching all orders.");
+            res.put("errorCode", "INTERNAL_ERROR");
+            res.put("details", e.getMessage());
+            return ResponseEntity.internalServerError().body(res);
+        }
+    }
+
+    @PostMapping("/search")
+    @PreAuthorize("hasAnyRole('ADMIN','EMPLOYEE')")
+    @Operation(summary = "Search orders", description = "Search and filter orders with pagination (admin/employee only)", responses = {
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "Orders retrieved successfully")
+    })
+    public ResponseEntity<?> searchOrders(@RequestBody OrderSearchDTO searchRequest) {
+        try {
+            log.info("Searching orders with criteria: {}", searchRequest);
+            
+            // Set defaults if not provided
+            int page = searchRequest.getPage() != null ? searchRequest.getPage() : 0;
+            int size = searchRequest.getSize() != null ? searchRequest.getSize() : 15;
+            String sortBy = searchRequest.getSortBy() != null ? searchRequest.getSortBy() : "createdAt";
+            String sortDir = searchRequest.getSortDirection() != null ? searchRequest.getSortDirection() : "desc";
+            
+            Pageable pageable = PageRequest.of(page, size, 
+                sortDir.equalsIgnoreCase("asc") ? 
+                    org.springframework.data.domain.Sort.by(sortBy).ascending() : 
+                    org.springframework.data.domain.Sort.by(sortBy).descending());
+            
+            Page<AdminOrderDTO> ordersPage = orderService.searchOrders(searchRequest, pageable);
+            
+            Map<String, Object> res = new HashMap<>();
+            res.put("success", true);
+            res.put("data", ordersPage.getContent());
+            res.put("pagination", Map.of(
+                "currentPage", ordersPage.getNumber(),
+                "totalPages", ordersPage.getTotalPages(),
+                "totalElements", ordersPage.getTotalElements(),
+                "pageSize", ordersPage.getSize(),
+                "hasNext", ordersPage.hasNext(),
+                "hasPrevious", ordersPage.hasPrevious(),
+                "isFirst", ordersPage.isFirst(),
+                "isLast", ordersPage.isLast()
+            ));
+            
+            log.info("Search completed. Found {} orders", ordersPage.getTotalElements());
+            return ResponseEntity.ok(res);
+        } catch (Exception e) {
+            log.error("Failed to search orders", e);
+            Map<String, Object> res = new HashMap<>();
+            res.put("success", false);
+            res.put("message", "An unexpected error occurred while searching orders.");
             res.put("errorCode", "INTERNAL_ERROR");
             res.put("details", e.getMessage());
             return ResponseEntity.internalServerError().body(res);
@@ -174,6 +249,9 @@ public class OrderController {
     private final OrderService orderService;
     private final OrderTrackingService orderTrackingService;
     private final UserRepository userRepository;
+    private final ReturnRequestRepository returnRequestRepository;
+    private final ReturnAppealRepository returnAppealRepository;
+    private final ReturnItemRepository returnItemRepository;
 
     @GetMapping
     @PreAuthorize("hasAnyRole('CUSTOMER','ADMIN','EMPLOYEE')")
@@ -691,6 +769,44 @@ public class OrderController {
             dto.setItems(itemDTOs);
         }
 
+        // Add return request information if exists
+        try {
+            List<ReturnRequest> returnRequests = returnRequestRepository.findByOrderId(order.getOrderId());
+            if (returnRequests != null && !returnRequests.isEmpty()) {
+                ReturnRequest returnRequest = returnRequests.get(0); // Get the first (should be only one)
+                OrderResponseDTO.ReturnRequestInfo returnInfo = new OrderResponseDTO.ReturnRequestInfo();
+                returnInfo.setId(returnRequest.getId());
+                returnInfo.setStatus(returnRequest.getStatus() != null ? returnRequest.getStatus().name() : null);
+                returnInfo.setReason(returnRequest.getReason());
+                returnInfo.setSubmittedAt(returnRequest.getSubmittedAt());
+                returnInfo.setDecisionAt(returnRequest.getDecisionAt());
+                returnInfo.setDecisionNotes(returnRequest.getDecisionNotes());
+                returnInfo.setCanBeAppealed(returnRequest.canBeAppealed());
+
+                // Check if there's an appeal for this return request
+                if (returnAppealRepository.existsByReturnRequestId(returnRequest.getId())) {
+                    Optional<ReturnAppeal> appealOpt = returnAppealRepository.findByReturnRequestId(returnRequest.getId());
+                    if (appealOpt.isPresent()) {
+                        ReturnAppeal appeal = appealOpt.get();
+                        OrderResponseDTO.AppealInfo appealInfo = new OrderResponseDTO.AppealInfo();
+                        appealInfo.setId(appeal.getId());
+                        appealInfo.setStatus(appeal.getStatus() != null ? appeal.getStatus().name() : null);
+                        appealInfo.setReason(appeal.getReason());
+                        appealInfo.setDescription(appeal.getDescription());
+                        appealInfo.setSubmittedAt(appeal.getSubmittedAt());
+                        appealInfo.setDecisionAt(appeal.getDecisionAt());
+                        appealInfo.setDecisionNotes(appeal.getDecisionNotes());
+                        returnInfo.setAppeal(appealInfo);
+                    }
+                }
+
+                dto.setReturnRequest(returnInfo);
+            }
+        } catch (Exception e) {
+            log.warn("Error fetching return request for order {}: {}", order.getOrderId(), e.getMessage());
+            // Don't fail the entire request if return request fetch fails
+        }
+
         return dto;
     }
 
@@ -806,6 +922,57 @@ public class OrderController {
         dto.setMaxReturnDays(30);
         dto.setDaysRemainingForReturn(25);
 
+        // Add return information
+        try {
+            List<ReturnItem> returnItems = returnItemRepository.findByOrderItemOrderItemId(item.getOrderItemId());
+            if (returnItems != null && !returnItems.isEmpty()) {
+                OrderResponseDTO.ReturnItemInfo returnInfo = new OrderResponseDTO.ReturnItemInfo();
+                returnInfo.setHasReturnRequest(true);
+                
+                // Calculate total returned quantity
+                int totalReturnedQty = returnItems.stream()
+                        .mapToInt(ReturnItem::getReturnQuantity)
+                        .sum();
+                returnInfo.setTotalReturnedQuantity(totalReturnedQty);
+                returnInfo.setRemainingQuantity(item.getQuantity() - totalReturnedQty);
+                
+                // Add return request summaries
+                List<OrderResponseDTO.ReturnRequestSummary> returnSummaries = returnItems.stream()
+                        .map(returnItem -> {
+                            OrderResponseDTO.ReturnRequestSummary summary = new OrderResponseDTO.ReturnRequestSummary();
+                            summary.setReturnRequestId(returnItem.getReturnRequest().getId());
+                            summary.setReturnedQuantity(returnItem.getReturnQuantity());
+                            summary.setStatus(returnItem.getReturnRequest().getStatus() != null ? 
+                                    returnItem.getReturnRequest().getStatus().name() : null);
+                            summary.setReason(returnItem.getItemReason() != null ? 
+                                    returnItem.getItemReason() : returnItem.getReturnRequest().getReason());
+                            summary.setSubmittedAt(returnItem.getReturnRequest().getSubmittedAt());
+                            return summary;
+                        })
+                        .collect(Collectors.toList());
+                returnInfo.setReturnRequests(returnSummaries);
+                
+                dto.setReturnInfo(returnInfo);
+            } else {
+                // No return requests for this item
+                OrderResponseDTO.ReturnItemInfo returnInfo = new OrderResponseDTO.ReturnItemInfo();
+                returnInfo.setHasReturnRequest(false);
+                returnInfo.setTotalReturnedQuantity(0);
+                returnInfo.setRemainingQuantity(item.getQuantity());
+                returnInfo.setReturnRequests(List.of());
+                dto.setReturnInfo(returnInfo);
+            }
+        } catch (Exception e) {
+            log.warn("Error fetching return info for order item {}: {}", item.getOrderItemId(), e.getMessage());
+            // Set default return info if fetch fails
+            OrderResponseDTO.ReturnItemInfo returnInfo = new OrderResponseDTO.ReturnItemInfo();
+            returnInfo.setHasReturnRequest(false);
+            returnInfo.setTotalReturnedQuantity(0);
+            returnInfo.setRemainingQuantity(item.getQuantity());
+            returnInfo.setReturnRequests(List.of());
+            dto.setReturnInfo(returnInfo);
+        }
+
         return dto;
     }
 
@@ -877,7 +1044,6 @@ public class OrderController {
 
             if (response.isSuccess()) {
                 responseMap.put("expiresAt", response.getExpiresAt());
-                responseMap.put("trackingUrl", response.getTrackingUrl());
             }
 
             return ResponseEntity.ok(responseMap);

@@ -17,6 +17,19 @@ import java.util.UUID;
 public interface OrderRepository extends JpaRepository<Order, Long>, OrderRepositoryCustom {
 
         /**
+         * Find order by ID with all associations eagerly fetched for refund calculation
+         * This prevents LazyInitializationException when calculating refunds outside transaction
+         */
+        @Query("SELECT DISTINCT o FROM Order o " +
+               "LEFT JOIN FETCH o.orderItems oi " +
+               "LEFT JOIN FETCH oi.productVariant pv " +
+               "LEFT JOIN FETCH pv.product p " +
+               "LEFT JOIN FETCH o.orderTransaction " +
+               "LEFT JOIN FETCH o.orderInfo " +
+               "WHERE o.orderId = :orderId")
+        Optional<Order> findByIdWithAllAssociations(@Param("orderId") Long orderId);
+
+        /**
          * Calculate total quantity of items in an order without loading collections
          */
         @Query("SELECT COALESCE(SUM(oi.quantity), 0) FROM OrderItem oi WHERE oi.order.orderId = :orderId")
@@ -44,12 +57,9 @@ public interface OrderRepository extends JpaRepository<Order, Long>, OrderReposi
         @Query("SELECT COUNT(o) > 0 FROM Order o " +
                         "JOIN o.orderItems oi " +
                         "WHERE oi.productVariant.id = :variantId " +
-                        "AND o.orderStatus NOT IN ('DELIVERED', 'CANCELLED', 'REFUNDED', 'RETURNED')")
+                        "AND o.orderStatus NOT IN ('DELIVERED', 'CANCELLED', 'REFUNDED')")
         boolean existsByProductVariantAndNotDelivered(@Param("variantId") Long variantId);
 
-        /**
-         * Find all orders that contain a specific product variant
-         */
         @Query("SELECT o FROM Order o " +
                         "JOIN o.orderItems oi " +
                         "WHERE oi.productVariant.id = :variantId")
@@ -233,5 +243,36 @@ public interface OrderRepository extends JpaRepository<Order, Long>, OrderReposi
          */
         @Query("SELECT o FROM Order o JOIN o.orderCustomerInfo ci WHERE LOWER(ci.email) = LOWER(:email) ORDER BY o.createdAt DESC")
         Page<Order> findByCustomerInfoEmailWithPagination(@Param("email") String email, Pageable pageable);
+
+        /**
+         * Count orders by status
+         */
+        long countByOrderStatus(Order.OrderStatus orderStatus);
+
+        /**
+         * Count orders by status with no delivery group assigned
+         */
+        long countByOrderStatusAndReadyForDeliveryGroupIsNull(Order.OrderStatus orderStatus);
+
+        /**
+         * Find orders by delivery group ID with all details
+         */
+        @Query("SELECT DISTINCT o FROM Order o " +
+               "LEFT JOIN FETCH o.orderItems oi " +
+               "LEFT JOIN FETCH oi.productVariant pv " +
+               "LEFT JOIN FETCH pv.product p " +
+               "LEFT JOIN FETCH o.orderAddress addr " +
+               "LEFT JOIN FETCH o.orderCustomerInfo customer " +
+               "LEFT JOIN FETCH o.orderTransaction tx " +
+               "WHERE o.readyForDeliveryGroup.deliveryGroupId = :groupId " +
+               "ORDER BY o.createdAt DESC")
+        List<Order> findByReadyForDeliveryGroupIdWithDetails(@Param("groupId") Long groupId);
+
+        /**
+         * Find orders by delivery group ID with pagination
+         */
+        @Query("SELECT o FROM Order o " +
+               "WHERE o.readyForDeliveryGroup.deliveryGroupId = :groupId")
+        Page<Order> findByReadyForDeliveryGroupId(@Param("groupId") Long groupId, Pageable pageable);
 
 }

@@ -67,21 +67,94 @@ public class UserController {
     }
 
     @PostMapping("/request-password-reset")
-    public ResponseEntity<String> requestPasswordReset(@RequestBody Map<String, String> request) {
-        authService.requestPasswordReset(request.get("email"));
-        return ResponseEntity.ok("Password reset request sent");
+    public ResponseEntity<?> requestPasswordReset(@RequestBody Map<String, String> request) {
+        try {
+            String email = request.get("email");
+            if (email == null || email.trim().isEmpty()) {
+                return ResponseEntity.badRequest().body(Map.of(
+                    "success", false,
+                    "message", "Email is required"
+                ));
+            }
+            
+            authService.requestPasswordReset(email);
+            return ResponseEntity.ok(Map.of(
+                "success", true,
+                "message", "Password reset link has been sent to your email"
+            ));
+        } catch (Exception e) {
+            log.error("Password reset request failed", e);
+            return ResponseEntity.badRequest().body(Map.of(
+                "success", false,
+                "message", e.getMessage()
+            ));
+        }
     }
 
-    @PostMapping("/verify-reset-code")
+    @PostMapping("/verify-reset-token")
     public ResponseEntity<String> verifyResetCode(@RequestBody Map<String, String> request) {
         boolean isValid = authService.verifyResetCode(request.get("email"), request.get("code"));
         return ResponseEntity.ok(isValid ? "Valid code" : "Invalid code");
     }
 
     @PostMapping("/reset-password")
-    public ResponseEntity<String> resetPassword(@RequestBody Map<String, String> request) {
-        authService.resetPassword(request.get("email"), request.get("newPassword"));
-        return ResponseEntity.ok("Password reset successful");
+    public ResponseEntity<?> resetPassword(@RequestBody Map<String, String> request) {
+        try {
+            String token = request.get("token");
+            String newPassword = request.get("newPassword");
+            
+            if (token == null || token.trim().isEmpty()) {
+                return ResponseEntity.badRequest().body(Map.of(
+                    "success", false,
+                    "message", "Reset token is required"
+                ));
+            }
+            
+            if (newPassword == null || newPassword.length() < 8) {
+                return ResponseEntity.badRequest().body(Map.of(
+                    "success", false,
+                    "message", "Password must be at least 8 characters long"
+                ));
+            }
+            
+            if (!authService.verifyResetToken(token)) {
+                return ResponseEntity.badRequest().body(Map.of(
+                    "success", false,
+                    "message", "Invalid or expired reset token"
+                ));
+            }
+            
+            authService.resetPasswordByToken(token, newPassword);
+            
+            return ResponseEntity.ok(Map.of(
+                "success", true,
+                "message", "Password reset successful"
+            ));
+        } catch (Exception e) {
+            log.error("Password reset failed", e);
+            return ResponseEntity.badRequest().body(Map.of(
+                "success", false,
+                "message", e.getMessage()
+            ));
+        }
+    }
+    
+    @GetMapping("/verify-reset-token")
+    public ResponseEntity<?> verifyResetToken(@RequestParam String token) {
+        try {
+            boolean isValid = authService.verifyResetToken(token);
+            return ResponseEntity.ok(Map.of(
+                "success", true,
+                "valid", isValid,
+                "message", isValid ? "Token is valid" : "Token is invalid or expired"
+            ));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(Map.of(
+                "success", false,
+                "valid", false,
+                "message", "Error verifying token"
+            ));
+        }
     }
 
     @PostMapping("/logout")

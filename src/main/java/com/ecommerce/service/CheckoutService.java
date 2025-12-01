@@ -74,9 +74,19 @@ public class CheckoutService {
     private final OrderEmailService orderEmailService;
     private final EnhancedStockLockService enhancedStockLockService;
     private final CartService cartService;
+    private final MoneyFlowService moneyFlowService;
+    private final RoadValidationService roadValidationService;
+    private final OrderActivityLogService activityLogService;
 
     public String createCheckoutSession(CheckoutRequest req) throws Exception {
         validateDeliveryCountry(req.getShippingAddress().getCountry());
+        
+        if (req.getShippingAddress().getLatitude() != null && req.getShippingAddress().getLongitude() != null) {
+            roadValidationService.validateRoadLocation(
+                req.getShippingAddress().getLatitude(), 
+                req.getShippingAddress().getLongitude()
+            );
+        }
 
         UUID userId;
         try {
@@ -151,6 +161,7 @@ public class CheckoutService {
 
         OrderInfo orderInfo = new OrderInfo();
         orderInfo.setOrder(order);
+        orderInfo.setSubtotal(paymentSummary.getSubtotal()); // Products total before discounts
         orderInfo.setTotalAmount(paymentSummary.getTotalAmount());
         orderInfo.setTaxAmount(paymentSummary.getTaxAmount());
         orderInfo.setShippingCost(paymentSummary.getShippingCost());
@@ -178,6 +189,10 @@ public class CheckoutService {
 
         Order saved = orderRepository.save(order);
         log.info("Order created with ID: {}", saved.getOrderId());
+
+        // LOG ACTIVITY: Order Placed
+        String customerName = user.getFirstName() + " " + user.getLastName();
+        activityLogService.logOrderPlaced(saved.getOrderId(), customerName);
 
         for (Map.Entry<CartItemDTO, List<FEFOStockAllocationService.BatchAllocation>> entry : fefoAllocations
                 .entrySet()) {
@@ -211,6 +226,13 @@ public class CheckoutService {
         log.info("Creating guest checkout session");
 
         validateDeliveryCountry(req.getAddress().getCountry());
+        if (req.getAddress().getLatitude() != null && req.getAddress().getLongitude() != null) {
+            roadValidationService.validateRoadLocation(
+                req.getAddress().getLatitude(), 
+                req.getAddress().getLongitude()
+            );
+            log.info("Road validated successfully");
+        }
 
         validateCartItems(req.getItems());
 
@@ -278,6 +300,7 @@ public class CheckoutService {
 
         OrderInfo orderInfo = new OrderInfo();
         orderInfo.setOrder(order);
+        orderInfo.setSubtotal(paymentSummary.getSubtotal()); // Products total before discounts
         orderInfo.setTotalAmount(paymentSummary.getTotalAmount());
         orderInfo.setTaxAmount(paymentSummary.getTaxAmount());
         orderInfo.setShippingCost(paymentSummary.getShippingCost());
@@ -306,17 +329,17 @@ public class CheckoutService {
         Order saved = orderRepository.save(order);
         log.info("Guest order created with ID: {}", saved.getOrderId());
 
-        // Step 3: Create OrderItemBatch records for tracking (but don't commit
-        // allocation yet)
+        String guestCustomerName = req.getGuestName() + " " + req.getGuestLastName();
+        activityLogService.logOrderPlaced(saved.getOrderId(), guestCustomerName + " (Guest)");
+
+
         for (Map.Entry<CartItemDTO, List<FEFOStockAllocationService.BatchAllocation>> entry : fefoAllocations
                 .entrySet()) {
             createOrderItemBatches(saved, entry.getKey(), entry.getValue());
         }
 
-        // Step 4: Lock stock at batch level using session ID
         String sessionId = saved.getOrderTransaction().getStripeSessionId();
         if (sessionId == null) {
-            // Generate temporary session ID for locking
             sessionId = "temp_guest_" + saved.getOrderId().toString();
         }
 
@@ -343,6 +366,7 @@ public class CheckoutService {
 
     @Transactional
     public CheckoutVerificationResult verifyCheckoutSession(String sessionId) throws Exception {
+        log.info("Payment record found for session: {}", sessionId);
         OrderTransaction tx = transactionRepository.findByStripeSessionIdWithOrder(sessionId)
                 .orElseThrow(() -> new EntityNotFoundException("No matching payment record"));
 
@@ -350,6 +374,12 @@ public class CheckoutService {
 
         if (session == null) {
             throw new EntityNotFoundException("Session not found on Stripe");
+        }
+
+        if (tx.getStatus() == OrderTransaction.TransactionStatus.COMPLETED) {
+            log.info("Transaction already completed for session: {}. Skipping duplicate verification.", sessionId);
+            Order order = tx.getOrder();
+            return buildVerificationResult(session, order, tx);
         }
 
         if (!"paid".equalsIgnoreCase(session.getPaymentStatus())) {
@@ -379,6 +409,14 @@ public class CheckoutService {
         Order order = tx.getOrder();
         order.setOrderStatus(Order.OrderStatus.PROCESSING);
         orderRepository.save(order);
+
+        activityLogService.logPaymentCompleted(
+            order.getOrderId(),
+            tx.getPaymentMethod().toString(),
+            tx.getOrderAmount().doubleValue()
+        );
+
+        recordPaymentInMoneyFlow(order, tx);
 
         log.info("Payment verification completed successfully for order: {}", order.getOrderId());
         stockLockService.confirmStock(sessionId);
@@ -423,6 +461,29 @@ public class CheckoutService {
                 session.getCustomerDetails() != null ? session.getCustomerDetails().getEmail() : null,
                 receiptUrl,
                 intent != null ? intent.getId() : null,
+                true,
+                orderResponse);
+    }
+
+    /**
+     * Helper method to build verification result for already completed transactions
+     */
+    private CheckoutVerificationResult buildVerificationResult(Session session, Order order, OrderTransaction tx) {
+        OrderResponseDTO orderResponse = OrderResponseDTO.builder()
+                .id(order.getOrderId())
+                .orderNumber(order.getOrderCode())
+                .status(order.getOrderStatus().toString())
+                .total(order.getTotalAmount())
+                .createdAt(order.getCreatedAt())
+                .build();
+
+        return new CheckoutVerificationResult(
+                session.getPaymentStatus(),
+                session.getAmountTotal(),
+                session.getCurrency(),
+                session.getCustomerDetails() != null ? session.getCustomerDetails().getEmail() : null,
+                tx.getReceiptUrl(),
+                tx.getStripePaymentIntentId(),
                 true,
                 orderResponse);
     }
@@ -611,8 +672,12 @@ public class CheckoutService {
     public com.ecommerce.dto.PaymentSummaryDTO calculatePaymentSummary(AddressDto deliveryAddress,
             List<CartItemDTO> items, UUID userId) {
         
-        // Validate if we have warehouses in the delivery country
         validateDeliveryCountry(deliveryAddress.getCountry());
+        
+        // Validate that the pickup point is on or near a road
+        if (deliveryAddress.getLatitude() != null && deliveryAddress.getLongitude() != null) {
+            roadValidationService.validateRoadLocation(deliveryAddress.getLatitude(), deliveryAddress.getLongitude());
+        }
         
         BigDecimal subtotal = BigDecimal.ZERO;
         BigDecimal discountAmount = BigDecimal.ZERO;
@@ -1472,6 +1537,39 @@ public class CheckoutService {
         } catch (Exception e) {
             log.error("Error refunding points for failed payment order {}: {}",
                     order.getOrderId(), e.getMessage(), e);
+        }
+    }
+
+    /**
+     * Record payment in money flow system
+     */
+    private void recordPaymentInMoneyFlow(Order order, OrderTransaction transaction) {
+        try {
+            BigDecimal paymentAmount = transaction.getOrderAmount();
+            
+            // For hybrid payments, only record the actual money paid (not points)
+            if (transaction.getPaymentMethod() == OrderTransaction.PaymentMethod.HYBRID) {
+                BigDecimal pointsValue = transaction.getPointsValue() != null ? 
+                        transaction.getPointsValue() : BigDecimal.ZERO;
+                paymentAmount = paymentAmount.subtract(pointsValue);
+            }
+            
+            // Only record if there's actual money involved
+            if (paymentAmount.compareTo(BigDecimal.ZERO) > 0) {
+                String description = String.format("Payment received for Order #%s (%s)", 
+                        order.getOrderCode() != null ? order.getOrderCode() : order.getOrderId().toString(),
+                        transaction.getPaymentMethod().name());
+                
+                com.ecommerce.dto.CreateMoneyFlowDTO moneyFlowDTO = new com.ecommerce.dto.CreateMoneyFlowDTO();
+                moneyFlowDTO.setDescription(description);
+                moneyFlowDTO.setType(com.ecommerce.enums.MoneyFlowType.IN);
+                moneyFlowDTO.setAmount(paymentAmount);
+                
+                moneyFlowService.save(moneyFlowDTO);
+                log.info("Recorded money flow IN: {} for order {}", paymentAmount, order.getOrderId());
+            }
+        } catch (Exception e) {
+            log.error("Failed to record money flow for order {}: {}", order.getOrderId(), e.getMessage(), e);
         }
     }
 }

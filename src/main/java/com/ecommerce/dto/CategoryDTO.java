@@ -52,6 +52,8 @@ public class CategoryDTO {
     
     private int level;
     
+    private Long productCount = 0L;
+    
     /**
      * Simplified constructor for creating a new category
      * 

@@ -30,10 +30,6 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
 
-/**
- * REST Controller for managing product return requests
- * Handles both authenticated customer and guest return scenarios
- */
 @RestController
 @RequestMapping("/api/v1/returns")
 @RequiredArgsConstructor
@@ -44,13 +40,8 @@ public class ReturnController {
     private final ReturnService returnService;
     private final ObjectMapper objectMapper;
 
-    // ==================== CUSTOMER ENDPOINTS ====================
-
-    /**
-     * Submit a return request for authenticated customers
-     */
     @PostMapping(value = "/submit", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    @PreAuthorize("hasRole('CUSTOMER')")
+    @PreAuthorize("hasAnyRole('CUSTOMER','DELIVERY_AGENT','ADMIN')")
     @Operation(summary = "Submit return request (Authenticated)", description = "Submit a return request for authenticated customers with optional media files", security = @SecurityRequirement(name = "bearerAuth"))
     @ApiResponses(value = {
             @ApiResponse(responseCode = "201", description = "Return request submitted successfully", content = @Content(schema = @Schema(implementation = ReturnRequestDTO.class))),
@@ -58,7 +49,6 @@ public class ReturnController {
             @ApiResponse(responseCode = "401", description = "Unauthorized - Authentication required"),
             @ApiResponse(responseCode = "403", description = "Forbidden - Customer role required"),
             @ApiResponse(responseCode = "404", description = "Order not found"),
-            @ApiResponse(responseCode = "409", description = "Return request already exists for this order"),
             @ApiResponse(responseCode = "422", description = "Order not eligible for return")
     })
     public ResponseEntity<?> submitReturnRequest(
@@ -96,16 +86,15 @@ public class ReturnController {
             }
 
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body(createErrorResponse("RETURN_ERROR", "Failed to process return request"));
+                    .body(createErrorResponse("RETURN_ERROR", "Failed to process return request" + e.getMessage()));
         }
     }
-
 
     /**
      * Get return requests for authenticated customer
      */
     @GetMapping("/my-returns")
-    @PreAuthorize("hasRole('CUSTOMER')")
+    @PreAuthorize("hasAnyRole('CUSTOMER','DELIVERY_AGENT','ADMIN')")
     @Operation(summary = "Get customer return requests", description = "Get paginated list of return requests for authenticated customer", security = @SecurityRequirement(name = "bearerAuth"))
     @ApiResponses(value = {
             @ApiResponse(responseCode = "200", description = "Return requests retrieved successfully"),
@@ -134,6 +123,84 @@ public class ReturnController {
         }
     }
 
+    /**
+     * Get return requests by order ID for authenticated users
+     */
+    @GetMapping("/order/{orderId}")
+    @PreAuthorize("hasAnyRole('CUSTOMER','DELIVERY_AGENT','ADMIN')")
+    @Operation(summary = "Get return requests by order ID", description = "Get all return requests for a specific order (authenticated users)", security = @SecurityRequirement(name = "bearerAuth"))
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200", description = "Return requests retrieved successfully"),
+            @ApiResponse(responseCode = "401", description = "Unauthorized - Authentication required"),
+            @ApiResponse(responseCode = "403", description = "Forbidden - Customer role required"),
+            @ApiResponse(responseCode = "404", description = "Order not found")
+    })
+    public ResponseEntity<?> getReturnRequestsByOrderId(
+            @Parameter(description = "Order ID") @PathVariable Long orderId,
+            @Parameter(description = "Customer ID") @RequestParam UUID customerId,
+            Authentication authentication) {
+
+        try {
+            log.info("Retrieving return requests for order {} and customer {}", orderId, customerId);
+
+            var returnRequests = returnService.getReturnRequestsByOrderId(orderId, customerId);
+
+            log.info("Retrieved {} return requests for order {}", returnRequests.size(), orderId);
+
+            return ResponseEntity.ok(returnRequests);
+
+        } catch (RuntimeException e) {
+            log.error("Error retrieving return requests for order {}: {}", orderId, e.getMessage(), e);
+
+            if (e.getMessage().contains("not found")) {
+                return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                        .body(createErrorResponse("ORDER_NOT_FOUND", e.getMessage()));
+            }
+
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(createErrorResponse("RETRIEVAL_ERROR", "Failed to retrieve return requests"));
+        }
+    }
+
+    /**
+     * Get return requests by order number and tracking token (for guest users)
+     */
+    @GetMapping("/order/guest")
+    @Operation(summary = "Get return requests by order number and token", description = "Get all return requests for a specific order using tracking token (guest users)")
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200", description = "Return requests retrieved successfully"),
+            @ApiResponse(responseCode = "400", description = "Invalid request parameters"),
+            @ApiResponse(responseCode = "404", description = "Order not found")
+    })
+    public ResponseEntity<?> getReturnRequestsByOrderNumberAndToken(
+            @Parameter(description = "Order number") @RequestParam String orderNumber,
+            @Parameter(description = "Tracking token") @RequestParam String token) {
+
+        try {
+            log.info("Retrieving return requests for guest order {}", orderNumber);
+
+            var returnRequests = returnService.getReturnRequestsByOrderNumberAndToken(orderNumber, token);
+
+            log.info("Retrieved {} return requests for guest order {}", returnRequests.size(), orderNumber);
+
+            return ResponseEntity.ok(returnRequests);
+
+        } catch (IllegalArgumentException e) {
+            log.warn("Invalid request parameters: {}", e.getMessage());
+            return ResponseEntity.badRequest()
+                    .body(createErrorResponse("INVALID_REQUEST", e.getMessage()));
+        } catch (RuntimeException e) {
+            log.error("Error retrieving return requests for order {}: {}", orderNumber, e.getMessage(), e);
+
+            if (e.getMessage().contains("not found")) {
+                return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                        .body(createErrorResponse("ORDER_NOT_FOUND", e.getMessage()));
+            }
+
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(createErrorResponse("RETRIEVAL_ERROR", "Failed to retrieve return requests"));
+        }
+    }
 
     /**
      * Get specific return request details
@@ -423,41 +490,39 @@ public class ReturnController {
      * Submit return request using tracking token (secure endpoint)
      */
     @PostMapping(value = "/submit/tokenized", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    @Operation(summary = "Submit return request with tracking token", 
-               description = "Submit a return request using a valid tracking token for secure access")
+    @Operation(summary = "Submit return request with tracking token", description = "Submit a return request using a valid tracking token for secure access")
     @ApiResponses(value = {
-        @ApiResponse(responseCode = "200", description = "Return request submitted successfully"),
-        @ApiResponse(responseCode = "400", description = "Invalid request data or expired token"),
-        @ApiResponse(responseCode = "500", description = "Internal server error")
+            @ApiResponse(responseCode = "200", description = "Return request submitted successfully"),
+            @ApiResponse(responseCode = "400", description = "Invalid request data or expired token"),
+            @ApiResponse(responseCode = "500", description = "Internal server error")
     })
     public ResponseEntity<Map<String, Object>> submitTokenizedReturnRequest(
-            @Parameter(description = "Return request data as JSON")
-            @RequestPart("returnRequest") String returnRequestJson,
-            @Parameter(description = "Optional media files (images/videos)")
-            @RequestPart(value = "mediaFiles", required = false) MultipartFile[] mediaFiles) {
-        
+            @Parameter(description = "Return request data as JSON") @RequestPart("returnRequest") String returnRequestJson,
+            @Parameter(description = "Optional media files (images/videos)") @RequestPart(value = "mediaFiles", required = false) MultipartFile[] mediaFiles) {
+
         try {
             log.info("Processing tokenized return request");
-            
+
             // Parse the JSON request
-            TokenizedReturnRequestDTO returnRequest = objectMapper.readValue(returnRequestJson, TokenizedReturnRequestDTO.class);
-            
+            TokenizedReturnRequestDTO returnRequest = objectMapper.readValue(returnRequestJson,
+                    TokenizedReturnRequestDTO.class);
+
             // Submit the return request
             ReturnRequestDTO response = returnService.submitTokenizedReturnRequest(returnRequest, mediaFiles);
-            
+
             Map<String, Object> successResponse = createSuccessResponse("Return request submitted successfully");
             successResponse.put("data", response);
-            
+
             return ResponseEntity.ok(successResponse);
-            
+
         } catch (IllegalArgumentException e) {
             log.warn("Invalid tokenized return request: {}", e.getMessage());
             return ResponseEntity.badRequest()
-                .body(createErrorResponse("INVALID_REQUEST", "Invalid request: " + e.getMessage()));
+                    .body(createErrorResponse("INVALID_REQUEST", "Invalid request: " + e.getMessage()));
         } catch (Exception e) {
             log.error("Error processing tokenized return request", e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                .body(createErrorResponse("INTERNAL_ERROR", "Failed to process return request"));
+                    .body(createErrorResponse("INTERNAL_ERROR", "Failed to process return request" + e.getMessage()));
         }
     }
 
@@ -470,5 +535,29 @@ public class ReturnController {
         response.put("message", message);
         response.put("timestamp", System.currentTimeMillis());
         return response;
+    }
+
+    /**
+     * Get pending return requests count (Admin/Employee only)
+     */
+    @GetMapping("/admin/count/pending")
+    @PreAuthorize("hasAnyRole('ADMIN', 'EMPLOYEE')")
+    @Operation(summary = "Get pending return requests count", description = "Get count of return requests with PENDING status")
+    public ResponseEntity<?> getPendingReturnRequestsCount() {
+        try {
+            long count = returnService.countReturnRequestsByStatus(ReturnRequest.ReturnStatus.PENDING);
+
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", true);
+            response.put("count", count);
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            log.error("Error getting pending return requests count: {}", e.getMessage(), e);
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", false);
+            response.put("message", "Failed to get pending return requests count");
+            response.put("count", 0);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(response);
+        }
     }
 }
