@@ -37,9 +37,10 @@ public interface ProductService {
          * Create an empty product for step-by-step editing
          * 
          * @param name The initial product name
+         * @param shopId The shop ID this product belongs to
          * @return Map containing product ID and status information
          */
-        Map<String, Object> createEmptyProduct(String name);
+        Map<String, Object> createEmptyProduct(String name, UUID shopId);
 
         /**
          * Check if product has variants

@@ -44,6 +44,8 @@ public class ShopDTO {
 
     private Boolean isActive;
 
+    private Long productCount;
+
     private LocalDateTime createdAt;
 
     private LocalDateTime updatedAt;

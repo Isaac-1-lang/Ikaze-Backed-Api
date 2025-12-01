@@ -67,6 +67,11 @@ public class Product {
     @JsonBackReference
     private Brand brand;
 
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "shop_id")
+    @JsonBackReference
+    private Shop shop;
+
     @Column(name = "model")
     private String model;
 

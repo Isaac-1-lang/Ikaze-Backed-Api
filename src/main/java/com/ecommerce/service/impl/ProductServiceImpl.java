@@ -159,21 +159,27 @@ public class ProductServiceImpl implements ProductService {
 
     private final ProductAvailabilityService productAvailabilityService;
 
+    private final com.ecommerce.repository.ShopRepository shopRepository;
+
     @Override
     @Transactional
-    public Map<String, Object> createEmptyProduct(String name) {
+    public Map<String, Object> createEmptyProduct(String name, UUID shopId) {
         try {
-            log.info("Creating empty product with name: {}", name);
+            log.info("Creating empty product with name: {} for shop: {}", name, shopId);
+
+            com.ecommerce.entity.Shop shop = shopRepository.findById(shopId)
+                    .orElseThrow(() -> new jakarta.persistence.EntityNotFoundException("Shop not found with id: " + shopId));
 
             Product product = new Product();
             product.setProductName(name);
             product.setSku(generateTemporarySku(name));
-            product.setSlug(generateUniqueSlug(name)); // Set unique slug before saving
+            product.setSlug(generateUniqueSlug(name));
             product.setPrice(new java.math.BigDecimal("0.01"));
             product.setStatus(com.ecommerce.enums.ProductStatus.DRAFT);
             product.setCompletionPercentage(0);
             product.setDisplayToCustomers(false);
             product.setActive(false);
+            product.setShop(shop);
 
             Product savedProduct = productRepository.save(product);
 

@@ -24,11 +24,13 @@ public class ShopServiceImpl implements ShopService {
 
     private final ShopRepository shopRepository;
     private final UserRepository userRepository;
+    private final com.ecommerce.repository.ProductRepository productRepository;
 
     @Autowired
-    public ShopServiceImpl(ShopRepository shopRepository, UserRepository userRepository) {
+    public ShopServiceImpl(ShopRepository shopRepository, UserRepository userRepository, com.ecommerce.repository.ProductRepository productRepository) {
         this.shopRepository = shopRepository;
         this.userRepository = userRepository;
+        this.productRepository = productRepository;
     }
 
     @Override
@@ -178,6 +180,9 @@ public class ShopServiceImpl implements ShopService {
             dto.setOwnerEmail(shop.getOwner().getUserEmail());
         }
 
+        long productCount = productRepository.countByShopId(shop.getShopId());
+        dto.setProductCount(productCount);
+
         return dto;
     }
 
@@ -204,6 +209,39 @@ public class ShopServiceImpl implements ShopService {
         Shop shop = shopRepository.findById(shopId)
                 .orElseThrow(() -> new EntityNotFoundException("Shop not found with id: " + shopId));
         return shop.getOwner().getId().equals(userId);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<ShopDTO> getUserShops(UUID userId) {
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new EntityNotFoundException("User not found with id: " + userId));
+
+        List<ShopDTO> shops = new java.util.ArrayList<>();
+
+        if (user.getRole() == com.ecommerce.Enum.UserRole.VENDOR) {
+            shops = getShopsByOwner(userId);
+        } else if (user.getRole() == com.ecommerce.Enum.UserRole.EMPLOYEE || 
+                   user.getRole() == com.ecommerce.Enum.UserRole.DELIVERY_AGENT) {
+            List<Shop> employeeShops = shopRepository.findAll().stream()
+                    .filter(shop -> {
+                        if (user.getRole() == com.ecommerce.Enum.UserRole.EMPLOYEE) {
+                            return false;
+                        }
+                        return false;
+                    })
+                    .collect(java.util.stream.Collectors.toList());
+
+            if (employeeShops.size() > 1) {
+                throw new CustomException("Employee/Delivery Agent can only be associated with one shop");
+            }
+
+            shops = employeeShops.stream()
+                    .map(this::convertToDTO)
+                    .collect(java.util.stream.Collectors.toList());
+        }
+
+        return shops;
     }
 }
 

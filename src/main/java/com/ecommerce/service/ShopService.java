@@ -31,5 +31,7 @@ public interface ShopService {
     Shop convertToEntity(ShopDTO shopDTO);
 
     boolean isOwner(UUID shopId, UUID userId);
+
+    List<ShopDTO> getUserShops(UUID userId);
 }
 

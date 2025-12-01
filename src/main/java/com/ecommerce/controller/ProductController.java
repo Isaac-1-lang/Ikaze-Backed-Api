@@ -3,7 +3,6 @@ package com.ecommerce.controller;
 import com.ecommerce.dto.ManyProductsDto;
 import com.ecommerce.dto.ProductDTO;
 import com.ecommerce.dto.ProductSearchDTO;
-import com.ecommerce.dto.ProductUpdateDTO;
 import com.ecommerce.dto.ProductBasicInfoDTO;
 import com.ecommerce.dto.ProductBasicInfoUpdateDTO;
 import com.ecommerce.dto.ProductPricingDTO;
@@ -22,6 +21,13 @@ import com.ecommerce.dto.ProductDetailsUpdateDTO;
 import com.ecommerce.Exception.ProductDeletionException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.ecommerce.service.ProductService;
+import com.ecommerce.service.ShopAuthorizationService;
+import com.ecommerce.repository.UserRepository;
+import com.ecommerce.repository.ProductRepository;
+import com.ecommerce.entity.Product;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.core.userdetails.UserDetails;
 import java.math.BigDecimal;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.media.Content;
@@ -58,20 +64,32 @@ public class ProductController {
 
     private final ProductService productService;
     private final ObjectMapper objectMapper;
+    private final ShopAuthorizationService shopAuthorizationService;
+    private final UserRepository userRepository;
+    private final ProductRepository productRepository;
 
     @PostMapping("/create-empty")
-    @PreAuthorize("hasAnyRole('ADMIN', 'EMPLOYEE')")
+    @PreAuthorize("hasAnyRole('VENDOR', 'EMPLOYEE')")
     @Operation(summary = "Create empty product for editing", description = "Create a minimal product that can be enhanced step by step", responses = {
             @ApiResponse(responseCode = "201", description = "Empty product created successfully"),
             @ApiResponse(responseCode = "400", description = "Invalid input data"),
             @ApiResponse(responseCode = "401", description = "Unauthorized"),
+            @ApiResponse(responseCode = "403", description = "Forbidden - Not authorized to manage this shop"),
             @ApiResponse(responseCode = "500", description = "Internal server error")
     })
-    public ResponseEntity<?> createEmptyProduct(@RequestParam String name) {
+    public ResponseEntity<?> createEmptyProduct(
+            @RequestParam String name,
+            @RequestParam UUID shopId) {
         try {
-            log.info("Creating empty product with name: {}", name);
-            Map<String, Object> response = productService.createEmptyProduct(name);
+            log.info("Creating empty product with name: {} for shop: {}", name, shopId);
+            UUID currentUserId = getCurrentUserId();
+            shopAuthorizationService.assertCanManageShop(currentUserId, shopId);
+            Map<String, Object> response = productService.createEmptyProduct(name, shopId);
             return ResponseEntity.status(HttpStatus.CREATED).body(response);
+        } catch (com.ecommerce.Exception.CustomException e) {
+            log.error("Authorization error creating product: {}", e.getMessage());
+            return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                    .body(createErrorResponse("FORBIDDEN", e.getMessage()));
         } catch (Exception e) {
             log.error("Error creating empty product: {}", e.getMessage(), e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
@@ -80,16 +98,23 @@ public class ProductController {
     }
 
     @GetMapping("/{productId}/has-variants")
-    @PreAuthorize("hasAnyRole('ADMIN', 'EMPLOYEE')")
+    @PreAuthorize("hasAnyRole('VENDOR', 'EMPLOYEE')")
     @Operation(summary = "Check if product has variants", description = "Check whether a product has variants to determine stock management approach", responses = {
             @ApiResponse(responseCode = "200", description = "Product variant status retrieved successfully"),
             @ApiResponse(responseCode = "404", description = "Product not found"),
             @ApiResponse(responseCode = "401", description = "Unauthorized"),
+            @ApiResponse(responseCode = "403", description = "Forbidden - Not authorized to manage this shop"),
             @ApiResponse(responseCode = "500", description = "Internal server error")
     })
     public ResponseEntity<?> checkProductHasVariants(@PathVariable UUID productId) {
         try {
             log.info("Checking if product {} has variants", productId);
+            UUID currentUserId = getCurrentUserId();
+            Product product = productRepository.findById(productId)
+                    .orElseThrow(() -> new EntityNotFoundException("Product not found"));
+            if (product.getShop() != null) {
+                shopAuthorizationService.assertCanManageShop(currentUserId, product.getShop().getShopId());
+            }
             boolean hasVariants = productService.productHasVariants(productId);
 
             Map<String, Object> response = new HashMap<>();
@@ -98,10 +123,14 @@ public class ProductController {
                     : "Product has no variants. Stock can be managed at product level.");
 
             return ResponseEntity.ok(response);
-        } catch (IllegalArgumentException e) {
+        } catch (EntityNotFoundException e) {
             log.error("Product not found: {}", e.getMessage());
             return ResponseEntity.status(HttpStatus.NOT_FOUND)
                     .body(createErrorResponse("PRODUCT_NOT_FOUND", e.getMessage()));
+        } catch (com.ecommerce.Exception.CustomException e) {
+            log.error("Authorization error: {}", e.getMessage());
+            return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                    .body(createErrorResponse("FORBIDDEN", e.getMessage()));
         } catch (Exception e) {
             log.error("Error checking product variants: {}", e.getMessage(), e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
@@ -110,22 +139,35 @@ public class ProductController {
     }
 
     @PostMapping("/{productId}/assign-stock")
-    @PreAuthorize("hasAnyRole('ADMIN', 'EMPLOYEE')")
+    @PreAuthorize("hasAnyRole('VENDOR', 'EMPLOYEE')")
     @Operation(summary = "Assign stock to product", description = "Assign stock quantities to warehouses for a product (only when product has no variants)", responses = {
             @ApiResponse(responseCode = "200", description = "Stock assigned successfully"),
             @ApiResponse(responseCode = "400", description = "Invalid input data or product has variants"),
             @ApiResponse(responseCode = "404", description = "Product not found"),
             @ApiResponse(responseCode = "401", description = "Unauthorized"),
+            @ApiResponse(responseCode = "403", description = "Forbidden - Not authorized to manage this shop"),
             @ApiResponse(responseCode = "500", description = "Internal server error")
     })
     public ResponseEntity<?> assignProductStock(
             @PathVariable UUID productId,
             @RequestBody List<WarehouseStockRequest> warehouseStocks) {
         try {
+            UUID currentUserId = getCurrentUserId();
+            Product product = productRepository.findById(productId)
+                    .orElseThrow(() -> new EntityNotFoundException("Product not found"));
+            if (product.getShop() != null) {
+                shopAuthorizationService.assertCanManageShop(currentUserId, product.getShop().getShopId());
+            }
 
             Map<String, Object> result = productService.assignProductStock(productId, warehouseStocks);
 
             return ResponseEntity.ok(result);
+        } catch (EntityNotFoundException e) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                    .body(createErrorResponse("PRODUCT_NOT_FOUND", e.getMessage()));
+        } catch (com.ecommerce.Exception.CustomException e) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                    .body(createErrorResponse("FORBIDDEN", e.getMessage()));
         } catch (IllegalArgumentException e) {
             return ResponseEntity.status(HttpStatus.BAD_REQUEST)
                     .body(createErrorResponse("INVALID_INPUT", e.getMessage()));
@@ -136,7 +178,7 @@ public class ProductController {
     }
 
     @DeleteMapping("/{productId}/unassign-warehouse/{warehouseId}")
-    @PreAuthorize("hasAnyRole('ADMIN', 'EMPLOYEE')")
+    @PreAuthorize("hasAnyRole('VENDOR', 'EMPLOYEE')")
     @Operation(summary = "Unassign warehouse from product", description = "Remove warehouse assignment from product and delete all associated batches", responses = {
             @ApiResponse(responseCode = "200", description = "Warehouse unassigned successfully"),
             @ApiResponse(responseCode = "404", description = "Product or warehouse not found"),
@@ -165,12 +207,13 @@ public class ProductController {
     }
 
     @PostMapping("/{productId}/assign-stock-with-batches")
-    @PreAuthorize("hasAnyRole('ADMIN', 'EMPLOYEE')")
+    @PreAuthorize("hasAnyRole('VENDOR', 'EMPLOYEE')")
     @Operation(summary = "Assign stock with batches to product", description = "Assign stock quantities with batch details to warehouses for a product", responses = {
             @ApiResponse(responseCode = "200", description = "Stock with batches assigned successfully"),
             @ApiResponse(responseCode = "400", description = "Invalid input data"),
             @ApiResponse(responseCode = "404", description = "Product not found"),
             @ApiResponse(responseCode = "401", description = "Unauthorized"),
+            @ApiResponse(responseCode = "403", description = "Forbidden - Not authorized to manage this shop"),
             @ApiResponse(responseCode = "500", description = "Internal server error")
     })
     public ResponseEntity<?> assignProductStockWithBatches(
@@ -178,8 +221,22 @@ public class ProductController {
             @RequestBody List<WarehouseStockWithBatchesRequest> warehouseStocks) {
         try {
             log.info("Assigning stock with batches to product {} for {} warehouses", productId, warehouseStocks.size());
+            UUID currentUserId = getCurrentUserId();
+            Product product = productRepository.findById(productId)
+                    .orElseThrow(() -> new EntityNotFoundException("Product not found"));
+            if (product.getShop() != null) {
+                shopAuthorizationService.assertCanManageShop(currentUserId, product.getShop().getShopId());
+            }
             Map<String, Object> response = productService.assignProductStockWithBatches(productId, warehouseStocks);
             return ResponseEntity.ok(response);
+        } catch (EntityNotFoundException e) {
+            log.error("Product not found: {}", e.getMessage());
+            return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                    .body(createErrorResponse("PRODUCT_NOT_FOUND", e.getMessage()));
+        } catch (com.ecommerce.Exception.CustomException e) {
+            log.error("Authorization error: {}", e.getMessage());
+            return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                    .body(createErrorResponse("FORBIDDEN", e.getMessage()));
         } catch (IllegalArgumentException e) {
             log.error("Validation error assigning product stock with batches: {}", e.getMessage());
             return ResponseEntity.status(HttpStatus.BAD_REQUEST)
@@ -192,7 +249,7 @@ public class ProductController {
     }
 
     @PostMapping("/{productId}/variants/{variantId}/assign-stock-with-batches")
-    @PreAuthorize("hasAnyRole('ADMIN', 'EMPLOYEE')")
+    @PreAuthorize("hasAnyRole('VENDOR', 'EMPLOYEE')")
     @Operation(summary = "Assign stock with batches to product variant", description = "Assign stock quantities with batch details to warehouses for a specific product variant", responses = {
             @ApiResponse(responseCode = "200", description = "Variant stock with batches assigned successfully"),
             @ApiResponse(responseCode = "400", description = "Invalid input data"),
@@ -221,7 +278,7 @@ public class ProductController {
     }
 
     @GetMapping("/{productId}/has-stock")
-    @PreAuthorize("hasAnyRole('ADMIN', 'EMPLOYEE')")
+    @PreAuthorize("hasAnyRole('VENDOR', 'EMPLOYEE')")
     @Operation(summary = "Check if product has stock", description = "Check whether a product has stock assigned", responses = {
             @ApiResponse(responseCode = "200", description = "Product stock status retrieved successfully"),
             @ApiResponse(responseCode = "404", description = "Product not found"),
@@ -250,7 +307,7 @@ public class ProductController {
     }
 
     @DeleteMapping("/{productId}/stock")
-    @PreAuthorize("hasAnyRole('ADMIN', 'EMPLOYEE')")
+    @PreAuthorize("hasAnyRole('VENDOR', 'EMPLOYEE')")
     @Operation(summary = "Remove all product stock", description = "Remove all stock and batches for a product", responses = {
             @ApiResponse(responseCode = "200", description = "Product stock removed successfully"),
             @ApiResponse(responseCode = "404", description = "Product not found"),
@@ -279,7 +336,7 @@ public class ProductController {
     }
 
     @GetMapping("/{productId}")
-    @PreAuthorize("hasAnyRole('ADMIN', 'EMPLOYEE')")
+    @PreAuthorize("hasAnyRole('VENDOR', 'EMPLOYEE')")
     @Operation(summary = "Get a product by ID (Admin/Employee)", description = "Retrieve a product by its UUID - shows all products regardless of availability status", responses = {
             @ApiResponse(responseCode = "200", description = "Product found", content = @Content(schema = @Schema(implementation = ProductDTO.class))),
             @ApiResponse(responseCode = "404", description = "Product not found"),
@@ -325,11 +382,12 @@ public class ProductController {
     }
 
     @PutMapping("/{productId}/basic-info")
-    @PreAuthorize("hasAnyRole('ADMIN', 'EMPLOYEE')")
+    @PreAuthorize("hasAnyRole('VENDOR', 'EMPLOYEE')")
     @Operation(summary = "Update product basic info", description = "Update basic information of a product", responses = {
             @ApiResponse(responseCode = "200", description = "Product basic info updated successfully", content = @Content(schema = @Schema(implementation = ProductBasicInfoDTO.class))),
             @ApiResponse(responseCode = "400", description = "Invalid input data"),
             @ApiResponse(responseCode = "404", description = "Product not found"),
+            @ApiResponse(responseCode = "403", description = "Forbidden - Not authorized to manage this shop"),
             @ApiResponse(responseCode = "409", description = "SKU already exists")
     })
     public ResponseEntity<?> updateProductBasicInfo(
@@ -337,12 +395,22 @@ public class ProductController {
             @RequestBody ProductBasicInfoUpdateDTO updateDTO) {
         try {
             log.debug("Updating product basic info with ID: {}", productId);
+            UUID currentUserId = getCurrentUserId();
+            Product product = productRepository.findById(productId)
+                    .orElseThrow(() -> new EntityNotFoundException("Product not found"));
+            if (product.getShop() != null) {
+                shopAuthorizationService.assertCanManageShop(currentUserId, product.getShop().getShopId());
+            }
             ProductBasicInfoDTO updatedProduct = productService.updateProductBasicInfo(productId, updateDTO);
             return ResponseEntity.ok(updatedProduct);
         } catch (EntityNotFoundException e) {
             log.warn("Product not found with ID: {}", productId);
             return ResponseEntity.status(HttpStatus.NOT_FOUND)
                     .body(createErrorResponse("PRODUCT_NOT_FOUND", e.getMessage()));
+        } catch (com.ecommerce.Exception.CustomException e) {
+            log.warn("Authorization error: {}", e.getMessage());
+            return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                    .body(createErrorResponse("FORBIDDEN", e.getMessage()));
         } catch (IllegalArgumentException e) {
             log.warn("Invalid input for product ID {}: {}", productId, e.getMessage());
             return ResponseEntity.status(HttpStatus.BAD_REQUEST)
@@ -355,7 +423,7 @@ public class ProductController {
     }
 
     @GetMapping("/slug/{slug}")
-    @PreAuthorize("hasAnyRole('ADMIN', 'EMPLOYEE')")
+    @PreAuthorize("hasAnyRole('VENDOR', 'EMPLOYEE')")
     @Operation(summary = "Get a product by slug (Admin/Employee)", description = "Retrieve a product by its slug - shows all products regardless of availability status", responses = {
             @ApiResponse(responseCode = "200", description = "Product found", content = @Content(schema = @Schema(implementation = ProductDTO.class))),
             @ApiResponse(responseCode = "404", description = "Product not found"),
@@ -380,7 +448,7 @@ public class ProductController {
     }
 
     @GetMapping
-    @PreAuthorize("hasAnyRole('ADMIN', 'EMPLOYEE')")
+    @PreAuthorize("hasAnyRole('VENDOR', 'EMPLOYEE')")
     @Operation(summary = "Get all products (Admin/Employee)", description = "Retrieve all products with pagination - shows all products regardless of availability status", responses = {
             @ApiResponse(responseCode = "200", description = "Products retrieved successfully", content = @Content(schema = @Schema(implementation = ManyProductsDto.class))),
             @ApiResponse(responseCode = "401", description = "Unauthorized"),
@@ -434,7 +502,7 @@ public class ProductController {
     }
 
     @PostMapping("/search")
-    @PreAuthorize("hasAnyRole('ADMIN', 'EMPLOYEE')")
+    @PreAuthorize("hasAnyRole('VENDOR', 'EMPLOYEE')")
     @Operation(summary = "Search products with comprehensive filtering (Admin/Employee)", description = "Search all products using various filter criteria - shows all products regardless of availability status", responses = {
             @ApiResponse(responseCode = "200", description = "Search results retrieved successfully", content = @Content(schema = @Schema(implementation = ManyProductsDto.class))),
             @ApiResponse(responseCode = "400", description = "Invalid search criteria"),
@@ -476,18 +544,24 @@ public class ProductController {
     }
 
     @DeleteMapping("/{productId}/variants/{variantId}")
-    @PreAuthorize("hasAnyRole('ADMIN', 'EMPLOYEE')")
+    @PreAuthorize("hasAnyRole('VENDOR', 'EMPLOYEE')")
     @Operation(summary = "Delete a product variant", description = "Delete a specific variant from a product, including all associated images and attributes", responses = {
             @ApiResponse(responseCode = "200", description = "Product variant deleted successfully"),
             @ApiResponse(responseCode = "400", description = "Invalid request"),
             @ApiResponse(responseCode = "401", description = "Unauthorized"),
-            @ApiResponse(responseCode = "403", description = "Forbidden"),
+            @ApiResponse(responseCode = "403", description = "Forbidden - Not authorized to manage this shop"),
             @ApiResponse(responseCode = "404", description = "Product or variant not found"),
             @ApiResponse(responseCode = "500", description = "Internal server error")
     })
     public ResponseEntity<?> deleteProductVariant(@PathVariable UUID productId, @PathVariable Long variantId) {
         try {
             log.info("Deleting product variant. Product ID: {}, Variant ID: {}", productId, variantId);
+            UUID currentUserId = getCurrentUserId();
+            Product product = productRepository.findById(productId)
+                    .orElseThrow(() -> new EntityNotFoundException("Product not found"));
+            if (product.getShop() != null) {
+                shopAuthorizationService.assertCanManageShop(currentUserId, product.getShop().getShopId());
+            }
 
             boolean deleted = productService.deleteProductVariant(productId, variantId);
 
@@ -510,6 +584,10 @@ public class ProductController {
             log.error("Entity not found while deleting product variant: {}", e.getMessage());
             return ResponseEntity.status(HttpStatus.NOT_FOUND)
                     .body(createErrorResponse("ENTITY_NOT_FOUND", e.getMessage()));
+        } catch (com.ecommerce.Exception.CustomException e) {
+            log.error("Authorization error while deleting product variant: {}", e.getMessage());
+            return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                    .body(createErrorResponse("FORBIDDEN", e.getMessage()));
         } catch (IllegalArgumentException e) {
             log.error("Invalid argument while deleting product variant: {}", e.getMessage());
             return ResponseEntity.status(HttpStatus.BAD_REQUEST)
@@ -526,18 +604,24 @@ public class ProductController {
     }
 
     @DeleteMapping("/{productId}")
-    @PreAuthorize("hasAnyRole('ADMIN', 'EMPLOYEE')")
+    @PreAuthorize("hasAnyRole('VENDOR', 'EMPLOYEE')")
     @Operation(summary = "Delete a product", description = "Delete a product with all its variants, images, and videos. Also removes the product from carts and wishlists. Cannot delete if there are pending orders.", responses = {
             @ApiResponse(responseCode = "204", description = "Product deleted successfully"),
             @ApiResponse(responseCode = "400", description = "Product cannot be deleted due to pending orders"),
             @ApiResponse(responseCode = "401", description = "Unauthorized"),
-            @ApiResponse(responseCode = "403", description = "Forbidden"),
+            @ApiResponse(responseCode = "403", description = "Forbidden - Not authorized to manage this shop"),
             @ApiResponse(responseCode = "404", description = "Product not found"),
             @ApiResponse(responseCode = "500", description = "Internal server error")
     })
     public ResponseEntity<?> deleteProduct(@PathVariable UUID productId) {
         try {
             log.info("Deleting product with ID: {}", productId);
+            UUID currentUserId = getCurrentUserId();
+            Product product = productRepository.findById(productId)
+                    .orElseThrow(() -> new EntityNotFoundException("Product not found"));
+            if (product.getShop() != null) {
+                shopAuthorizationService.assertCanManageShop(currentUserId, product.getShop().getShopId());
+            }
 
             boolean deleted = productService.deleteProduct(productId);
 
@@ -559,6 +643,10 @@ public class ProductController {
             log.error("Product not found while deleting: {}", e.getMessage());
             return ResponseEntity.status(HttpStatus.NOT_FOUND)
                     .body(createErrorResponse("PRODUCT_NOT_FOUND", e.getMessage()));
+        } catch (com.ecommerce.Exception.CustomException e) {
+            log.error("Authorization error while deleting product: {}", e.getMessage());
+            return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                    .body(createErrorResponse("FORBIDDEN", e.getMessage()));
         } catch (ProductDeletionException e) {
             log.error("Product deletion blocked: {}", e.getMessage());
             return ResponseEntity.status(HttpStatus.BAD_REQUEST)
@@ -574,6 +662,46 @@ public class ProductController {
         }
     }
 
+
+    private UUID getCurrentUserId() {
+        try {
+            Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+            if (auth == null || !auth.isAuthenticated()) {
+                throw new RuntimeException("User not authenticated");
+            }
+
+            Object principal = auth.getPrincipal();
+
+            if (principal instanceof com.ecommerce.ServiceImpl.CustomUserDetails customUserDetails) {
+                String email = customUserDetails.getUsername();
+                return userRepository.findByUserEmail(email)
+                    .map(com.ecommerce.entity.User::getId)
+                    .orElseThrow(() -> new RuntimeException("User not found with email: " + email));
+            }
+
+            if (principal instanceof com.ecommerce.entity.User user && user.getId() != null) {
+                return user.getId();
+            }
+
+            if (principal instanceof UserDetails userDetails) {
+                String email = userDetails.getUsername();
+                return userRepository.findByUserEmail(email)
+                    .map(com.ecommerce.entity.User::getId)
+                    .orElseThrow(() -> new RuntimeException("User not found with email: " + email));
+            }
+
+            String name = auth.getName();
+            if (name != null && !name.isBlank()) {
+                return userRepository.findByUserEmail(name)
+                    .map(com.ecommerce.entity.User::getId)
+                    .orElseThrow(() -> new RuntimeException("User not found with email: " + name));
+            }
+        } catch (Exception e) {
+            log.error("Error getting current user ID: {}", e.getMessage(), e);
+            throw new RuntimeException("Unable to get current user ID: " + e.getMessage());
+        }
+        throw new RuntimeException("Unable to get current user ID");
+    }
 
     private Map<String, Object> createErrorResponse(String errorCode, String message) {
         Map<String, Object> errorResponse = new HashMap<>();
@@ -636,7 +764,7 @@ public class ProductController {
     }
 
     @GetMapping("/{productId}/pricing")
-    @PreAuthorize("hasAnyRole('ADMIN', 'EMPLOYEE')")
+    @PreAuthorize("hasAnyRole('VENDOR', 'EMPLOYEE')")
     @Operation(summary = "Get product pricing", description = "Retrieve pricing information for a product", responses = {
             @ApiResponse(responseCode = "200", description = "Product pricing retrieved successfully", content = @Content(schema = @Schema(implementation = ProductPricingDTO.class))),
             @ApiResponse(responseCode = "404", description = "Product not found"),
@@ -659,11 +787,12 @@ public class ProductController {
     }
 
     @PutMapping("/{productId}/pricing")
-    @PreAuthorize("hasAnyRole('ADMIN', 'EMPLOYEE')")
+    @PreAuthorize("hasAnyRole('VENDOR', 'EMPLOYEE')")
     @Operation(summary = "Update product pricing", description = "Update pricing information for a product", responses = {
             @ApiResponse(responseCode = "200", description = "Product pricing updated successfully", content = @Content(schema = @Schema(implementation = ProductPricingDTO.class))),
             @ApiResponse(responseCode = "400", description = "Invalid input data"),
             @ApiResponse(responseCode = "404", description = "Product not found"),
+            @ApiResponse(responseCode = "403", description = "Forbidden - Not authorized to manage this shop"),
             @ApiResponse(responseCode = "500", description = "Internal server error")
     })
     public ResponseEntity<?> updateProductPricing(
@@ -671,12 +800,22 @@ public class ProductController {
             @RequestBody ProductPricingUpdateDTO updateDTO) {
         try {
             log.debug("Updating product pricing for ID: {}", productId);
+            UUID currentUserId = getCurrentUserId();
+            Product product = productRepository.findById(productId)
+                    .orElseThrow(() -> new EntityNotFoundException("Product not found"));
+            if (product.getShop() != null) {
+                shopAuthorizationService.assertCanManageShop(currentUserId, product.getShop().getShopId());
+            }
             ProductPricingDTO updatedPricing = productService.updateProductPricing(productId, updateDTO);
             return ResponseEntity.ok(updatedPricing);
         } catch (EntityNotFoundException e) {
             log.warn("Product not found with ID: {}", productId);
             return ResponseEntity.status(HttpStatus.NOT_FOUND)
                     .body(createErrorResponse("PRODUCT_NOT_FOUND", e.getMessage()));
+        } catch (com.ecommerce.Exception.CustomException e) {
+            log.warn("Authorization error: {}", e.getMessage());
+            return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                    .body(createErrorResponse("FORBIDDEN", e.getMessage()));
         } catch (IllegalArgumentException e) {
             log.warn("Invalid input for product ID {}: {}", productId, e.getMessage());
             return ResponseEntity.status(HttpStatus.BAD_REQUEST)
@@ -689,7 +828,7 @@ public class ProductController {
     }
 
     @GetMapping("/{productId}/variants")
-    @PreAuthorize("hasAnyRole('ADMIN', 'EMPLOYEE')")
+    @PreAuthorize("hasAnyRole('VENDOR', 'EMPLOYEE')")
     @Operation(summary = "Get product variants", description = "Retrieve all variants for a product with pagination", responses = {
             @ApiResponse(responseCode = "200", description = "Product variants retrieved successfully", content = @Content(schema = @Schema(implementation = ProductVariantDTO.class))),
             @ApiResponse(responseCode = "404", description = "Product not found"),
@@ -721,7 +860,7 @@ public class ProductController {
     }
 
     @GetMapping("/{productId}/media/images")
-    @PreAuthorize("hasAnyRole('ADMIN', 'EMPLOYEE')")
+    @PreAuthorize("hasAnyRole('VENDOR', 'EMPLOYEE')")
     @Operation(summary = "Get product images", description = "Retrieve all images for a product", responses = {
             @ApiResponse(responseCode = "200", description = "Product images retrieved successfully", content = @Content(schema = @Schema(implementation = ProductMediaDTO.class))),
             @ApiResponse(responseCode = "404", description = "Product not found"),
@@ -744,7 +883,7 @@ public class ProductController {
     }
 
     @GetMapping("/{productId}/media/videos")
-    @PreAuthorize("hasAnyRole('ADMIN', 'EMPLOYEE')")
+    @PreAuthorize("hasAnyRole('VENDOR', 'EMPLOYEE')")
     @Operation(summary = "Get product videos", description = "Retrieve all videos for a product", responses = {
             @ApiResponse(responseCode = "200", description = "Product videos retrieved successfully", content = @Content(schema = @Schema(implementation = ProductVideoDTO.class))),
             @ApiResponse(responseCode = "404", description = "Product not found"),
@@ -767,7 +906,7 @@ public class ProductController {
     }
 
     @DeleteMapping("/{productId}/media/images/{imageId}")
-    @PreAuthorize("hasAnyRole('ADMIN', 'EMPLOYEE')")
+    @PreAuthorize("hasAnyRole('VENDOR', 'EMPLOYEE')")
     @Operation(summary = "Delete product image", description = "Delete a specific product image", responses = {
             @ApiResponse(responseCode = "200", description = "Image deleted successfully"),
             @ApiResponse(responseCode = "404", description = "Product or image not found"),
@@ -790,7 +929,7 @@ public class ProductController {
     }
 
     @DeleteMapping("/{productId}/media/videos/{videoId}")
-    @PreAuthorize("hasAnyRole('ADMIN', 'EMPLOYEE')")
+    @PreAuthorize("hasAnyRole('VENDOR', 'EMPLOYEE')")
     @Operation(summary = "Delete product video", description = "Delete a specific product video", responses = {
             @ApiResponse(responseCode = "200", description = "Video deleted successfully"),
             @ApiResponse(responseCode = "404", description = "Product or video not found"),
@@ -813,7 +952,7 @@ public class ProductController {
     }
 
     @PutMapping("/{productId}/media/images/{imageId}/primary")
-    @PreAuthorize("hasAnyRole('ADMIN', 'EMPLOYEE')")
+    @PreAuthorize("hasAnyRole('VENDOR', 'EMPLOYEE')")
     @Operation(summary = "Set primary image", description = "Set a specific image as the primary image for the product", responses = {
             @ApiResponse(responseCode = "200", description = "Primary image set successfully"),
             @ApiResponse(responseCode = "404", description = "Product or image not found"),
@@ -836,7 +975,7 @@ public class ProductController {
     }
 
     @PostMapping(value = "/{productId}/media/images", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    @PreAuthorize("hasAnyRole('ADMIN', 'EMPLOYEE')")
+    @PreAuthorize("hasAnyRole('VENDOR', 'EMPLOYEE')")
     @Operation(summary = "Upload product images", description = "Upload new images for a product", responses = {
             @ApiResponse(responseCode = "200", description = "Images uploaded successfully", content = @Content(schema = @Schema(implementation = ProductMediaDTO.class))),
             @ApiResponse(responseCode = "400", description = "Invalid input data"),
@@ -866,7 +1005,7 @@ public class ProductController {
     }
 
     @PostMapping(value = "/{productId}/media/videos", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    @PreAuthorize("hasAnyRole('ADMIN', 'EMPLOYEE')")
+    @PreAuthorize("hasAnyRole('VENDOR', 'EMPLOYEE')")
     @Operation(summary = "Upload product videos", description = "Upload new videos for a product", responses = {
             @ApiResponse(responseCode = "200", description = "Videos uploaded successfully", content = @Content(schema = @Schema(implementation = ProductVideoDTO.class))),
             @ApiResponse(responseCode = "400", description = "Invalid input data"),
@@ -896,7 +1035,7 @@ public class ProductController {
     }
 
     @PutMapping("/{productId}/variants/{variantId}")
-    @PreAuthorize("hasAnyRole('ADMIN', 'EMPLOYEE')")
+    @PreAuthorize("hasAnyRole('VENDOR', 'EMPLOYEE')")
     @Operation(summary = "Update product variant", description = "Update specific fields of a product variant", responses = {
             @ApiResponse(responseCode = "200", description = "Variant updated successfully", content = @Content(schema = @Schema(implementation = ProductVariantDTO.class))),
             @ApiResponse(responseCode = "404", description = "Product or variant not found"),
@@ -927,7 +1066,7 @@ public class ProductController {
     }
 
     @DeleteMapping("/{productId}/variants/{variantId}/images/{imageId}")
-    @PreAuthorize("hasAnyRole('ADMIN', 'EMPLOYEE')")
+    @PreAuthorize("hasAnyRole('VENDOR', 'EMPLOYEE')")
     @Operation(summary = "Delete variant image", description = "Delete an image from a product variant", responses = {
             @ApiResponse(responseCode = "200", description = "Image deleted successfully"),
             @ApiResponse(responseCode = "404", description = "Product, variant, or image not found"),
@@ -954,7 +1093,7 @@ public class ProductController {
     }
 
     @PutMapping("/{productId}/variants/{variantId}/images/{imageId}/primary")
-    @PreAuthorize("hasAnyRole('ADMIN', 'EMPLOYEE')")
+    @PreAuthorize("hasAnyRole('VENDOR', 'EMPLOYEE')")
     @Operation(summary = "Set primary variant image", description = "Set an image as primary for a product variant", responses = {
             @ApiResponse(responseCode = "200", description = "Primary image set successfully"),
             @ApiResponse(responseCode = "404", description = "Product, variant, or image not found"),
@@ -981,7 +1120,7 @@ public class ProductController {
     }
 
     @PostMapping(value = "/{productId}/variants/{variantId}/images", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    @PreAuthorize("hasAnyRole('ADMIN', 'EMPLOYEE')")
+    @PreAuthorize("hasAnyRole('VENDOR', 'EMPLOYEE')")
     @Operation(summary = "Upload variant images", description = "Upload images for a product variant", responses = {
             @ApiResponse(responseCode = "200", description = "Images uploaded successfully", content = @Content(schema = @Schema(implementation = ProductVariantImageDTO.class))),
             @ApiResponse(responseCode = "404", description = "Product or variant not found"),
@@ -1014,7 +1153,7 @@ public class ProductController {
     }
 
     @DeleteMapping("/{productId}/variants/{variantId}/attributes/{attributeValueId}")
-    @PreAuthorize("hasAnyRole('ADMIN', 'EMPLOYEE')")
+    @PreAuthorize("hasAnyRole('VENDOR', 'EMPLOYEE')")
     @Operation(summary = "Remove variant attribute", description = "Remove an attribute from a product variant", responses = {
             @ApiResponse(responseCode = "200", description = "Attribute removed successfully"),
             @ApiResponse(responseCode = "404", description = "Product, variant, or attribute not found"),
@@ -1046,7 +1185,7 @@ public class ProductController {
     }
 
     @PostMapping("/{productId}/variants/{variantId}/attributes")
-    @PreAuthorize("hasAnyRole('ADMIN', 'EMPLOYEE')")
+    @PreAuthorize("hasAnyRole('VENDOR', 'EMPLOYEE')")
     @Operation(summary = "Add variant attributes", description = "Add attributes to a product variant", responses = {
             @ApiResponse(responseCode = "200", description = "Attributes added successfully", content = @Content(schema = @Schema(implementation = ProductVariantAttributeDTO.class))),
             @ApiResponse(responseCode = "404", description = "Product or variant not found"),
@@ -1076,7 +1215,7 @@ public class ProductController {
     }
 
     @PostMapping("/{productId}/variants")
-    @PreAuthorize("hasAnyRole('ADMIN', 'EMPLOYEE')")
+    @PreAuthorize("hasAnyRole('VENDOR', 'EMPLOYEE')")
     @Operation(summary = "Create product variant", description = "Create a new variant for a product", responses = {
             @ApiResponse(responseCode = "201", description = "Variant created successfully", content = @Content(schema = @Schema(implementation = ProductVariantDTO.class))),
             @ApiResponse(responseCode = "404", description = "Product not found"),
@@ -1137,7 +1276,7 @@ public class ProductController {
     }
 
     @GetMapping("/{productId}/details")
-    @PreAuthorize("hasAnyRole('ADMIN', 'EMPLOYEE')")
+    @PreAuthorize("hasAnyRole('VENDOR', 'EMPLOYEE')")
     @Operation(summary = "Get product details", description = "Get SEO and detailed information for a product", responses = {
             @ApiResponse(responseCode = "200", description = "Product details retrieved successfully", content = @Content(schema = @Schema(implementation = ProductDetailsDTO.class))),
             @ApiResponse(responseCode = "404", description = "Product not found"),
@@ -1160,11 +1299,12 @@ public class ProductController {
     }
 
     @PutMapping("/{productId}/details")
-    @PreAuthorize("hasAnyRole('ADMIN', 'EMPLOYEE')")
+    @PreAuthorize("hasAnyRole('VENDOR', 'EMPLOYEE')")
     @Operation(summary = "Update product details", description = "Update SEO and detailed information for a product", responses = {
             @ApiResponse(responseCode = "200", description = "Product details updated successfully", content = @Content(schema = @Schema(implementation = ProductDetailsDTO.class))),
             @ApiResponse(responseCode = "400", description = "Invalid input or no fields provided"),
             @ApiResponse(responseCode = "404", description = "Product not found"),
+            @ApiResponse(responseCode = "403", description = "Forbidden - Not authorized to manage this shop"),
             @ApiResponse(responseCode = "500", description = "Internal server error")
     })
     public ResponseEntity<?> updateProductDetails(
@@ -1172,12 +1312,22 @@ public class ProductController {
             @RequestBody ProductDetailsUpdateDTO updateDTO) {
         try {
             log.info("Updating product details for product ID: {}", productId);
+            UUID currentUserId = getCurrentUserId();
+            Product product = productRepository.findById(productId)
+                    .orElseThrow(() -> new EntityNotFoundException("Product not found"));
+            if (product.getShop() != null) {
+                shopAuthorizationService.assertCanManageShop(currentUserId, product.getShop().getShopId());
+            }
             ProductDetailsDTO updatedDetails = productService.updateProductDetails(productId, updateDTO);
             return ResponseEntity.ok(updatedDetails);
         } catch (EntityNotFoundException e) {
             log.warn("Product not found: {}", e.getMessage());
             return ResponseEntity.status(HttpStatus.NOT_FOUND)
                     .body(createErrorResponse("NOT_FOUND", e.getMessage()));
+        } catch (com.ecommerce.Exception.CustomException e) {
+            log.warn("Authorization error: {}", e.getMessage());
+            return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                    .body(createErrorResponse("FORBIDDEN", e.getMessage()));
         } catch (IllegalArgumentException e) {
             log.warn("Invalid input for product {}: {}", productId, e.getMessage());
             return ResponseEntity.status(HttpStatus.BAD_REQUEST)

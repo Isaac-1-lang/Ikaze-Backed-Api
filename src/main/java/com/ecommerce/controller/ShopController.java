@@ -182,6 +182,29 @@ public class ShopController {
         }
     }
 
+    @GetMapping("/user-shops")
+    @PreAuthorize("hasAnyRole('VENDOR', 'EMPLOYEE', 'DELIVERY_AGENT', 'ADMIN')")
+    @Operation(summary = "Get user shops", description = "Retrieve all shops associated with the current user (owned shops for VENDOR, assigned shop for EMPLOYEE/DELIVERY_AGENT)")
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200", description = "Shops retrieved successfully", content = @Content(mediaType = "application/json", schema = @Schema(implementation = ShopDTO.class))),
+            @ApiResponse(responseCode = "400", description = "Bad request - Failed to retrieve shops", content = @Content(mediaType = "application/json")),
+            @ApiResponse(responseCode = "401", description = "Unauthorized - Authentication required", content = @Content(mediaType = "application/json")),
+            @ApiResponse(responseCode = "403", description = "Forbidden - VENDOR, EMPLOYEE, DELIVERY_AGENT or ADMIN role required", content = @Content(mediaType = "application/json"))
+    })
+    public ResponseEntity<?> getUserShops() {
+        try {
+            UUID userId = getCurrentUserId();
+            List<ShopDTO> shops = shopService.getUserShops(userId);
+            return ResponseEntity.ok(shops);
+        } catch (Exception e) {
+            log.error("Failed to get shops for current user", e);
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(
+                    java.util.Map.of(
+                            "success", false,
+                            "message", e.getMessage() != null ? e.getMessage() : "Failed to get shops"));
+        }
+    }
+
     @GetMapping
     @Operation(summary = "Get all shops", description = "Retrieve all shops with pagination")
     @ApiResponses(value = {
