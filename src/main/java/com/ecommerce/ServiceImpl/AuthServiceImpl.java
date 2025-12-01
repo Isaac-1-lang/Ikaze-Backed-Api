@@ -1,7 +1,6 @@
 package com.ecommerce.ServiceImpl;
 
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
@@ -24,10 +23,6 @@ import lombok.extern.slf4j.Slf4j;
 
 import com.ecommerce.dto.LoginResponseDto;
 
-import java.security.SecureRandom;
-import java.util.Base64;
-import java.time.LocalDateTime;
-
 @Service
 @Slf4j
 
@@ -40,11 +35,6 @@ public class AuthServiceImpl implements AuthService {
     private final RewardService rewardService;
     @Autowired
     private EmailService emailService;
-    
-    @Value("${app.frontend.url:http://localhost:3000}")
-    private String frontendUrl;
-    
-    private static final SecureRandom secureRandom = new SecureRandom();
 
     @Autowired
     public AuthServiceImpl(UserRepository userRepository,
@@ -65,11 +55,9 @@ public class AuthServiceImpl implements AuthService {
             throw new CustomException("Email already exists");
         }
 
-        if (registrationDTO.getPhoneNumber() == null || registrationDTO.getPhoneNumber().trim().isEmpty()) {
-            throw new CustomException("Phone number is required");
+        if (registrationDTO.getPhoneNumber() != null && !registrationDTO.getPhoneNumber().trim().isEmpty()) {
+            validatePhoneNumber(registrationDTO.getPhoneNumber());
         }
-        
-        validatePhoneNumber(registrationDTO.getPhoneNumber());
 
         String hashedPassword = passwordEncoder.encode(registrationDTO.getPassword());
 
@@ -79,7 +67,7 @@ public class AuthServiceImpl implements AuthService {
         user.setUserEmail(registrationDTO.getEmail());
         user.setPassword(hashedPassword);
         user.setPhoneNumber(registrationDTO.getPhoneNumber());
-        user.setRole(UserRole.CUSTOMER);
+        user.setRole(UserRole.ADMIN);
 
         User savedUser = userRepository.save(user);
 
@@ -140,48 +128,14 @@ public class AuthServiceImpl implements AuthService {
         User user = userRepository.findByUserEmail(email)
                 .orElseThrow(() -> new RuntimeException("User not found"));
 
-        // Generate secure random token (64 characters)
-        String resetToken = generateSecureToken();
-        user.createResetToken(resetToken);
+        String resetCode = String.valueOf((int) (Math.random() * 99999));
+        user.createResetToken(resetCode);
         userRepository.save(user);
 
-        // Create password reset link
-        String resetLink = frontendUrl + "/reset-password?token=" + resetToken;
-        
-        // Send email with reset link
-        String emailBody = buildPasswordResetEmail(user.getFirstName(), resetLink);
         emailService.sendSimpleEmail(
                 user.getUserEmail(),
                 "Password Reset Request",
-                emailBody);
-        
-        log.info("Password reset email sent to: {}", email);
-    }
-    
-    /**
-     * Generate secure random token for password reset
-     */
-    private String generateSecureToken() {
-        byte[] randomBytes = new byte[48]; // 384 bits
-        secureRandom.nextBytes(randomBytes);
-        return Base64.getUrlEncoder().withoutPadding().encodeToString(randomBytes);
-    }
-    
-    /**
-     * Build password reset email body
-     */
-    private String buildPasswordResetEmail(String firstName, String resetLink) {
-        StringBuilder body = new StringBuilder();
-        body.append("Dear ").append(firstName).append(",\n\n");
-        body.append("We received a request to reset your password. ");
-        body.append("Click the link below to reset your password:\n\n");
-        body.append(resetLink).append("\n\n");
-        body.append("This link will expire in 15 minutes for security reasons.\n\n");
-        body.append("If you didn't request a password reset, please ignore this email. ");
-        body.append("Your password will remain unchanged.\n\n");
-        body.append("Best regards,\n");
-        body.append("The Support Team");
-        return body.toString();
+                "Your reset code is: " + resetCode);
     }
 
     @Override
@@ -189,39 +143,7 @@ public class AuthServiceImpl implements AuthService {
         User user = userRepository.findByUserEmail(email)
                 .orElseThrow(() -> new RuntimeException("User not found"));
 
-        boolean isValid = user.isResetTokenValid(code);
-        
-        if (!isValid) {
-            log.warn("Invalid or expired reset token for email: {}", email);
-        }
-        
-        return isValid;
-    }
-    
-    @Override
-    public boolean verifyResetToken(String token) {
-        try {
-            // Find user by reset token
-            User user = userRepository.findByResetToken(token)
-                    .orElse(null);
-            
-            if (user == null) {
-                log.warn("No user found with reset token");
-                return false;
-            }
-            
-            // Check if token is expired
-            if (user.getResetTokenExpiry() == null || 
-                user.getResetTokenExpiry().isBefore(LocalDateTime.now())) {
-                log.warn("Reset token expired for user: {}", user.getUserEmail());
-                return false;
-            }
-            
-            return true;
-        } catch (Exception e) {
-            log.error("Error verifying reset token", e);
-            return false;
-        }
+        return user.isResetTokenValid(code);
     }
 
     @Override
@@ -232,28 +154,6 @@ public class AuthServiceImpl implements AuthService {
         user.setPassword(passwordEncoder.encode(newPassword));
         user.clearResetToken();
         userRepository.save(user);
-        
-        log.info("Password reset successful for user: {}", email);
-    }
-    
-    @Override
-    public void resetPasswordByToken(String token, String newPassword) {
-        // Find user by reset token
-        User user = userRepository.findByResetToken(token)
-                .orElseThrow(() -> new RuntimeException("Invalid reset token"));
-        
-        // Verify token is not expired
-        if (user.getResetTokenExpiry() == null || 
-            user.getResetTokenExpiry().isBefore(LocalDateTime.now())) {
-            throw new RuntimeException("Reset token has expired");
-        }
-        
-        // Hash and set new password
-        user.setPassword(passwordEncoder.encode(newPassword));
-        user.clearResetToken();
-        userRepository.save(user);
-        
-        log.info("Password reset successful for user: {}", user.getUserEmail());
     }
 
     @Override
