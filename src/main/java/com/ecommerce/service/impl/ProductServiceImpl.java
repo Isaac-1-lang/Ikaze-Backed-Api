@@ -5580,6 +5580,18 @@ public class ProductServiceImpl implements ProductService {
     }
 
     @Override
+    public Page<ManyProductsDto> getAllProductsByShopId(UUID shopId, Pageable pageable) {
+        try {
+            log.info("Getting all products for shop {} with pagination: {}", shopId, pageable);
+            Page<Product> products = productRepository.findByShopId(shopId, pageable);
+            return products.map(this::convertToManyProductsDto);
+        } catch (Exception e) {
+            log.error("Error getting products for shop {}: {}", shopId, e.getMessage(), e);
+            throw new RuntimeException("Failed to get products for shop: " + e.getMessage(), e);
+        }
+    }
+
+    @Override
     public Page<ManyProductsDto> searchProductsForCustomers(ProductSearchDTO searchDTO) {
         try {
 

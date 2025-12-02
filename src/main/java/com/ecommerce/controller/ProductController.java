@@ -25,6 +25,8 @@ import com.ecommerce.service.ShopAuthorizationService;
 import com.ecommerce.repository.UserRepository;
 import com.ecommerce.repository.ProductRepository;
 import com.ecommerce.entity.Product;
+import com.ecommerce.Enum.UserRole;
+import com.ecommerce.ServiceImpl.CustomUserDetails;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.core.userdetails.UserDetails;
@@ -448,32 +450,66 @@ public class ProductController {
     }
 
     @GetMapping
-    @PreAuthorize("hasAnyRole('VENDOR', 'EMPLOYEE')")
-    @Operation(summary = "Get all products (Admin/Employee)", description = "Retrieve all products with pagination - shows all products regardless of availability status", responses = {
+    @PreAuthorize("hasAnyRole('VENDOR', 'EMPLOYEE', 'ADMIN')")
+    @Operation(summary = "Get all products", description = "Retrieve all products with pagination. shopId is required for VENDOR and EMPLOYEE roles. ADMIN can access all products without shopId.", responses = {
             @ApiResponse(responseCode = "200", description = "Products retrieved successfully", content = @Content(schema = @Schema(implementation = ManyProductsDto.class))),
+            @ApiResponse(responseCode = "400", description = "Bad request - Invalid shopId or shop not found"),
             @ApiResponse(responseCode = "401", description = "Unauthorized"),
-            @ApiResponse(responseCode = "403", description = "Forbidden")
+            @ApiResponse(responseCode = "403", description = "Forbidden - User does not have access to this shop")
     })
     public ResponseEntity<?> getAllProducts(
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "10") int size,
             @RequestParam(defaultValue = "createdAt") String sortBy,
-            @RequestParam(defaultValue = "desc") String sortDirection) {
+            @RequestParam(defaultValue = "desc") String sortDirection,
+            @RequestParam(required = false) UUID shopId) {
 
         try {
-            log.debug("Fetching all products for Vendor/employee with pagination - page: {}, size: {}, sortBy: {}, sortDirection: {}",
-                    page, size, sortBy, sortDirection);
+            UUID currentUserId = getCurrentUserId();
+            UserRole userRole = getCurrentUserRole();
+            
+            log.debug("Fetching products - page: {}, size: {}, sortBy: {}, sortDirection: {}, shopId: {}, userId: {}, role: {}",
+                    page, size, sortBy, sortDirection, shopId, currentUserId, userRole);
+
+            // For VENDOR and EMPLOYEE, shopId is required
+            if ((userRole == UserRole.VENDOR || userRole == UserRole.EMPLOYEE) && shopId == null) {
+                return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                        .body(createErrorResponse("INVALID_PARAMETERS", "shopId is required for VENDOR and EMPLOYEE roles"));
+            }
+
+            // Validate shop access for VENDOR and EMPLOYEE
+            if (shopId != null && (userRole == UserRole.VENDOR || userRole == UserRole.EMPLOYEE)) {
+                try {
+                    shopAuthorizationService.assertCanManageShop(currentUserId, shopId);
+                } catch (com.ecommerce.Exception.CustomException e) {
+                    log.warn("User {} does not have access to shop {}", currentUserId, shopId);
+                    return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                            .body(createErrorResponse("FORBIDDEN", "You are not authorized to access this shop"));
+                }
+            }
 
             Sort.Direction direction = sortDirection.equalsIgnoreCase("asc") ? Sort.Direction.ASC : Sort.Direction.DESC;
-            Page<ManyProductsDto> products = productService
-                    .getAllProductsForAdmins(PageRequest.of(page, size, Sort.by(direction, sortBy)));
+            Page<ManyProductsDto> products;
+            
+            if (shopId != null) {
+                // Get products for specific shop
+                products = productService.getAllProductsByShopId(shopId, PageRequest.of(page, size, Sort.by(direction, sortBy)));
+            } else {
+                // ADMIN can access all products
+                products = productService.getAllProductsForAdmins(PageRequest.of(page, size, Sort.by(direction, sortBy)));
+            }
+            
             return ResponseEntity.ok(products);
         } catch (IllegalArgumentException e) {
             log.error("Invalid pagination parameters: {}", e.getMessage());
             return ResponseEntity.status(HttpStatus.BAD_REQUEST)
                     .body(createErrorResponse("INVALID_PARAMETERS", e.getMessage()));
+        } catch (com.ecommerce.Exception.CustomException e) {
+            log.error("Shop access error: {}", e.getMessage());
+            return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                    .body(createErrorResponse("FORBIDDEN", e.getMessage()));
         } catch (Exception e) {
-            log.error("Error fetching all products for Vendor/employee: {}", e.getMessage(), e);
+            log.error("Error fetching products: {}", e.getMessage(), e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                     .body(createErrorResponse("INTERNAL_ERROR", "Failed to fetch products"));
         }
@@ -672,7 +708,7 @@ public class ProductController {
 
             Object principal = auth.getPrincipal();
 
-            if (principal instanceof com.ecommerce.ServiceImpl.CustomUserDetails customUserDetails) {
+            if (principal instanceof CustomUserDetails customUserDetails) {
                 String email = customUserDetails.getUsername();
                 return userRepository.findByUserEmail(email)
                     .map(com.ecommerce.entity.User::getId)
@@ -701,6 +737,46 @@ public class ProductController {
             throw new RuntimeException("Unable to get current user ID: " + e.getMessage());
         }
         throw new RuntimeException("Unable to get current user ID");
+    }
+
+    private UserRole getCurrentUserRole() {
+        try {
+            Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+            if (auth == null || !auth.isAuthenticated()) {
+                throw new RuntimeException("User not authenticated");
+            }
+
+            Object principal = auth.getPrincipal();
+
+            if (principal instanceof CustomUserDetails customUserDetails) {
+                String email = customUserDetails.getUsername();
+                return userRepository.findByUserEmail(email)
+                    .map(com.ecommerce.entity.User::getRole)
+                    .orElseThrow(() -> new RuntimeException("User not found with email: " + email));
+            }
+
+            if (principal instanceof com.ecommerce.entity.User user && user.getRole() != null) {
+                return user.getRole();
+            }
+
+            if (principal instanceof UserDetails userDetails) {
+                String email = userDetails.getUsername();
+                return userRepository.findByUserEmail(email)
+                    .map(com.ecommerce.entity.User::getRole)
+                    .orElseThrow(() -> new RuntimeException("User not found with email: " + email));
+            }
+
+            String name = auth.getName();
+            if (name != null && !name.isBlank()) {
+                return userRepository.findByUserEmail(name)
+                    .map(com.ecommerce.entity.User::getRole)
+                    .orElseThrow(() -> new RuntimeException("User not found with email: " + name));
+            }
+        } catch (Exception e) {
+            log.error("Error getting current user role: {}", e.getMessage(), e);
+            throw new RuntimeException("Unable to get current user role: " + e.getMessage());
+        }
+        throw new RuntimeException("Unable to get current user role");
     }
 
     private Map<String, Object> createErrorResponse(String errorCode, String message) {

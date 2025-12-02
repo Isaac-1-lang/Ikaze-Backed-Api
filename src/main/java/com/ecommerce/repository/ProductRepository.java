@@ -266,4 +266,10 @@ public interface ProductRepository extends JpaRepository<Product, UUID>, JpaSpec
                "(SELECT s.product.id FROM Stock s WHERE s.product IS NOT NULL " +
                "AND s.quantity > 0 AND s.quantity <= s.lowStockThreshold)")
         long countLowStockByShopId(@Param("shopId") UUID shopId);
+
+        /**
+         * Find all products for a specific shop with pagination
+         */
+        @Query("SELECT p FROM Product p WHERE p.shop.shopId = :shopId ORDER BY p.createdAt DESC")
+        Page<Product> findByShopId(@Param("shopId") UUID shopId, Pageable pageable);
 }

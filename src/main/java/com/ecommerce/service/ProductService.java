@@ -171,6 +171,15 @@ public interface ProductService {
         Page<ManyProductsDto> getAllProductsForAdmins(Pageable pageable);
 
         /**
+         * Get all products for a specific shop with pagination
+         * 
+         * @param shopId The shop ID to filter products by
+         * @param pageable Pagination information
+         * @return Page of ManyProductsDto for the shop
+         */
+        Page<ManyProductsDto> getAllProductsByShopId(UUID shopId, Pageable pageable);
+
+        /**
          * Update an existing product
          * 
          * @param productId        The product ID
