@@ -256,4 +256,14 @@ public interface ProductRepository extends JpaRepository<Product, UUID>, JpaSpec
 
         @Query("SELECT COUNT(p) FROM Product p WHERE p.shop.shopId = :shopId")
         long countByShopId(@Param("shopId") UUID shopId);
+
+        /**
+         * Count low stock products for a specific shop
+         */
+        @Query("SELECT COUNT(p) FROM Product p " +
+               "WHERE p.shop.shopId = :shopId " +
+               "AND p.id IN " +
+               "(SELECT s.product.id FROM Stock s WHERE s.product IS NOT NULL " +
+               "AND s.quantity > 0 AND s.quantity <= s.lowStockThreshold)")
+        long countLowStockByShopId(@Param("shopId") UUID shopId);
 }

@@ -337,7 +337,7 @@ public class ProductController {
 
     @GetMapping("/{productId}")
     @PreAuthorize("hasAnyRole('VENDOR', 'EMPLOYEE')")
-    @Operation(summary = "Get a product by ID (Admin/Employee)", description = "Retrieve a product by its UUID - shows all products regardless of availability status", responses = {
+    @Operation(summary = "Get a product by ID (Vendor/Employee)", description = "Retrieve a product by its UUID - shows all products regardless of availability status", responses = {
             @ApiResponse(responseCode = "200", description = "Product found", content = @Content(schema = @Schema(implementation = ProductDTO.class))),
             @ApiResponse(responseCode = "404", description = "Product not found"),
             @ApiResponse(responseCode = "401", description = "Unauthorized"),
@@ -345,7 +345,7 @@ public class ProductController {
     })
     public ResponseEntity<?> getProductById(@PathVariable UUID productId) {
         try {
-            log.debug("Fetching product with ID: {} for admin/employee view", productId);
+            log.debug("Fetching product with ID: {} for Vendor/employee view", productId);
             
             ProductDTO product = productService.getProductById(productId);
             return ResponseEntity.ok(product);
@@ -432,7 +432,7 @@ public class ProductController {
     })
     public ResponseEntity<?> getProductBySlug(@PathVariable String slug) {
         try {
-            log.debug("Fetching product with slug: {} for admin/employee view", slug);
+            log.debug("Fetching product with slug: {} for Vendor/employee view", slug);
             ProductDTO product = productService.getProductBySlug(slug);
             
             return ResponseEntity.ok(product);
@@ -461,7 +461,7 @@ public class ProductController {
             @RequestParam(defaultValue = "desc") String sortDirection) {
 
         try {
-            log.debug("Fetching all products for admin/employee with pagination - page: {}, size: {}, sortBy: {}, sortDirection: {}",
+            log.debug("Fetching all products for Vendor/employee with pagination - page: {}, size: {}, sortBy: {}, sortDirection: {}",
                     page, size, sortBy, sortDirection);
 
             Sort.Direction direction = sortDirection.equalsIgnoreCase("asc") ? Sort.Direction.ASC : Sort.Direction.DESC;
@@ -473,7 +473,7 @@ public class ProductController {
             return ResponseEntity.status(HttpStatus.BAD_REQUEST)
                     .body(createErrorResponse("INVALID_PARAMETERS", e.getMessage()));
         } catch (Exception e) {
-            log.error("Error fetching all products for admin/employee: {}", e.getMessage(), e);
+            log.error("Error fetching all products for Vendor/employee: {}", e.getMessage(), e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                     .body(createErrorResponse("INTERNAL_ERROR", "Failed to fetch products"));
         }
@@ -512,7 +512,7 @@ public class ProductController {
     })
     public ResponseEntity<?> searchProducts(@Valid @RequestBody ProductSearchDTO searchDTO) {
         try {
-            log.debug("Searching products for admin/employee with criteria: {}", searchDTO);
+            log.debug("Searching products for Vendor/employee with criteria: {}", searchDTO);
 
             // Validate that at least one filter criterion is provided
             if (!searchDTO.hasAtLeastOneFilter()) {
@@ -525,11 +525,11 @@ public class ProductController {
             Page<ManyProductsDto> searchResults = productService.searchProducts(searchDTO);
 
             if (searchResults.isEmpty()) {
-                log.debug("No products found matching the search criteria for admin/employee");
+                log.debug("No products found matching the search criteria for Vendor/employee");
                 return ResponseEntity.ok(searchResults); // Return empty page
             }
 
-            log.debug("Found {} products matching search criteria for admin/employee", searchResults.getTotalElements());
+            log.debug("Found {} products matching search criteria for Vendor/employee", searchResults.getTotalElements());
             return ResponseEntity.ok(searchResults);
 
         } catch (IllegalArgumentException e) {
@@ -537,7 +537,7 @@ public class ProductController {
             return ResponseEntity.status(HttpStatus.BAD_REQUEST)
                     .body(createErrorResponse("INVALID_PARAMETERS", e.getMessage()));
         } catch (Exception e) {
-            log.error("Error searching products for admin/employee: {}", e.getMessage(), e);
+            log.error("Error searching products for Vendor/employee: {}", e.getMessage(), e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                     .body(createErrorResponse("INTERNAL_ERROR", "Failed to search products"));
         }
