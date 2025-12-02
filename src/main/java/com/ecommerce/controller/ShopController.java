@@ -2,6 +2,7 @@ package com.ecommerce.controller;
 
 import com.ecommerce.dto.ShopDTO;
 import com.ecommerce.service.ShopService;
+import com.ecommerce.service.CloudinaryService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.Schema;
@@ -17,14 +18,18 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
+import java.io.IOException;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 @RestController
@@ -36,16 +41,18 @@ public class ShopController {
 
     private final ShopService shopService;
     private final com.ecommerce.repository.UserRepository userRepository;
+    private final CloudinaryService cloudinaryService;
 
     @Autowired
-    public ShopController(ShopService shopService, com.ecommerce.repository.UserRepository userRepository) {
+    public ShopController(ShopService shopService, com.ecommerce.repository.UserRepository userRepository, CloudinaryService cloudinaryService) {
         this.shopService = shopService;
         this.userRepository = userRepository;
+        this.cloudinaryService = cloudinaryService;
     }
 
-    @PostMapping
-    @PreAuthorize("hasAnyRole('VENDOR', 'ADMIN')")
-    @Operation(summary = "Create a new shop", description = "Create a new shop (Vendor/Admin only)")
+    @PostMapping(consumes = MediaType.APPLICATION_JSON_VALUE)
+    @PreAuthorize("hasAnyRole('VENDOR', 'CUSTOMER')")
+    @Operation(summary = "Create a new shop with logo URL", description = "Create a new shop with logo URL. CUSTOMER role will be automatically changed to VENDOR after shop creation.")
     @ApiResponses(value = {
             @ApiResponse(responseCode = "201", description = "Shop created successfully", content = @Content(mediaType = "application/json", schema = @Schema(implementation = ShopDTO.class))),
             @ApiResponse(responseCode = "400", description = "Bad request - Invalid shop data or shop with same slug/name already exists", content = @Content(mediaType = "application/json")),
@@ -55,6 +62,75 @@ public class ShopController {
     public ResponseEntity<?> createShop(@Valid @RequestBody ShopDTO shopDTO) {
         try {
             UUID ownerId = getCurrentUserId();
+            ShopDTO createdShop = shopService.createShop(shopDTO, ownerId);
+            return new ResponseEntity<>(createdShop, HttpStatus.CREATED);
+        } catch (Exception e) {
+            log.error("Failed to create shop", e);
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(
+                    java.util.Map.of(
+                            "success", false,
+                            "message", e.getMessage() != null ? e.getMessage() : "Failed to create shop"));
+        }
+    }
+
+    @PostMapping(value = "/with-logo", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    @PreAuthorize("hasAnyRole('VENDOR', 'CUSTOMER')")
+    @Operation(summary = "Create a new shop with logo file upload", description = "Create a new shop with logo file upload. CUSTOMER role will be automatically changed to VENDOR after shop creation.")
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "201", description = "Shop created successfully", content = @Content(mediaType = "application/json", schema = @Schema(implementation = ShopDTO.class))),
+            @ApiResponse(responseCode = "400", description = "Bad request - Invalid shop data, invalid logo file, or shop with same slug/name already exists", content = @Content(mediaType = "application/json")),
+            @ApiResponse(responseCode = "401", description = "Unauthorized - Authentication required", content = @Content(mediaType = "application/json")),
+            @ApiResponse(responseCode = "403", description = "Forbidden - VENDOR or ADMIN role required", content = @Content(mediaType = "application/json"))
+    })
+    public ResponseEntity<?> createShopWithLogo(
+            @RequestParam("name") String name,
+            @RequestParam(value = "description", required = false) String description,
+            @RequestParam("contactEmail") String contactEmail,
+            @RequestParam("contactPhone") String contactPhone,
+            @RequestParam("address") String address,
+            @RequestParam(value = "isActive", defaultValue = "true") Boolean isActive,
+            @RequestParam(value = "logo", required = false) MultipartFile logoFile) {
+        try {
+            UUID ownerId = getCurrentUserId();
+
+            ShopDTO shopDTO = new ShopDTO();
+            shopDTO.setName(name);
+            shopDTO.setDescription(description);
+            shopDTO.setContactEmail(contactEmail);
+            shopDTO.setContactPhone(contactPhone);
+            shopDTO.setAddress(address);
+            shopDTO.setIsActive(isActive);
+
+            if (logoFile != null && !logoFile.isEmpty()) {
+                if (!logoFile.getContentType().startsWith("image/")) {
+                    return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(
+                            java.util.Map.of(
+                                    "success", false,
+                                    "message", "Logo must be an image file"));
+                }
+
+                if (logoFile.getSize() > 5 * 1024 * 1024) {
+                    return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(
+                            java.util.Map.of(
+                                    "success", false,
+                                    "message", "Logo file size must be less than 5MB"));
+                }
+
+                try {
+                    Map<String, String> uploadResult = cloudinaryService.uploadImage(logoFile);
+                    String logoUrl = uploadResult.get("url");
+                    if (logoUrl != null) {
+                        shopDTO.setLogoUrl(logoUrl);
+                    }
+                } catch (IOException e) {
+                    log.error("Failed to upload logo to Cloudinary", e);
+                    return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(
+                            java.util.Map.of(
+                                    "success", false,
+                                    "message", "Failed to upload logo: " + e.getMessage()));
+                }
+            }
+
             ShopDTO createdShop = shopService.createShop(shopDTO, ownerId);
             return new ResponseEntity<>(createdShop, HttpStatus.CREATED);
         } catch (Exception e) {
@@ -183,21 +259,64 @@ public class ShopController {
     }
 
     @GetMapping("/user-shops")
-    @PreAuthorize("hasAnyRole('VENDOR', 'EMPLOYEE', 'DELIVERY_AGENT', 'ADMIN')")
-    @Operation(summary = "Get user shops", description = "Retrieve all shops associated with the current user (owned shops for VENDOR, assigned shop for EMPLOYEE/DELIVERY_AGENT)")
+    @PreAuthorize("hasAnyRole('VENDOR', 'CUSTOMER', 'EMPLOYEE', 'DELIVERY_AGENT', 'ADMIN')")
+    @Operation(summary = "Get user shops", description = "Retrieve all shops associated with the current user (owned shops for VENDOR/CUSTOMER, assigned shop for EMPLOYEE/DELIVERY_AGENT)")
     @ApiResponses(value = {
             @ApiResponse(responseCode = "200", description = "Shops retrieved successfully", content = @Content(mediaType = "application/json", schema = @Schema(implementation = ShopDTO.class))),
             @ApiResponse(responseCode = "400", description = "Bad request - Failed to retrieve shops", content = @Content(mediaType = "application/json")),
             @ApiResponse(responseCode = "401", description = "Unauthorized - Authentication required", content = @Content(mediaType = "application/json")),
-            @ApiResponse(responseCode = "403", description = "Forbidden - VENDOR, EMPLOYEE, DELIVERY_AGENT or ADMIN role required", content = @Content(mediaType = "application/json"))
+            @ApiResponse(responseCode = "403", description = "Forbidden - VENDOR, CUSTOMER, EMPLOYEE, DELIVERY_AGENT or ADMIN role required", content = @Content(mediaType = "application/json"))
     })
     public ResponseEntity<?> getUserShops() {
+        log.info("ShopController.getUserShops: Request received");
+        
         try {
+            org.springframework.security.core.Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+            log.info("ShopController.getUserShops: SecurityContext authentication - present: {}", auth != null);
+            
+            if (auth == null) {
+                log.error("ShopController.getUserShops: No authentication found in SecurityContext");
+                return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(
+                        java.util.Map.of(
+                                "success", false,
+                                "message", "Authentication required"));
+            }
+            
+            log.info("ShopController.getUserShops: Authentication details - name: {}, principal: {}, authenticated: {}", 
+                    auth.getName(), auth.getPrincipal().getClass().getSimpleName(), auth.isAuthenticated());
+            log.info("ShopController.getUserShops: Authorities: {}", auth.getAuthorities());
+            
+            if (auth.getAuthorities() != null) {
+                auth.getAuthorities().forEach(authority -> {
+                    log.info("ShopController.getUserShops: Authority - {}", authority.getAuthority());
+                });
+            }
+            
             UUID userId = getCurrentUserId();
+            log.info("ShopController.getUserShops: Extracted userId: {}", userId);
+            
             List<ShopDTO> shops = shopService.getUserShops(userId);
+            log.info("ShopController.getUserShops: Retrieved {} shops for user {}", shops.size(), userId);
+            
             return ResponseEntity.ok(shops);
+        } catch (org.springframework.security.access.AccessDeniedException e) {
+            log.error("ShopController.getUserShops: Access denied exception", e);
+            org.springframework.security.core.Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+            if (auth != null) {
+                log.error("ShopController.getUserShops: User: {}, Authorities: {}", 
+                        auth.getName(), auth.getAuthorities());
+            }
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).body(
+                    java.util.Map.of(
+                            "success", false,
+                            "message", "Access denied: " + e.getMessage()));
         } catch (Exception e) {
-            log.error("Failed to get shops for current user", e);
+            log.error("ShopController.getUserShops: Exception occurred", e);
+            org.springframework.security.core.Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+            if (auth != null) {
+                log.error("ShopController.getUserShops: Exception context - User: {}, Authorities: {}", 
+                        auth.getName(), auth.getAuthorities());
+            }
             return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(
                     java.util.Map.of(
                             "success", false,

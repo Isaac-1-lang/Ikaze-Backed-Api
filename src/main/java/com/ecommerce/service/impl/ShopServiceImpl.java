@@ -39,7 +39,27 @@ public class ShopServiceImpl implements ShopService {
         User owner = userRepository.findById(ownerId)
                 .orElseThrow(() -> new EntityNotFoundException("User not found with id: " + ownerId));
 
-        if (shopRepository.existsBySlug(shopDTO.getSlug())) {
+        com.ecommerce.Enum.UserRole userRole = owner.getRole();
+
+        if (userRole == com.ecommerce.Enum.UserRole.ADMIN) {
+            throw new CustomException("Administrators cannot create shops. Only vendors can own shops.");
+        }
+
+        if (userRole == com.ecommerce.Enum.UserRole.DELIVERY_AGENT || 
+            userRole == com.ecommerce.Enum.UserRole.EMPLOYEE) {
+            throw new CustomException(
+                "You are currently associated with a shop as " + userRole.name() + ". " +
+                "Please contact the shop administrator to remove your association first. " +
+                "Once your role is changed back to CUSTOMER, you can create your own shop."
+            );
+        }
+
+        List<Shop> existingShops = shopRepository.findByOwnerId(ownerId);
+        if (!existingShops.isEmpty()) {
+            throw new CustomException("You already have a shop. Each user can only own one shop.");
+        }
+
+        if (shopDTO.getSlug() != null && shopRepository.existsBySlug(shopDTO.getSlug())) {
             throw new CustomException("Shop with slug '" + shopDTO.getSlug() + "' already exists");
         }
 
@@ -49,7 +69,12 @@ public class ShopServiceImpl implements ShopService {
 
         Shop shop = convertToEntity(shopDTO);
         shop.setOwner(owner);
-        shop.setStatus(Shop.ShopStatus.PENDING);
+        shop.setStatus(Shop.ShopStatus.ACTIVE);
+
+        if (userRole == com.ecommerce.Enum.UserRole.CUSTOMER) {
+            owner.setRole(com.ecommerce.Enum.UserRole.VENDOR);
+            userRepository.save(owner);
+        }
 
         Shop savedShop = shopRepository.save(shop);
         return convertToDTO(savedShop);

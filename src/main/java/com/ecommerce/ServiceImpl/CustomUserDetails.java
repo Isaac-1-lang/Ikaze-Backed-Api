@@ -9,7 +9,9 @@ import org.springframework.security.core.userdetails.UserDetails;
 
 import com.ecommerce.entity.User;
 import com.ecommerce.Enum.UserRole;
+import lombok.extern.slf4j.Slf4j;
 
+@Slf4j
 public class CustomUserDetails implements UserDetails {
 
     private String name;
@@ -22,6 +24,8 @@ public class CustomUserDetails implements UserDetails {
         this.password = user.getPassword();
         this.role = user.getRole();
         this.userId = user.getId();
+        log.info("CustomUserDetails: Created for user - email: {}, role: {}, userId: {}", 
+                name, role, userId);
     }
 
     public UUID getUserId() {
@@ -30,7 +34,12 @@ public class CustomUserDetails implements UserDetails {
 
     @Override
     public Collection<? extends GrantedAuthority> getAuthorities() {
-        return java.util.Collections.singletonList(new SimpleGrantedAuthority("ROLE_" + role));
+        String authority = "ROLE_" + role.name();
+        log.info("CustomUserDetails: Creating authority for role {} -> {}", role, authority);
+        Collection<? extends GrantedAuthority> authorities = java.util.Collections.singletonList(
+                new SimpleGrantedAuthority(authority));
+        log.info("CustomUserDetails: Returning authorities: {}", authorities);
+        return authorities;
     }
 
     @Override

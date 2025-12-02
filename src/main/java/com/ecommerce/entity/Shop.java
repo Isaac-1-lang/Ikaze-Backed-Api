@@ -25,7 +25,7 @@ public class Shop {
 
     @NotBlank(message = "Shop name is required")
     @Size(min = 2, max = 100, message = "Shop name must be between 2 and 100 characters")
-    @Column(name = "name", nullable = false)
+    @Column(name = "shop_name", nullable = false)
     private String name;
 
     @Size(max = 500, message = "Description must not exceed 500 characters")
@@ -40,7 +40,7 @@ public class Shop {
 
     @Enumerated(EnumType.STRING)
     @Column(name = "status", nullable = false)
-    private ShopStatus status = ShopStatus.PENDING;
+    private ShopStatus status = ShopStatus.ACTIVE;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "owner_id", nullable = false)
