@@ -1301,8 +1301,10 @@ public class ProductServiceImpl implements ProductService {
 
             boolean isTextSearch = (searchDTO.getName() != null && !searchDTO.getName().trim().isEmpty()) ||
                     (searchDTO.getSearchKeyword() != null && !searchDTO.getSearchKeyword().trim().isEmpty());
+            boolean hasShopFilter = searchDTO.getShopId() != null;
 
-            if (isTextSearch) {
+            // If shop filter is present, skip Elasticsearch to ensure shop scoping is enforced
+            if (isTextSearch && !hasShopFilter) {
                 return searchProductsWithElasticsearch(searchDTO, page, size, sortBy, sortDirection);
             } else {
                 Sort.Direction direction = sortDirection.equalsIgnoreCase("asc") ? Sort.Direction.ASC
@@ -1673,6 +1675,12 @@ public class ProductServiceImpl implements ProductService {
             if (searchDTO.getProductId() != null) {
 
                 predicates.add(criteriaBuilder.equal(root.get("productId"), searchDTO.getProductId()));
+
+            }
+
+            if (searchDTO.getShopId() != null) {
+
+                predicates.add(criteriaBuilder.equal(root.get("shop").get("shopId"), searchDTO.getShopId()));
 
             }
 

@@ -446,6 +446,20 @@ public class OrderServiceImpl implements OrderService {
         Page<Order> ordersPage = orderRepository.findAllWithDetailsForAdmin(pageable);
         return ordersPage.map(this::toAdminOrderDTO);
     }
+    
+    @Override
+    @Transactional(readOnly = true)
+    public Page<AdminOrderDTO> getAllAdminOrdersPaginated(Pageable pageable, UUID shopId) {
+        if (shopId != null) {
+            // Filter orders by shop - orders contain products from the shop
+            Page<Order> ordersPage = orderRepository.findAllWithDetailsForAdminByShop(shopId, pageable);
+            return ordersPage.map(this::toAdminOrderDTO);
+        } else {
+            // No shop filter, return all orders
+            Page<Order> ordersPage = orderRepository.findAllWithDetailsForAdmin(pageable);
+            return ordersPage.map(this::toAdminOrderDTO);
+        }
+    }
 
     @Override
     @Transactional(readOnly = true)

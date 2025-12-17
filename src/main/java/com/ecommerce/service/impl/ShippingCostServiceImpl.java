@@ -10,10 +10,12 @@ import com.ecommerce.entity.ProductDetail;
 import com.ecommerce.entity.ProductVariant;
 import com.ecommerce.entity.ShippingCost;
 import com.ecommerce.entity.Warehouse;
+import com.ecommerce.entity.Shop;
 import com.ecommerce.repository.ProductRepository;
 import com.ecommerce.repository.ProductVariantRepository;
 import com.ecommerce.repository.ShippingCostRepository;
 import com.ecommerce.repository.WarehouseRepository;
+import com.ecommerce.repository.ShopRepository;
 import com.ecommerce.service.GeocodingService;
 import com.ecommerce.service.ShippingCostService;
 import com.ecommerce.service.EnhancedMultiWarehouseAllocator;
@@ -42,16 +44,34 @@ public class ShippingCostServiceImpl implements ShippingCostService {
     private final ProductVariantRepository productVariantRepository;
     private final GeocodingService geocodingService;
     private final EnhancedMultiWarehouseAllocator enhancedWarehouseAllocator;
+    private final ShopRepository shopRepository;
 
     @Override
     @Transactional
     public ShippingCostDTO createShippingCost(CreateShippingCostDTO createShippingCostDTO) {
-        log.info("Creating shipping cost: {}", createShippingCostDTO.getName());
-
-        if (shippingCostRepository.existsByName(createShippingCostDTO.getName())) {
-            throw new IllegalArgumentException(
-                    "Shipping cost with name '" + createShippingCostDTO.getName() + "' already exists");
+        // Backwards compatibility: prefer dto.shopId
+        if (createShippingCostDTO.getShopId() == null) {
+            throw new IllegalArgumentException("shopId is required");
         }
+        return createShippingCost(createShippingCostDTO, createShippingCostDTO.getShopId());
+    }
+
+    @Override
+    @Transactional
+    public ShippingCostDTO createShippingCost(CreateShippingCostDTO createShippingCostDTO, UUID shopId) {
+        log.info("Creating shipping cost: {} for shop {}", createShippingCostDTO.getName(), shopId);
+
+        if (shopId == null) {
+            throw new IllegalArgumentException("shopId is required");
+        }
+
+        if (shippingCostRepository.existsByNameAndShopShopId(createShippingCostDTO.getName(), shopId)) {
+            throw new IllegalArgumentException(
+                    "Shipping cost with name '" + createShippingCostDTO.getName() + "' already exists for this shop");
+        }
+
+        Shop shop = shopRepository.findById(shopId)
+                .orElseThrow(() -> new EntityNotFoundException("Shop not found with ID: " + shopId));
 
         ShippingCost shippingCost = ShippingCost.builder()
                 .name(createShippingCostDTO.getName())
@@ -62,11 +82,19 @@ public class ShippingCostServiceImpl implements ShippingCostService {
                 .internationalFee(createShippingCostDTO.getInternationalFee())
                 .freeShippingThreshold(createShippingCostDTO.getFreeShippingThreshold())
                 .isActive(createShippingCostDTO.getIsActive())
+                .shop(shop)
                 .build();
 
         ShippingCost savedShippingCost = shippingCostRepository.save(shippingCost);
-        log.info("Successfully created shipping cost with ID: {}", savedShippingCost.getId());
 
+        // If activating this config, deactivate others for this shop
+        if (Boolean.TRUE.equals(savedShippingCost.getIsActive())) {
+            shippingCostRepository.deactivateAllShippingCostsByShopId(shopId);
+            savedShippingCost.setIsActive(true);
+            savedShippingCost = shippingCostRepository.save(savedShippingCost);
+        }
+
+        log.info("Successfully created shipping cost with ID: {}", savedShippingCost.getId());
         return mapToDTO(savedShippingCost);
     }
 
@@ -78,9 +106,29 @@ public class ShippingCostServiceImpl implements ShippingCostService {
     }
 
     @Override
+    public Page<ShippingCostDTO> getAllShippingCosts(UUID shopId, Pageable pageable) {
+        log.info("Fetching all shipping costs with pagination for shop {}", shopId);
+        if (shopId == null) {
+            throw new IllegalArgumentException("shopId is required");
+        }
+        Page<ShippingCost> shippingCosts = shippingCostRepository.findByShopShopId(shopId, pageable);
+        return shippingCosts.map(this::mapToDTO);
+    }
+
+    @Override
     public List<ShippingCostDTO> getActiveShippingCosts() {
         log.info("Fetching all active shipping costs");
         List<ShippingCost> shippingCosts = shippingCostRepository.findByIsActiveTrue();
+        return shippingCosts.stream().map(this::mapToDTO).collect(Collectors.toList());
+    }
+
+    @Override
+    public List<ShippingCostDTO> getActiveShippingCosts(UUID shopId) {
+        log.info("Fetching all active shipping costs for shop {}", shopId);
+        if (shopId == null) {
+            throw new IllegalArgumentException("shopId is required");
+        }
+        List<ShippingCost> shippingCosts = shippingCostRepository.findByShopShopIdAndIsActiveTrue(shopId);
         return shippingCosts.stream().map(this::mapToDTO).collect(Collectors.toList());
     }
 
@@ -93,17 +141,43 @@ public class ShippingCostServiceImpl implements ShippingCostService {
     }
 
     @Override
+    public ShippingCostDTO getShippingCostById(Long id, UUID shopId) {
+        ShippingCostDTO dto = getShippingCostById(id);
+        if (shopId == null) {
+            throw new IllegalArgumentException("shopId is required");
+        }
+        if (dto.getShopId() == null || !shopId.equals(dto.getShopId())) {
+            throw new EntityNotFoundException("Shipping cost not found for shop with ID: " + shopId);
+        }
+        return dto;
+    }
+
+    @Override
     @Transactional
     public ShippingCostDTO updateShippingCost(Long id, UpdateShippingCostDTO updateShippingCostDTO) {
-        log.info("Updating shipping cost with ID: {}", id);
+        // Backwards compatibility: update without shopId (not recommended)
+        ShippingCost shippingCost = shippingCostRepository.findById(id)
+                .orElseThrow(() -> new EntityNotFoundException("Shipping cost not found with ID: " + id));
+        UUID shopId = shippingCost.getShop() != null ? shippingCost.getShop().getShopId() : null;
+        return updateShippingCost(id, updateShippingCostDTO, shopId);
+    }
+
+    @Override
+    @Transactional
+    public ShippingCostDTO updateShippingCost(Long id, UpdateShippingCostDTO updateShippingCostDTO, UUID shopId) {
+        log.info("Updating shipping cost with ID: {} for shop {}", id, shopId);
 
         ShippingCost shippingCost = shippingCostRepository.findById(id)
                 .orElseThrow(() -> new EntityNotFoundException("Shipping cost not found with ID: " + id));
 
+        if (shopId == null || shippingCost.getShop() == null || !shopId.equals(shippingCost.getShop().getShopId())) {
+            throw new EntityNotFoundException("Shipping cost not found for shop with ID: " + shopId);
+        }
+
         if (updateShippingCostDTO.getName() != null &&
-                shippingCostRepository.existsByNameAndIdNot(updateShippingCostDTO.getName(), id)) {
+                shippingCostRepository.existsByNameAndShopShopIdAndIdNot(updateShippingCostDTO.getName(), shopId, id)) {
             throw new IllegalArgumentException(
-                    "Shipping cost with name '" + updateShippingCostDTO.getName() + "' already exists");
+                    "Shipping cost with name '" + updateShippingCostDTO.getName() + "' already exists for this shop");
         }
 
         if (updateShippingCostDTO.getName() != null) {
@@ -127,10 +201,17 @@ public class ShippingCostServiceImpl implements ShippingCostService {
         if (updateShippingCostDTO.getFreeShippingThreshold() != null) {
             shippingCost.setFreeShippingThreshold(updateShippingCostDTO.getFreeShippingThreshold());
         }
-        if (updateShippingCostDTO.getIsActive() != null) {
-            shippingCost.setIsActive(updateShippingCostDTO.getIsActive());
+
+        boolean requestedActiveChange = updateShippingCostDTO.getIsActive() != null;
+        if (requestedActiveChange) {
+            if (Boolean.TRUE.equals(updateShippingCostDTO.getIsActive())) {
+                shippingCostRepository.deactivateAllShippingCostsByShopId(shopId);
+                shippingCost.setIsActive(true);
+            } else {
+                shippingCost.setIsActive(false);
+            }
         }
-        
+
         ShippingCost updatedShippingCost = shippingCostRepository.save(shippingCost);
         log.info("Successfully updated shipping cost with ID: {}", updatedShippingCost.getId());
 
@@ -151,10 +232,34 @@ public class ShippingCostServiceImpl implements ShippingCostService {
     }
 
     @Override
+    @Transactional
+    public void deleteShippingCost(Long id, UUID shopId) {
+        ShippingCost shippingCost = shippingCostRepository.findById(id)
+                .orElseThrow(() -> new EntityNotFoundException("Shipping cost not found with ID: " + id));
+
+        if (shopId == null || shippingCost.getShop() == null || !shopId.equals(shippingCost.getShop().getShopId())) {
+            throw new EntityNotFoundException("Shipping cost not found for shop with ID: " + shopId);
+        }
+
+        deleteShippingCost(id);
+    }
+
+    @Override
     public Page<ShippingCostDTO> searchShippingCosts(String name, Pageable pageable) {
         log.info("Searching shipping costs by name: {}", name);
         Page<ShippingCost> shippingCosts = shippingCostRepository.findByNameContainingIgnoreCaseAndIsActiveTrue(name,
                 pageable);
+        return shippingCosts.map(this::mapToDTO);
+    }
+
+    @Override
+    public Page<ShippingCostDTO> searchShippingCosts(String name, UUID shopId, Pageable pageable) {
+        log.info("Searching shipping costs by name: {} for shop {}", name, shopId);
+        if (shopId == null) {
+            throw new IllegalArgumentException("shopId is required");
+        }
+        Page<ShippingCost> shippingCosts = shippingCostRepository
+                .findByNameContainingIgnoreCaseAndShopShopId(name, shopId, pageable);
         return shippingCosts.map(this::mapToDTO);
     }
 
@@ -204,10 +309,67 @@ public class ShippingCostServiceImpl implements ShippingCostService {
     }
 
     @Override
+    public BigDecimal calculateShippingCost(BigDecimal weight, BigDecimal distance, BigDecimal orderValue, UUID shopId) {
+        log.info("Calculating shipping cost for shop {} (weight: {}, distance: {}, orderValue: {})",
+                shopId, weight, distance, orderValue);
+
+        if (shopId == null) {
+            throw new IllegalArgumentException("shopId is required");
+        }
+
+        List<ShippingCost> shippingCosts = shippingCostRepository.findByShopShopIdAndIsActiveTrue(shopId);
+        if (shippingCosts.isEmpty()) {
+            log.warn("No active shipping cost configuration found for shop {}", shopId);
+            return BigDecimal.ZERO;
+        }
+
+        // Reuse existing logic by temporarily using the first config
+        ShippingCost shippingCost = shippingCosts.get(0);
+
+        if (shippingCost.getFreeShippingThreshold() != null &&
+                orderValue != null &&
+                orderValue.compareTo(shippingCost.getFreeShippingThreshold()) >= 0) {
+            log.info("Order qualifies for free shipping");
+            return BigDecimal.ZERO;
+        }
+
+        BigDecimal totalCost = BigDecimal.ZERO;
+
+        if (shippingCost.getBaseFee() != null) {
+            totalCost = totalCost.add(shippingCost.getBaseFee());
+        }
+
+        if (shippingCost.getDistanceKmCost() != null && distance != null) {
+            BigDecimal distanceCost = shippingCost.getDistanceKmCost().multiply(distance);
+            totalCost = totalCost.add(distanceCost);
+        }
+
+        if (shippingCost.getWeightKgCost() != null && weight != null) {
+            BigDecimal weightCost = shippingCost.getWeightKgCost().multiply(weight);
+            totalCost = totalCost.add(weightCost);
+        }
+
+        if (shippingCost.getInternationalFee() != null) {
+            totalCost = totalCost.add(shippingCost.getInternationalFee());
+        }
+
+        log.info("Calculated shipping cost: {}", totalCost);
+        return totalCost;
+    }
+
+    @Override
     public BigDecimal calculateOrderShippingCost(AddressDto deliveryAddress, List<CartItemDTO> items,
             BigDecimal orderValue) {
         
         com.ecommerce.dto.ShippingDetailsDTO details = calculateEnhancedShippingDetails(deliveryAddress, items, orderValue);
+        return details.getShippingCost();
+    }
+
+    @Override
+    public BigDecimal calculateOrderShippingCost(AddressDto deliveryAddress, List<CartItemDTO> items,
+            BigDecimal orderValue, UUID shopId) {
+        com.ecommerce.dto.ShippingDetailsDTO details =
+                calculateEnhancedShippingDetails(deliveryAddress, items, orderValue, shopId);
         return details.getShippingCost();
     }
 
@@ -219,18 +381,33 @@ public class ShippingCostServiceImpl implements ShippingCostService {
     }
 
     @Override
+    public com.ecommerce.dto.ShippingDetailsDTO calculateShippingDetails(AddressDto deliveryAddress,
+            List<CartItemDTO> items, BigDecimal orderValue, UUID shopId) {
+        return calculateEnhancedShippingDetails(deliveryAddress, items, orderValue, shopId);
+    }
+
+    @Override
     public com.ecommerce.dto.ShippingDetailsDTO calculateEnhancedShippingDetails(AddressDto deliveryAddress,
             List<CartItemDTO> items, BigDecimal orderValue) {
+        // Backwards compatibility: fallback to old behavior
+        return calculateEnhancedShippingDetails(deliveryAddress, items, orderValue, null);
+    }
+
+    @Override
+    public com.ecommerce.dto.ShippingDetailsDTO calculateEnhancedShippingDetails(AddressDto deliveryAddress,
+            List<CartItemDTO> items, BigDecimal orderValue, UUID shopId) {
         
         log.info("=== ENHANCED SHIPPING DETAILS CALCULATION START ===");
         log.info("Delivery Address: {} {}, {}, {}", deliveryAddress.getStreetAddress(),
                 deliveryAddress.getCity(), deliveryAddress.getState(), deliveryAddress.getCountry());
         log.info("Order Value: {}, Items Count: {}", orderValue, items.size());
 
-        // Step 1: Get active shipping configuration
-        List<ShippingCost> activeShippingCosts = shippingCostRepository.findByIsActiveTrue();
+        // Step 1: Get active shipping configuration (shop-scoped if shopId provided)
+        List<ShippingCost> activeShippingCosts = (shopId != null)
+                ? shippingCostRepository.findByShopShopIdAndIsActiveTrue(shopId)
+                : shippingCostRepository.findByIsActiveTrue();
         if (activeShippingCosts.isEmpty()) {
-            log.warn("No active shipping cost configuration found");
+            log.warn("No active shipping cost configuration found{}", shopId != null ? " for shop " + shopId : "");
             return buildEmptyShippingDetails();
         }
 
@@ -290,18 +467,13 @@ public class ShippingCostServiceImpl implements ShippingCostService {
 
         String furthestWarehouseName = "Unknown";
         String furthestWarehouseCountry = "Unknown";
-        String hubWarehouseName = "Unknown";
-        String hubWarehouseCountry = "Unknown";
         
         try {
             if (distanceResult.furthestWarehouse != null) {
                 furthestWarehouseName = distanceResult.furthestWarehouse.getName();
                 furthestWarehouseCountry = distanceResult.furthestWarehouse.getCountry();
             }
-            if (distanceResult.hubWarehouse != null) {
-                hubWarehouseName = distanceResult.hubWarehouse.getName();
-                hubWarehouseCountry = distanceResult.hubWarehouse.getCountry();
-            }
+            // hub warehouse details are not currently returned to the client
         } catch (Exception e) {
             log.warn("Error accessing warehouse properties: {}", e.getMessage());
         }
@@ -344,6 +516,33 @@ public class ShippingCostServiceImpl implements ShippingCostService {
         return mapToDTO(savedShippingCost);
     }
 
+    @Override
+    @Transactional
+    public ShippingCostDTO toggleShippingCostStatus(Long id, UUID shopId) {
+        if (shopId == null) {
+            throw new IllegalArgumentException("shopId is required");
+        }
+
+        ShippingCost shippingCost = shippingCostRepository.findById(id)
+                .orElseThrow(() -> new EntityNotFoundException("Shipping cost not found with id: " + id));
+
+        if (shippingCost.getShop() == null || !shopId.equals(shippingCost.getShop().getShopId())) {
+            throw new EntityNotFoundException("Shipping cost not found for shop with id: " + shopId);
+        }
+
+        if (Boolean.TRUE.equals(shippingCost.getIsActive())) {
+            shippingCost.setIsActive(false);
+            log.info("Deactivated shipping cost: {}", shippingCost.getName());
+        } else {
+            shippingCostRepository.deactivateAllShippingCostsByShopId(shopId);
+            shippingCost.setIsActive(true);
+            log.info("Activated shipping cost: {} and deactivated all others for shop {}", shippingCost.getName(), shopId);
+        }
+
+        ShippingCost savedShippingCost = shippingCostRepository.save(shippingCost);
+        return mapToDTO(savedShippingCost);
+    }
+
     // ==================== PRIVATE HELPER METHODS ====================
 
     /**
@@ -364,9 +563,7 @@ public class ShippingCostServiceImpl implements ShippingCostService {
      */
     private static class DistanceCalculationResult {
         double totalDistance;
-        Warehouse hubWarehouse;
         Warehouse furthestWarehouse;
-        double maxWarehouseDistance;
         boolean isInternational;
     }
 
@@ -506,8 +703,6 @@ public class ShippingCostServiceImpl implements ShippingCostService {
                 hubWarehouse.getId(), minDistanceToCustomer);
         }
 
-        result.hubWarehouse = hubWarehouse;
-
         // Step 2: Calculate distances from each warehouse to hub and find furthest
         double cumulativeWarehouseDistance = 0.0;
         Warehouse furthestWarehouse = hubWarehouse;
@@ -559,7 +754,6 @@ public class ShippingCostServiceImpl implements ShippingCostService {
         // Total = Σ(warehouse → hub) + (hub → customer)
         result.totalDistance = cumulativeWarehouseDistance + minDistanceToCustomer;
         result.furthestWarehouse = furthestWarehouse;
-        result.maxWarehouseDistance = maxWarehouseToHubDistance;
         result.isInternational = isInternational;
 
         log.info("Distance breakdown:");
@@ -739,6 +933,8 @@ public class ShippingCostServiceImpl implements ShippingCostService {
                 .internationalFee(shippingCost.getInternationalFee())
                 .freeShippingThreshold(shippingCost.getFreeShippingThreshold())
                 .isActive(shippingCost.getIsActive())
+                .shopId(shippingCost.getShop() != null ? shippingCost.getShop().getShopId() : null)
+                .shopName(shippingCost.getShop() != null ? shippingCost.getShop().getName() : null)
                 .createdAt(shippingCost.getCreatedAt())
                 .updatedAt(shippingCost.getUpdatedAt())
                 .build();

@@ -145,6 +145,23 @@ public interface OrderRepository extends JpaRepository<Order, Long>, OrderReposi
         List<Order> findAllWithDetailsForAdmin();
 
         /**
+         * Find all orders with all details for admin filtered by shop
+         * Orders are filtered by checking if any order item has a product from the specified shop
+         */
+        @Query("SELECT DISTINCT o FROM Order o " +
+                        "LEFT JOIN FETCH o.user u " +
+                        "LEFT JOIN FETCH o.orderItems oi " +
+                        "LEFT JOIN FETCH oi.product p " +
+                        "LEFT JOIN FETCH oi.productVariant v " +
+                        "LEFT JOIN FETCH v.product pv " +
+                        "LEFT JOIN FETCH o.orderInfo info " +
+                        "LEFT JOIN FETCH o.orderAddress addr " +
+                        "LEFT JOIN FETCH o.orderCustomerInfo customer " +
+                        "LEFT JOIN FETCH o.orderTransaction tx " +
+                        "WHERE (p.shop.shopId = :shopId OR pv.shop.shopId = :shopId)")
+        Page<Order> findAllWithDetailsForAdminByShop(@Param("shopId") UUID shopId, Pageable pageable);
+        
+        /**
          * Find all orders with all details for admin with pagination
          */
         @Query("SELECT DISTINCT o FROM Order o " +

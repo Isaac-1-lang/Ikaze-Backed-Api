@@ -7,6 +7,7 @@ import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 import com.fasterxml.jackson.annotation.JsonManagedReference;
+import com.fasterxml.jackson.annotation.JsonBackReference;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
@@ -26,7 +27,7 @@ public class Brand {
 
     @NotBlank(message = "Brand name is required")
     @Size(min = 2, max = 100, message = "Brand name must be between 2 and 100 characters")
-    @Column(nullable = false, unique = true)
+    @Column(nullable = false)
     private String brandName;
 
     @Size(max = 500, message = "Description must not exceed 500 characters")
@@ -39,7 +40,7 @@ public class Brand {
     @Column(name = "website_url")
     private String websiteUrl;
 
-    @Column(name = "slug", unique = true)
+    @Column(name = "slug")
     private String slug;
 
     @Column(name = "is_active")
@@ -63,6 +64,11 @@ public class Brand {
     @OneToMany(mappedBy = "brand", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
     @JsonManagedReference
     private List<Product> products = new ArrayList<>();
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "shop_id")
+    @JsonBackReference
+    private Shop shop;
 
     @Column(name = "created_at")
     private LocalDateTime createdAt;

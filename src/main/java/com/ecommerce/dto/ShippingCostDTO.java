@@ -7,6 +7,7 @@ import lombok.NoArgsConstructor;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.UUID;
 
 @Data
 @Builder
@@ -22,6 +23,8 @@ public class ShippingCostDTO {
     private BigDecimal internationalFee;
     private BigDecimal freeShippingThreshold;
     private Boolean isActive;
+    private UUID shopId;
+    private String shopName;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 }

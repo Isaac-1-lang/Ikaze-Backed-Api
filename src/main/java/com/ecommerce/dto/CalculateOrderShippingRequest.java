@@ -7,6 +7,7 @@ import lombok.NoArgsConstructor;
 
 import java.math.BigDecimal;
 import java.util.List;
+import java.util.UUID;
 
 @Data
 @Builder
@@ -17,4 +18,5 @@ public class CalculateOrderShippingRequest {
     private List<CartItemDTO> items;
     private BigDecimal orderValue;
     private String userId;
+    private UUID shopId;
 }

@@ -11,6 +11,7 @@ import lombok.NoArgsConstructor;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.UUID;
 
 @Data
 @Builder
@@ -32,6 +33,8 @@ public class WarehouseDTO {
     private Double longitude;
     private Boolean isActive;
     private Integer productCount;
+    private UUID shopId;
+    private String shopName;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
     private List<WarehouseImageDTO> images;

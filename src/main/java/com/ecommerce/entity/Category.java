@@ -26,7 +26,7 @@ public class Category {
 
     @NotBlank(message = "Category name is required")
     @Size(min = 2, max = 100, message = "Category name must be between 2 and 100 characters")
-    @Column(nullable = false, unique = true)
+    @Column(nullable = false)
     private String name;
 
     @Size(max = 500, message = "Description must not exceed 500 characters")
@@ -36,7 +36,7 @@ public class Category {
     @Column(name = "image_url", columnDefinition = "TEXT")
     private String imageUrl;
 
-    @Column(name = "slug", unique = true)
+    @Column(name = "slug")
     private String slug;
 
     @ManyToOne(fetch = FetchType.LAZY)
@@ -66,6 +66,11 @@ public class Category {
     @OneToMany(mappedBy = "category", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
     @JsonManagedReference
     private List<Product> products;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "shop_id")
+    @JsonBackReference
+    private Shop shop;
 
     @Column(name = "created_at")
     private LocalDateTime createdAt;

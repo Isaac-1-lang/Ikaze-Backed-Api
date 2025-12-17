@@ -21,6 +21,15 @@ public interface WarehouseService {
     Page<WarehouseDTO> getAllWarehouses(Pageable pageable);
 
     List<WarehouseDTO> getAllWarehouses();
+    
+    // Overloaded methods with shopId parameter
+    default Page<WarehouseDTO> getAllWarehouses(UUID shopId, Pageable pageable) {
+        return getAllWarehouses(pageable);
+    }
+    
+    default List<WarehouseDTO> getAllWarehouses(UUID shopId) {
+        return getAllWarehouses();
+    }
     WarehouseDTO updateWarehouse(Long warehouseId, UpdateWarehouseDTO updateWarehouseDTO,
             List<MultipartFile> newImages);
 
@@ -38,8 +47,18 @@ public interface WarehouseService {
     boolean removeImageFromWarehouse(Long warehouseId, Long imageId);
 
     List<WarehouseDTO> getWarehousesByLocation(String location);
+    
+    // Overloaded method with shopId parameter
+    default List<WarehouseDTO> getWarehousesByLocation(String location, UUID shopId) {
+        return getWarehousesByLocation(location);
+    }
 
     List<WarehouseDTO> getWarehousesNearLocation(Double latitude, Double longitude, Double radiusKm);
+    
+    // Overloaded method with shopId parameter
+    default List<WarehouseDTO> getWarehousesNearLocation(Double latitude, Double longitude, Double radiusKm, UUID shopId) {
+        return getWarehousesNearLocation(latitude, longitude, radiusKm);
+    }
 
     List<String> getWarehouseCountries();
 

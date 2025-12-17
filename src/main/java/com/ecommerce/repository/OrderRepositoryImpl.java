@@ -36,8 +36,27 @@ public class OrderRepositoryImpl implements OrderRepositoryCustom {
         Join<Object, Object> orderAddress = order.join("orderAddress", JoinType.LEFT);
         Join<Object, Object> orderCustomerInfo = order.join("orderCustomerInfo", JoinType.LEFT);
         Join<Object, Object> orderTransaction = order.join("orderTransaction", JoinType.LEFT);
+        Join<Object, Object> orderItems = order.join("orderItems", JoinType.LEFT);
+        Join<Object, Object> product = orderItems.join("product", JoinType.LEFT);
+        Join<Object, Object> productVariant = orderItems.join("productVariant", JoinType.LEFT);
+        Join<Object, Object> variantProduct = productVariant.join("product", JoinType.LEFT);
 
         List<Predicate> predicates = new ArrayList<>();
+        
+        // Shop filter - filter orders that have at least one item from the specified shop
+        // An OrderItem can have either a product (direct) or a productVariant (which has a product)
+        if (searchRequest.getShopId() != null) {
+            Predicate productShopFilter = cb.and(
+                cb.isNotNull(product),
+                cb.equal(product.get("shop").get("shopId"), searchRequest.getShopId())
+            );
+            Predicate variantProductShopFilter = cb.and(
+                cb.isNotNull(productVariant),
+                cb.isNotNull(variantProduct),
+                cb.equal(variantProduct.get("shop").get("shopId"), searchRequest.getShopId())
+            );
+            predicates.add(cb.or(productShopFilter, variantProductShopFilter));
+        }
 
         // Order number filter
         if (searchRequest.getOrderNumber() != null && !searchRequest.getOrderNumber().trim().isEmpty()) {

@@ -4,6 +4,8 @@ import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+import java.util.UUID;
+
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
@@ -18,6 +20,8 @@ public class BrandSearchDTO {
     private Boolean isFeatured;
     
     private String slug;
+    
+    private UUID shopId;
     
     private Integer page = 0;
     

@@ -185,6 +185,7 @@ public class ProductController {
             @ApiResponse(responseCode = "200", description = "Warehouse unassigned successfully"),
             @ApiResponse(responseCode = "404", description = "Product or warehouse not found"),
             @ApiResponse(responseCode = "401", description = "Unauthorized"),
+            @ApiResponse(responseCode = "403", description = "Forbidden - Not authorized to manage this shop"),
             @ApiResponse(responseCode = "500", description = "Internal server error")
     })
     public ResponseEntity<?> unassignWarehouseFromProduct(
@@ -192,11 +193,20 @@ public class ProductController {
             @PathVariable Long warehouseId) {
         try {
             log.info("Unassigning warehouse {} from product {}", warehouseId, productId);
+            validateShopAccessForProduct(productId);
             
             Map<String, Object> result = productService.unassignWarehouseFromProduct(productId, warehouseId);
             
             log.info("Successfully unassigned warehouse {} from product {}", warehouseId, productId);
             return ResponseEntity.ok(result);
+        } catch (EntityNotFoundException e) {
+            log.error("Product or warehouse not found: {}", e.getMessage());
+            return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                    .body(createErrorResponse("NOT_FOUND", e.getMessage()));
+        } catch (com.ecommerce.Exception.CustomException e) {
+            log.warn("Authorization error: {}", e.getMessage());
+            return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                    .body(createErrorResponse("FORBIDDEN", e.getMessage()));
         } catch (IllegalArgumentException e) {
             log.error("Invalid input for warehouse unassignment: {}", e.getMessage());
             return ResponseEntity.status(HttpStatus.BAD_REQUEST)
@@ -257,6 +267,7 @@ public class ProductController {
             @ApiResponse(responseCode = "400", description = "Invalid input data"),
             @ApiResponse(responseCode = "404", description = "Product or variant not found"),
             @ApiResponse(responseCode = "401", description = "Unauthorized"),
+            @ApiResponse(responseCode = "403", description = "Forbidden - Not authorized to manage this shop"),
             @ApiResponse(responseCode = "500", description = "Internal server error")
     })
     public ResponseEntity<?> assignVariantStockWithBatches(
@@ -266,8 +277,17 @@ public class ProductController {
         try {
             log.info("Assigning stock with batches to variant {} of product {} for {} warehouses", 
                     variantId, productId, warehouseStocks.size());
+            validateShopAccessForProduct(productId);
             Map<String, Object> response = productService.assignVariantStockWithBatches(productId, variantId, warehouseStocks);
             return ResponseEntity.ok(response);
+        } catch (EntityNotFoundException e) {
+            log.error("Product or variant not found: {}", e.getMessage());
+            return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                    .body(createErrorResponse("NOT_FOUND", e.getMessage()));
+        } catch (com.ecommerce.Exception.CustomException e) {
+            log.warn("Authorization error: {}", e.getMessage());
+            return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                    .body(createErrorResponse("FORBIDDEN", e.getMessage()));
         } catch (IllegalArgumentException e) {
             log.error("Validation error assigning variant stock with batches: {}", e.getMessage());
             return ResponseEntity.status(HttpStatus.BAD_REQUEST)
@@ -285,11 +305,13 @@ public class ProductController {
             @ApiResponse(responseCode = "200", description = "Product stock status retrieved successfully"),
             @ApiResponse(responseCode = "404", description = "Product not found"),
             @ApiResponse(responseCode = "401", description = "Unauthorized"),
+            @ApiResponse(responseCode = "403", description = "Forbidden - Not authorized to manage this shop"),
             @ApiResponse(responseCode = "500", description = "Internal server error")
     })
     public ResponseEntity<?> checkProductHasStock(@PathVariable UUID productId) {
         try {
             log.info("Checking if product {} has stock", productId);
+            validateShopAccessForProduct(productId);
             boolean hasStock = productService.productHasStock(productId);
 
             Map<String, Object> response = new HashMap<>();
@@ -297,6 +319,14 @@ public class ProductController {
             response.put("message", hasStock ? "Product has stock assigned." : "Product has no stock assigned.");
 
             return ResponseEntity.ok(response);
+        } catch (EntityNotFoundException e) {
+            log.error("Product not found: {}", e.getMessage());
+            return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                    .body(createErrorResponse("PRODUCT_NOT_FOUND", e.getMessage()));
+        } catch (com.ecommerce.Exception.CustomException e) {
+            log.warn("Authorization error: {}", e.getMessage());
+            return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                    .body(createErrorResponse("FORBIDDEN", e.getMessage()));
         } catch (IllegalArgumentException e) {
             log.error("Product not found: {}", e.getMessage());
             return ResponseEntity.status(HttpStatus.NOT_FOUND)
@@ -314,11 +344,13 @@ public class ProductController {
             @ApiResponse(responseCode = "200", description = "Product stock removed successfully"),
             @ApiResponse(responseCode = "404", description = "Product not found"),
             @ApiResponse(responseCode = "401", description = "Unauthorized"),
+            @ApiResponse(responseCode = "403", description = "Forbidden - Not authorized to manage this shop"),
             @ApiResponse(responseCode = "500", description = "Internal server error")
     })
     public ResponseEntity<?> removeProductStock(@PathVariable UUID productId) {
         try {
             log.info("Removing all stock for product {}", productId);
+            validateShopAccessForProduct(productId);
             productService.removeProductStock(productId);
 
             Map<String, Object> response = new HashMap<>();
@@ -326,6 +358,14 @@ public class ProductController {
             response.put("message", "All product stock removed successfully");
 
             return ResponseEntity.ok(response);
+        } catch (EntityNotFoundException e) {
+            log.error("Product not found: {}", e.getMessage());
+            return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                    .body(createErrorResponse("PRODUCT_NOT_FOUND", e.getMessage()));
+        } catch (com.ecommerce.Exception.CustomException e) {
+            log.warn("Authorization error: {}", e.getMessage());
+            return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                    .body(createErrorResponse("FORBIDDEN", e.getMessage()));
         } catch (IllegalArgumentException e) {
             log.error("Product not found: {}", e.getMessage());
             return ResponseEntity.status(HttpStatus.NOT_FOUND)
@@ -558,6 +598,12 @@ public class ProductController {
                                 "At least one filter criterion must be provided"));
             }
 
+            // Enforce shop scoping if shopId is provided
+            if (searchDTO.getShopId() != null) {
+                UUID currentUserId = getCurrentUserId();
+                shopAuthorizationService.assertCanManageShop(currentUserId, searchDTO.getShopId());
+            }
+
             Page<ManyProductsDto> searchResults = productService.searchProducts(searchDTO);
 
             if (searchResults.isEmpty()) {
@@ -698,6 +744,21 @@ public class ProductController {
         }
     }
 
+
+    /**
+     * Helper method to validate shop access for a product operation
+     * @param productId The product ID
+     * @throws EntityNotFoundException if product not found
+     * @throws com.ecommerce.Exception.CustomException if user doesn't have access to the shop
+     */
+    private void validateShopAccessForProduct(UUID productId) {
+        UUID currentUserId = getCurrentUserId();
+        Product product = productRepository.findById(productId)
+                .orElseThrow(() -> new EntityNotFoundException("Product not found"));
+        if (product.getShop() != null) {
+            shopAuthorizationService.assertCanManageShop(currentUserId, product.getShop().getShopId());
+        }
+    }
 
     private UUID getCurrentUserId() {
         try {
@@ -986,17 +1047,23 @@ public class ProductController {
     @Operation(summary = "Delete product image", description = "Delete a specific product image", responses = {
             @ApiResponse(responseCode = "200", description = "Image deleted successfully"),
             @ApiResponse(responseCode = "404", description = "Product or image not found"),
+            @ApiResponse(responseCode = "403", description = "Forbidden - Not authorized to manage this shop"),
             @ApiResponse(responseCode = "500", description = "Internal server error")
     })
     public ResponseEntity<?> deleteProductImage(@PathVariable UUID productId, @PathVariable Long imageId) {
         try {
             log.debug("Deleting product image {} for product ID: {}", imageId, productId);
+            validateShopAccessForProduct(productId);
             productService.deleteProductImage(productId, imageId);
             return ResponseEntity.ok(Map.of("message", "Image deleted successfully"));
         } catch (EntityNotFoundException e) {
             log.warn("Product or image not found: {}", e.getMessage());
             return ResponseEntity.status(HttpStatus.NOT_FOUND)
                     .body(createErrorResponse("NOT_FOUND", e.getMessage()));
+        } catch (com.ecommerce.Exception.CustomException e) {
+            log.warn("Authorization error: {}", e.getMessage());
+            return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                    .body(createErrorResponse("FORBIDDEN", e.getMessage()));
         } catch (Exception e) {
             log.error("Error deleting product image {} for product ID {}: {}", imageId, productId, e.getMessage(), e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
@@ -1009,17 +1076,23 @@ public class ProductController {
     @Operation(summary = "Delete product video", description = "Delete a specific product video", responses = {
             @ApiResponse(responseCode = "200", description = "Video deleted successfully"),
             @ApiResponse(responseCode = "404", description = "Product or video not found"),
+            @ApiResponse(responseCode = "403", description = "Forbidden - Not authorized to manage this shop"),
             @ApiResponse(responseCode = "500", description = "Internal server error")
     })
     public ResponseEntity<?> deleteProductVideo(@PathVariable UUID productId, @PathVariable Long videoId) {
         try {
             log.debug("Deleting product video {} for product ID: {}", videoId, productId);
+            validateShopAccessForProduct(productId);
             productService.deleteProductVideo(productId, videoId);
             return ResponseEntity.ok(Map.of("message", "Video deleted successfully"));
         } catch (EntityNotFoundException e) {
             log.warn("Product or video not found: {}", e.getMessage());
             return ResponseEntity.status(HttpStatus.NOT_FOUND)
                     .body(createErrorResponse("NOT_FOUND", e.getMessage()));
+        } catch (com.ecommerce.Exception.CustomException e) {
+            log.warn("Authorization error: {}", e.getMessage());
+            return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                    .body(createErrorResponse("FORBIDDEN", e.getMessage()));
         } catch (Exception e) {
             log.error("Error deleting product video {} for product ID {}: {}", videoId, productId, e.getMessage(), e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
@@ -1032,17 +1105,23 @@ public class ProductController {
     @Operation(summary = "Set primary image", description = "Set a specific image as the primary image for the product", responses = {
             @ApiResponse(responseCode = "200", description = "Primary image set successfully"),
             @ApiResponse(responseCode = "404", description = "Product or image not found"),
+            @ApiResponse(responseCode = "403", description = "Forbidden - Not authorized to manage this shop"),
             @ApiResponse(responseCode = "500", description = "Internal server error")
     })
     public ResponseEntity<?> setPrimaryImage(@PathVariable UUID productId, @PathVariable Long imageId) {
         try {
             log.debug("Setting image {} as primary for product ID: {}", imageId, productId);
+            validateShopAccessForProduct(productId);
             productService.setPrimaryImage(productId, imageId);
             return ResponseEntity.ok(Map.of("message", "Primary image set successfully"));
         } catch (EntityNotFoundException e) {
             log.warn("Product or image not found: {}", e.getMessage());
             return ResponseEntity.status(HttpStatus.NOT_FOUND)
                     .body(createErrorResponse("NOT_FOUND", e.getMessage()));
+        } catch (com.ecommerce.Exception.CustomException e) {
+            log.warn("Authorization error: {}", e.getMessage());
+            return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                    .body(createErrorResponse("FORBIDDEN", e.getMessage()));
         } catch (Exception e) {
             log.error("Error setting primary image {} for product ID {}: {}", imageId, productId, e.getMessage(), e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
@@ -1056,6 +1135,7 @@ public class ProductController {
             @ApiResponse(responseCode = "200", description = "Images uploaded successfully", content = @Content(schema = @Schema(implementation = ProductMediaDTO.class))),
             @ApiResponse(responseCode = "400", description = "Invalid input data"),
             @ApiResponse(responseCode = "404", description = "Product not found"),
+            @ApiResponse(responseCode = "403", description = "Forbidden - Not authorized to manage this shop"),
             @ApiResponse(responseCode = "500", description = "Internal server error")
     })
     public ResponseEntity<?> uploadProductImages(
@@ -1063,12 +1143,17 @@ public class ProductController {
             @RequestParam("images") List<MultipartFile> images) {
         try {
             log.debug("Uploading {} images for product ID: {}", images.size(), productId);
+            validateShopAccessForProduct(productId);
             List<ProductMediaDTO> uploadedImages = productService.uploadProductImages(productId, images);
             return ResponseEntity.ok(uploadedImages);
         } catch (EntityNotFoundException e) {
             log.warn("Product not found with ID: {}", productId);
             return ResponseEntity.status(HttpStatus.NOT_FOUND)
                     .body(createErrorResponse("PRODUCT_NOT_FOUND", e.getMessage()));
+        } catch (com.ecommerce.Exception.CustomException e) {
+            log.warn("Authorization error: {}", e.getMessage());
+            return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                    .body(createErrorResponse("FORBIDDEN", e.getMessage()));
         } catch (IllegalArgumentException e) {
             log.warn("Invalid input for product ID {}: {}", productId, e.getMessage());
             return ResponseEntity.status(HttpStatus.BAD_REQUEST)
@@ -1086,6 +1171,7 @@ public class ProductController {
             @ApiResponse(responseCode = "200", description = "Videos uploaded successfully", content = @Content(schema = @Schema(implementation = ProductVideoDTO.class))),
             @ApiResponse(responseCode = "400", description = "Invalid input data"),
             @ApiResponse(responseCode = "404", description = "Product not found"),
+            @ApiResponse(responseCode = "403", description = "Forbidden - Not authorized to manage this shop"),
             @ApiResponse(responseCode = "500", description = "Internal server error")
     })
     public ResponseEntity<?> uploadProductVideos(
@@ -1093,12 +1179,17 @@ public class ProductController {
             @RequestParam("videos") List<MultipartFile> videos) {
         try {
             log.debug("Uploading {} videos for product ID: {}", videos.size(), productId);
+            validateShopAccessForProduct(productId);
             List<ProductVideoDTO> uploadedVideos = productService.uploadProductVideos(productId, videos);
             return ResponseEntity.ok(uploadedVideos);
         } catch (EntityNotFoundException e) {
             log.warn("Product not found with ID: {}", productId);
             return ResponseEntity.status(HttpStatus.NOT_FOUND)
                     .body(createErrorResponse("PRODUCT_NOT_FOUND", e.getMessage()));
+        } catch (com.ecommerce.Exception.CustomException e) {
+            log.warn("Authorization error: {}", e.getMessage());
+            return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                    .body(createErrorResponse("FORBIDDEN", e.getMessage()));
         } catch (IllegalArgumentException e) {
             log.warn("Invalid input for product ID {}: {}", productId, e.getMessage());
             return ResponseEntity.status(HttpStatus.BAD_REQUEST)
@@ -1116,6 +1207,7 @@ public class ProductController {
             @ApiResponse(responseCode = "200", description = "Variant updated successfully", content = @Content(schema = @Schema(implementation = ProductVariantDTO.class))),
             @ApiResponse(responseCode = "404", description = "Product or variant not found"),
             @ApiResponse(responseCode = "400", description = "Invalid input"),
+            @ApiResponse(responseCode = "403", description = "Forbidden - Not authorized to manage this shop"),
             @ApiResponse(responseCode = "500", description = "Internal server error")
     })
     public ResponseEntity<?> updateProductVariant(
@@ -1124,12 +1216,17 @@ public class ProductController {
             @RequestBody Map<String, Object> updates) {
         try {
             log.debug("Updating variant {} for product {}", variantId, productId);
+            validateShopAccessForProduct(productId);
             ProductVariantDTO updatedVariant = productService.updateProductVariant(productId, variantId, updates);
             return ResponseEntity.ok(updatedVariant);
         } catch (EntityNotFoundException e) {
             log.warn("Product or variant not found: {}", e.getMessage());
             return ResponseEntity.status(HttpStatus.NOT_FOUND)
                     .body(createErrorResponse("NOT_FOUND", e.getMessage()));
+        } catch (com.ecommerce.Exception.CustomException e) {
+            log.warn("Authorization error: {}", e.getMessage());
+            return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                    .body(createErrorResponse("FORBIDDEN", e.getMessage()));
         } catch (IllegalArgumentException e) {
             log.warn("Invalid input for variant {} of product {}: {}", variantId, productId, e.getMessage());
             return ResponseEntity.status(HttpStatus.BAD_REQUEST)
@@ -1146,6 +1243,7 @@ public class ProductController {
     @Operation(summary = "Delete variant image", description = "Delete an image from a product variant", responses = {
             @ApiResponse(responseCode = "200", description = "Image deleted successfully"),
             @ApiResponse(responseCode = "404", description = "Product, variant, or image not found"),
+            @ApiResponse(responseCode = "403", description = "Forbidden - Not authorized to manage this shop"),
             @ApiResponse(responseCode = "500", description = "Internal server error")
     })
     public ResponseEntity<?> deleteVariantImage(
@@ -1154,12 +1252,17 @@ public class ProductController {
             @PathVariable Long imageId) {
         try {
             log.debug("Deleting image {} from variant {} of product {}", imageId, variantId, productId);
+            validateShopAccessForProduct(productId);
             productService.deleteVariantImage(productId, variantId, imageId);
             return ResponseEntity.ok().body(Map.of("message", "Image deleted successfully"));
         } catch (EntityNotFoundException e) {
             log.warn("Product, variant, or image not found: {}", e.getMessage());
             return ResponseEntity.status(HttpStatus.NOT_FOUND)
                     .body(createErrorResponse("NOT_FOUND", e.getMessage()));
+        } catch (com.ecommerce.Exception.CustomException e) {
+            log.warn("Authorization error: {}", e.getMessage());
+            return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                    .body(createErrorResponse("FORBIDDEN", e.getMessage()));
         } catch (Exception e) {
             log.error("Error deleting image {} from variant {} of product {}: {}", imageId, variantId, productId,
                     e.getMessage(), e);
@@ -1173,6 +1276,7 @@ public class ProductController {
     @Operation(summary = "Set primary variant image", description = "Set an image as primary for a product variant", responses = {
             @ApiResponse(responseCode = "200", description = "Primary image set successfully"),
             @ApiResponse(responseCode = "404", description = "Product, variant, or image not found"),
+            @ApiResponse(responseCode = "403", description = "Forbidden - Not authorized to manage this shop"),
             @ApiResponse(responseCode = "500", description = "Internal server error")
     })
     public ResponseEntity<?> setPrimaryVariantImage(
@@ -1181,12 +1285,17 @@ public class ProductController {
             @PathVariable Long imageId) {
         try {
             log.debug("Setting image {} as primary for variant {} of product {}", imageId, variantId, productId);
+            validateShopAccessForProduct(productId);
             productService.setPrimaryVariantImage(productId, variantId, imageId);
             return ResponseEntity.ok().body(Map.of("message", "Primary image set successfully"));
         } catch (EntityNotFoundException e) {
             log.warn("Product, variant, or image not found: {}", e.getMessage());
             return ResponseEntity.status(HttpStatus.NOT_FOUND)
                     .body(createErrorResponse("NOT_FOUND", e.getMessage()));
+        } catch (com.ecommerce.Exception.CustomException e) {
+            log.warn("Authorization error: {}", e.getMessage());
+            return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                    .body(createErrorResponse("FORBIDDEN", e.getMessage()));
         } catch (Exception e) {
             log.error("Error setting image {} as primary for variant {} of product {}: {}", imageId, variantId,
                     productId, e.getMessage(), e);
@@ -1201,6 +1310,7 @@ public class ProductController {
             @ApiResponse(responseCode = "200", description = "Images uploaded successfully", content = @Content(schema = @Schema(implementation = ProductVariantImageDTO.class))),
             @ApiResponse(responseCode = "404", description = "Product or variant not found"),
             @ApiResponse(responseCode = "400", description = "Invalid input or image limit exceeded"),
+            @ApiResponse(responseCode = "403", description = "Forbidden - Not authorized to manage this shop"),
             @ApiResponse(responseCode = "500", description = "Internal server error")
     })
     public ResponseEntity<?> uploadVariantImages(
@@ -1209,6 +1319,7 @@ public class ProductController {
             @RequestParam("images") List<MultipartFile> images) {
         try {
             log.debug("Uploading {} images for variant {} of product {}", images.size(), variantId, productId);
+            validateShopAccessForProduct(productId);
             List<ProductVariantImageDTO> uploadedImages = productService.uploadVariantImages(productId, variantId,
                     images);
             return ResponseEntity.ok(uploadedImages);
@@ -1216,6 +1327,10 @@ public class ProductController {
             log.warn("Product or variant not found: {}", e.getMessage());
             return ResponseEntity.status(HttpStatus.NOT_FOUND)
                     .body(createErrorResponse("NOT_FOUND", e.getMessage()));
+        } catch (com.ecommerce.Exception.CustomException e) {
+            log.warn("Authorization error: {}", e.getMessage());
+            return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                    .body(createErrorResponse("FORBIDDEN", e.getMessage()));
         } catch (IllegalArgumentException e) {
             log.warn("Invalid input for variant {} of product {}: {}", variantId, productId, e.getMessage());
             return ResponseEntity.status(HttpStatus.BAD_REQUEST)
@@ -1234,6 +1349,7 @@ public class ProductController {
             @ApiResponse(responseCode = "200", description = "Attribute removed successfully"),
             @ApiResponse(responseCode = "404", description = "Product, variant, or attribute not found"),
             @ApiResponse(responseCode = "400", description = "Cannot remove last attribute"),
+            @ApiResponse(responseCode = "403", description = "Forbidden - Not authorized to manage this shop"),
             @ApiResponse(responseCode = "500", description = "Internal server error")
     })
     public ResponseEntity<?> removeVariantAttribute(
@@ -1242,12 +1358,17 @@ public class ProductController {
             @PathVariable Long attributeValueId) {
         try {
             log.debug("Removing attribute {} from variant {} of product {}", attributeValueId, variantId, productId);
+            validateShopAccessForProduct(productId);
             productService.removeVariantAttribute(productId, variantId, attributeValueId);
             return ResponseEntity.ok().body(Map.of("message", "Attribute removed successfully"));
         } catch (EntityNotFoundException e) {
             log.warn("Product, variant, or attribute not found: {}", e.getMessage());
             return ResponseEntity.status(HttpStatus.NOT_FOUND)
                     .body(createErrorResponse("NOT_FOUND", e.getMessage()));
+        } catch (com.ecommerce.Exception.CustomException e) {
+            log.warn("Authorization error: {}", e.getMessage());
+            return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                    .body(createErrorResponse("FORBIDDEN", e.getMessage()));
         } catch (IllegalArgumentException e) {
             log.warn("Invalid operation for variant {} of product {}: {}", variantId, productId, e.getMessage());
             return ResponseEntity.status(HttpStatus.BAD_REQUEST)
@@ -1266,6 +1387,7 @@ public class ProductController {
             @ApiResponse(responseCode = "200", description = "Attributes added successfully", content = @Content(schema = @Schema(implementation = ProductVariantAttributeDTO.class))),
             @ApiResponse(responseCode = "404", description = "Product or variant not found"),
             @ApiResponse(responseCode = "400", description = "Invalid input"),
+            @ApiResponse(responseCode = "403", description = "Forbidden - Not authorized to manage this shop"),
             @ApiResponse(responseCode = "500", description = "Internal server error")
     })
     public ResponseEntity<?> addVariantAttributes(
@@ -1275,6 +1397,7 @@ public class ProductController {
         try {
             log.debug("Adding {} attributes to variant {} of product {}", attributeRequests.size(), variantId,
                     productId);
+            validateShopAccessForProduct(productId);
             List<ProductVariantAttributeDTO> addedAttributes = productService.addVariantAttributes(productId, variantId,
                     attributeRequests);
             return ResponseEntity.ok(addedAttributes);
@@ -1282,6 +1405,10 @@ public class ProductController {
             log.warn("Product or variant not found: {}", e.getMessage());
             return ResponseEntity.status(HttpStatus.NOT_FOUND)
                     .body(createErrorResponse("NOT_FOUND", e.getMessage()));
+        } catch (com.ecommerce.Exception.CustomException e) {
+            log.warn("Authorization error: {}", e.getMessage());
+            return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                    .body(createErrorResponse("FORBIDDEN", e.getMessage()));
         } catch (Exception e) {
             log.error("Error adding attributes to variant {} of product {}: {}", variantId, productId, e.getMessage(),
                     e);
@@ -1296,6 +1423,7 @@ public class ProductController {
             @ApiResponse(responseCode = "201", description = "Variant created successfully", content = @Content(schema = @Schema(implementation = ProductVariantDTO.class))),
             @ApiResponse(responseCode = "404", description = "Product not found"),
             @ApiResponse(responseCode = "400", description = "Invalid input"),
+            @ApiResponse(responseCode = "403", description = "Forbidden - Not authorized to manage this shop"),
             @ApiResponse(responseCode = "500", description = "Internal server error")
     })
     public ResponseEntity<?> createProductVariant(
@@ -1312,6 +1440,7 @@ public class ProductController {
             @RequestParam(value = "images", required = false) List<MultipartFile> images) {
         try {
             log.debug("Creating new variant for product {}", productId);
+            validateShopAccessForProduct(productId);
 
             CreateVariantRequest request = CreateVariantRequest.builder()
                     .variantName(variantName)
@@ -1340,6 +1469,10 @@ public class ProductController {
             log.warn("Product not found: {}", e.getMessage());
             return ResponseEntity.status(HttpStatus.NOT_FOUND)
                     .body(createErrorResponse("NOT_FOUND", e.getMessage()));
+        } catch (com.ecommerce.Exception.CustomException e) {
+            log.warn("Authorization error: {}", e.getMessage());
+            return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                    .body(createErrorResponse("FORBIDDEN", e.getMessage()));
         } catch (IllegalArgumentException e) {
             log.warn("Invalid input for product {}: {}", productId, e.getMessage());
             return ResponseEntity.status(HttpStatus.BAD_REQUEST)

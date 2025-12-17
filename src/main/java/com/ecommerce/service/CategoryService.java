@@ -46,9 +46,10 @@ public interface CategoryService {
      * Get all categories with pagination
      * 
      * @param pageable pagination information
+     * @param shopId optional shop ID to filter by
      * @return page of categories
      */
-    Page<CategoryDTO> getAllCategories(Pageable pageable);
+    Page<CategoryDTO> getAllCategories(Pageable pageable, java.util.UUID shopId);
     
     /**
      * Get all top-level categories

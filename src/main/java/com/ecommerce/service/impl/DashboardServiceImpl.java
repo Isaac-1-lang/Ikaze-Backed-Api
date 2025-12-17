@@ -117,8 +117,8 @@ public class DashboardServiceImpl implements DashboardService {
                     PageRequest.of(0, 3, org.springframework.data.domain.Sort.by("createdAt").descending()))
                     .getContent();
             
-            if (role == UserRole.ADMIN) {
-                revenue = moneyFlowService.getNetRevenue();
+        if (role == UserRole.ADMIN) {
+            revenue = moneyFlowService.getNetRevenue();
             }
         }
 

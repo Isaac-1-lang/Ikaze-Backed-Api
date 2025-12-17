@@ -41,6 +41,8 @@ public interface OrderService {
     List<AdminOrderDTO> getAllAdminOrders();
 
     Page<AdminOrderDTO> getAllAdminOrdersPaginated(Pageable pageable);
+    
+    Page<AdminOrderDTO> getAllAdminOrdersPaginated(Pageable pageable, UUID shopId);
 
     List<AdminOrderDTO> getOrdersByStatus(String status);
 

@@ -11,6 +11,7 @@ import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.Size;
 
 import java.math.BigDecimal;
+import java.util.UUID;
 
 @Data
 @Builder
@@ -43,4 +44,7 @@ public class CreateShippingCostDTO {
     @NotNull(message = "Active status is required")
     @Builder.Default
     private Boolean isActive = true;
+
+    @NotNull(message = "shopId is required")
+    private UUID shopId;
 }

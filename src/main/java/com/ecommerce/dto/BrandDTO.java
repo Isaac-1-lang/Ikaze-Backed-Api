@@ -47,6 +47,10 @@ public class BrandDTO {
     
     private Long productCount = 0L;
     
+    private UUID shopId;
+    
+    private String shopName;
+    
     /**
      * Simplified constructor for creating a new brand
      * 

@@ -5,7 +5,9 @@ import com.ecommerce.dto.BrandSearchDTO;
 import com.ecommerce.dto.CreateBrandDTO;
 import com.ecommerce.dto.UpdateBrandDTO;
 import com.ecommerce.entity.Brand;
+import com.ecommerce.entity.Shop;
 import com.ecommerce.repository.BrandRepository;
+import com.ecommerce.repository.ShopRepository;
 import com.ecommerce.service.BrandService;
 import jakarta.persistence.EntityNotFoundException;
 import lombok.extern.slf4j.Slf4j;
@@ -30,10 +32,12 @@ import java.util.stream.Collectors;
 public class BrandServiceImpl implements BrandService {
 
     private final BrandRepository brandRepository;
+    private final ShopRepository shopRepository;
 
     @Autowired
-    public BrandServiceImpl(BrandRepository brandRepository) {
+    public BrandServiceImpl(BrandRepository brandRepository, ShopRepository shopRepository) {
         this.brandRepository = brandRepository;
+        this.shopRepository = shopRepository;
     }
 
     @Override
@@ -47,6 +51,13 @@ public class BrandServiceImpl implements BrandService {
         
         // Convert DTO to entity
         Brand brand = convertToEntity(createBrandDTO);
+        
+        // Set shop if shopId is provided
+        if (createBrandDTO.getShopId() != null) {
+            Shop shop = shopRepository.findById(createBrandDTO.getShopId())
+                    .orElseThrow(() -> new EntityNotFoundException("Shop not found with id: " + createBrandDTO.getShopId()));
+            brand.setShop(shop);
+        }
         
         // Set default values
         if (brand.getMetaTitle() == null || brand.getMetaTitle().trim().isEmpty()) {
@@ -164,10 +175,18 @@ public class BrandServiceImpl implements BrandService {
 
     @Override
     @Transactional(readOnly = true)
-    public Page<BrandDTO> getAllBrands(Pageable pageable) {
-        log.debug("Fetching all brands with pagination: {}", pageable);
+    public Page<BrandDTO> getAllBrands(Pageable pageable, UUID shopId) {
+        log.debug("Fetching all brands with pagination: {}, shopId: {}", pageable, shopId);
         
-        Page<Brand> brands = brandRepository.findAll(pageable);
+        Specification<Brand> spec = Specification.where(null);
+        
+        // Filter by shopId if provided
+        if (shopId != null) {
+            spec = spec.and((root, query, cb) -> 
+                cb.equal(root.get("shop").get("shopId"), shopId));
+        }
+        
+        Page<Brand> brands = brandRepository.findAll(spec, pageable);
         return brands.map(this::convertToDTO);
     }
 
@@ -266,6 +285,12 @@ public class BrandServiceImpl implements BrandService {
             dto.setProductCount(0L);
         }
         
+        // Set shop information if available
+        if (brand.getShop() != null) {
+            dto.setShopId(brand.getShop().getShopId());
+            dto.setShopName(brand.getShop().getName());
+        }
+        
         return dto;
     }
 
@@ -324,6 +349,11 @@ public class BrandServiceImpl implements BrandService {
                     criteriaBuilder.lower(root.get("slug")),
                     "%" + searchDTO.getSlug().toLowerCase() + "%"
                 ));
+            }
+            
+            // Filter by shopId if provided
+            if (searchDTO.getShopId() != null) {
+                predicates.add(criteriaBuilder.equal(root.get("shop").get("shopId"), searchDTO.getShopId()));
             }
             
             return criteriaBuilder.and(predicates.toArray(new jakarta.persistence.criteria.Predicate[0]));

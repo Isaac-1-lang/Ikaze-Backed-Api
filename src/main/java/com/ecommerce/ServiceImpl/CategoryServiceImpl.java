@@ -3,7 +3,9 @@ package com.ecommerce.ServiceImpl;
 import com.ecommerce.dto.CategoryDTO;
 import com.ecommerce.dto.CategorySearchDTO;
 import com.ecommerce.entity.Category;
+import com.ecommerce.entity.Shop;
 import com.ecommerce.repository.CategoryRepository;
+import com.ecommerce.repository.ShopRepository;
 import com.ecommerce.service.CategoryService;
 import jakarta.persistence.EntityNotFoundException;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -19,22 +21,33 @@ import org.springframework.transaction.annotation.Transactional;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.util.UUID;
 import java.util.stream.Collectors;
 
 @Service
 public class CategoryServiceImpl implements CategoryService {
 
     private final CategoryRepository categoryRepository;
+    private final ShopRepository shopRepository;
 
     @Autowired
-    public CategoryServiceImpl(CategoryRepository categoryRepository) {
+    public CategoryServiceImpl(CategoryRepository categoryRepository, ShopRepository shopRepository) {
         this.categoryRepository = categoryRepository;
+        this.shopRepository = shopRepository;
     }
 
     @Override
     @Transactional
     public CategoryDTO createCategory(CategoryDTO categoryDTO) {
         Category category = convertToEntity(categoryDTO);
+        
+        // Set shop if shopId is provided
+        if (categoryDTO.getShopId() != null) {
+            Shop shop = shopRepository.findById(categoryDTO.getShopId())
+                    .orElseThrow(() -> new EntityNotFoundException("Shop not found with id: " + categoryDTO.getShopId()));
+            category.setShop(shop);
+        }
+        
         Category savedCategory = categoryRepository.save(category);
         return convertToDTO(savedCategory);
     }
@@ -105,8 +118,16 @@ public class CategoryServiceImpl implements CategoryService {
 
     @Override
     @Transactional(readOnly = true)
-    public Page<CategoryDTO> getAllCategories(Pageable pageable) {
-        Page<Category> categories = categoryRepository.findAll(pageable);
+    public Page<CategoryDTO> getAllCategories(Pageable pageable, UUID shopId) {
+        Specification<Category> spec = Specification.where(null);
+        
+        // Filter by shopId if provided
+        if (shopId != null) {
+            spec = spec.and((root, query, cb) -> 
+                cb.equal(root.get("shop").get("shopId"), shopId));
+        }
+        
+        Page<Category> categories = categoryRepository.findAll(spec, pageable);
         return categories.map(this::convertToDTO);
     }
 
@@ -155,6 +176,12 @@ public class CategoryServiceImpl implements CategoryService {
         if (searchDTO.getIsFeatured() != null) {
             spec = spec.and((root, query, cb) -> 
                 cb.equal(root.get("isFeatured"), searchDTO.getIsFeatured()));
+        }
+        
+        // Filter by shopId if provided
+        if (searchDTO.getShopId() != null) {
+            spec = spec.and((root, query, cb) -> 
+                cb.equal(root.get("shop").get("shopId"), searchDTO.getShopId()));
         }
         
         // Create pageable with sorting
@@ -264,6 +291,12 @@ public class CategoryServiceImpl implements CategoryService {
             dto.setProductCount((long) category.getProducts().size());
         } else {
             dto.setProductCount(0L);
+        }
+
+        // Set shop information if available
+        if (category.getShop() != null) {
+            dto.setShopId(category.getShop().getShopId());
+            dto.setShopName(category.getShop().getName());
         }
 
         // Set children recursively
