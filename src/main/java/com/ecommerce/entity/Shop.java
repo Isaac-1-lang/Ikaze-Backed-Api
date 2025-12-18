@@ -71,6 +71,22 @@ public class Shop {
     @JsonManagedReference
     private List<ShippingCost> shippingCosts;
 
+    @OneToMany(mappedBy = "shop", fetch = FetchType.LAZY)
+    @JsonManagedReference
+    private List<AdminInvitation> adminInvitations;
+
+    @OneToMany(mappedBy = "shop", fetch = FetchType.LAZY)
+    @JsonManagedReference
+    private List<User> employees;
+
+    @OneToMany(mappedBy = "shop", fetch = FetchType.LAZY)
+    @JsonManagedReference
+    private List<Discount> discounts;
+
+    @OneToMany(mappedBy = "shop", fetch = FetchType.LAZY)
+    @JsonManagedReference
+    private List<RewardSystem> rewardSystems;
+
     @PrePersist
     protected void onCreate() {
         createdAt = LocalDateTime.now();

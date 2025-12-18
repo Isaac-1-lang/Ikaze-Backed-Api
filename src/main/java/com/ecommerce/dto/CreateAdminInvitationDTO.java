@@ -5,6 +5,7 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 import jakarta.validation.constraints.*;
 import java.time.LocalDateTime;
+import java.util.UUID;
 
 @Data
 @NoArgsConstructor
@@ -43,4 +44,7 @@ public class CreateAdminInvitationDTO {
 
     @Future(message = "Expiration date must be in the future")
     private LocalDateTime expiresAt;
+
+    @NotNull(message = "shopId is required")
+    private UUID shopId;
 }

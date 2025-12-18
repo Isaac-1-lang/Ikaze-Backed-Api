@@ -11,23 +11,23 @@ import java.util.UUID;
 
 public interface DiscountService {
 
-    DiscountDTO createDiscount(CreateDiscountDTO createDiscountDTO);
+    DiscountDTO createDiscount(UUID vendorId, CreateDiscountDTO createDiscountDTO);
 
-    DiscountDTO updateDiscount(UUID discountId, UpdateDiscountDTO updateDiscountDTO);
+    DiscountDTO updateDiscount(UUID discountId, UUID vendorId, UpdateDiscountDTO updateDiscountDTO);
 
-    boolean deleteDiscount(UUID discountId);
+    boolean deleteDiscount(UUID discountId, UUID vendorId);
 
-    DiscountDTO getDiscountById(UUID discountId);
+    DiscountDTO getDiscountById(UUID discountId, UUID shopId);
 
-    Page<DiscountDTO> getAllDiscounts(Pageable pageable);
+    Page<DiscountDTO> getAllDiscounts(UUID shopId, Pageable pageable);
 
-    Page<DiscountDTO> getActiveDiscounts(Pageable pageable);
+    Page<DiscountDTO> getActiveDiscounts(UUID shopId, Pageable pageable);
 
-    DiscountDTO getDiscountByCode(String discountCode);
+    DiscountDTO getDiscountByCode(String discountCode, UUID shopId);
 
-    boolean isDiscountValid(UUID discountId);
+    boolean isDiscountValid(UUID discountId, UUID shopId);
 
-    boolean isDiscountCodeValid(String discountCode);
+    boolean isDiscountCodeValid(String discountCode, UUID shopId);
 
     List<Discount> getAllDiscountEntities();
 

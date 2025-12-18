@@ -11,29 +11,33 @@ import java.util.UUID;
 
 public interface RewardService {
 
+    RewardSystemDTO getActiveRewardSystem(UUID shopId);
+    
+    /**
+     * @deprecated Use getActiveRewardSystem(UUID shopId) instead. This method is kept for backward compatibility.
+     */
+    @Deprecated
     RewardSystemDTO getActiveRewardSystem();
 
-    Map<String, Object> getAllRewardSystems(int page, int size, String sortBy, String sortDir);
+    Map<String, Object> getAllRewardSystems(UUID shopId, int page, int size, String sortBy, String sortDir);
 
-    RewardSystemDTO getRewardSystemById(Long id);
+    RewardSystemDTO getRewardSystemById(Long id, UUID shopId);
 
-    RewardSystemDTO saveRewardSystem(RewardSystemDTO rewardSystemDTO);
+    RewardSystemDTO saveRewardSystem(RewardSystemDTO rewardSystemDTO, UUID shopId);
 
-    RewardSystemDTO activateRewardSystem(Long rewardSystemId);
+    RewardSystemDTO activateRewardSystem(Long rewardSystemId, UUID shopId);
 
-    RewardSystemDTO toggleSystemEnabled(Long rewardSystemId, Boolean enabled);
+    RewardSystemDTO toggleSystemEnabled(Long rewardSystemId, UUID shopId, Boolean enabled);
 
-    RewardSystemDTO toggleReviewPoints(Long rewardSystemId, Boolean enabled, Integer pointsAmount);
+    RewardSystemDTO toggleReviewPoints(Long rewardSystemId, UUID shopId, Boolean enabled, Integer pointsAmount);
 
-    RewardSystemDTO toggleSignupPoints(Long rewardSystemId, Boolean enabled, Integer pointsAmount);
+    RewardSystemDTO togglePurchasePoints(Long rewardSystemId, UUID shopId, Boolean enabled);
 
-    RewardSystemDTO togglePurchasePoints(Long rewardSystemId, Boolean enabled);
+    RewardSystemDTO toggleQuantityBased(Long rewardSystemId, UUID shopId, Boolean enabled);
 
-    RewardSystemDTO toggleQuantityBased(Long rewardSystemId, Boolean enabled);
+    RewardSystemDTO toggleAmountBased(Long rewardSystemId, UUID shopId, Boolean enabled);
 
-    RewardSystemDTO toggleAmountBased(Long rewardSystemId, Boolean enabled);
-
-    RewardSystemDTO togglePercentageBased(Long rewardSystemId, Boolean enabled, BigDecimal percentageRate);
+    RewardSystemDTO togglePercentageBased(Long rewardSystemId, UUID shopId, Boolean enabled, BigDecimal percentageRate);
 
     Integer calculateOrderPoints(Integer productCount, BigDecimal orderAmount);
 
@@ -42,8 +46,6 @@ public interface RewardService {
     UserPointsDTO awardPointsForOrder(UUID userId, Long orderId, Integer productCount, BigDecimal orderAmount);
 
     UserPointsDTO awardPointsForReview(UUID userId, String description);
-
-    UserPointsDTO awardPointsForSignup(UUID userId);
 
     UserPointsDTO deductPointsForPurchase(UUID userId, Integer points, String description);
 

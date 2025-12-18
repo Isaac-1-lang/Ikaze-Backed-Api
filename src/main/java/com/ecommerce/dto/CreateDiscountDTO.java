@@ -6,6 +6,7 @@ import lombok.NoArgsConstructor;
 import jakarta.validation.constraints.*;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.UUID;
 
 @Data
 @NoArgsConstructor
@@ -38,4 +39,7 @@ public class CreateDiscountDTO {
     private Integer usageLimit;
 
     private String discountType = "PERCENTAGE";
+
+    @NotNull(message = "Shop ID is required")
+    private UUID shopId;
 }

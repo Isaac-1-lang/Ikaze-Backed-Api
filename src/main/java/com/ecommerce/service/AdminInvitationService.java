@@ -8,7 +8,7 @@ import java.util.UUID;
 public interface AdminInvitationService {
 
     // Create and manage invitations
-    AdminInvitationDTO createInvitation(UUID adminId, CreateAdminInvitationDTO createInvitationDTO);
+    AdminInvitationDTO createInvitation(UUID vendorId, CreateAdminInvitationDTO createInvitationDTO);
 
     AdminInvitationDTO updateInvitation(UUID invitationId, UpdateAdminInvitationDTO updateInvitationDTO);
 
@@ -69,4 +69,16 @@ public interface AdminInvitationService {
     void cancelAllPendingInvitationsByEmail(String email);
 
     void resendAllPendingInvitationsByEmail(String email);
+
+    /**
+     * Vendor-only: release a shop member (EMPLOYEE/DELIVERY_AGENT) back to CUSTOMER.
+     * Authorization is enforced in the controller via ShopAuthorizationService.
+     */
+    void releaseShopMember(UUID shopId, UUID userId);
+
+    /**
+     * Check if a user exists for the given invitation email.
+     * Used to validate if "I already have an account" toggle should be enabled.
+     */
+    boolean doesUserExistForInvitation(String invitationToken);
 }

@@ -33,4 +33,6 @@ public class DiscountDTO {
     private boolean valid;
     @JsonIgnore
     private boolean canBeUsed;
+    private UUID shopId;
+    private String shopName;
 }

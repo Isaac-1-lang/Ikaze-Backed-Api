@@ -37,4 +37,28 @@ public interface DiscountRepository extends JpaRepository<Discount, UUID> {
 
         @Query("SELECT d FROM Discount d WHERE d.isActive = true AND d.startDate <= :now AND (d.endDate IS NULL OR d.endDate >= :now)")
         List<Discount> findActiveAndValidDiscounts(@Param("now") LocalDateTime now);
+
+        // Shop-scoped queries
+        Page<Discount> findByShopShopId(UUID shopId, Pageable pageable);
+
+        List<Discount> findByShopShopId(UUID shopId);
+
+        List<Discount> findByShopShopIdAndIsActiveTrue(UUID shopId);
+
+        Page<Discount> findByShopShopIdAndIsActiveTrue(UUID shopId, Pageable pageable);
+
+        Optional<Discount> findByDiscountCodeAndShopShopId(String discountCode, UUID shopId);
+
+        @Query("SELECT d FROM Discount d WHERE d.shop.shopId = :shopId AND d.isActive = true AND " +
+                        "d.startDate <= :now AND (d.endDate IS NULL OR d.endDate >= :now) AND " +
+                        "(d.usageLimit IS NULL OR d.usedCount < d.usageLimit)")
+        List<Discount> findValidDiscountsByShop(@Param("shopId") UUID shopId, @Param("now") LocalDateTime now);
+
+        @Query("SELECT d FROM Discount d WHERE d.discountCode = :code AND d.shop.shopId = :shopId AND d.isActive = true AND " +
+                        "d.startDate <= :now AND (d.endDate IS NULL OR d.endDate >= :now) AND " +
+                        "(d.usageLimit IS NULL OR d.usedCount < d.usageLimit)")
+        Optional<Discount> findValidDiscountByCodeAndShop(@Param("code") String code, @Param("shopId") UUID shopId, @Param("now") LocalDateTime now);
+
+        @Query("SELECT d FROM Discount d WHERE d.shop.shopId = :shopId AND d.isActive = true AND d.startDate <= :now AND (d.endDate IS NULL OR d.endDate >= :now)")
+        List<Discount> findActiveAndValidDiscountsByShop(@Param("shopId") UUID shopId, @Param("now") LocalDateTime now);
 }

@@ -5,10 +5,16 @@ import com.ecommerce.dto.UpdateDiscountDTO;
 import com.ecommerce.entity.Discount;
 import com.ecommerce.entity.Product;
 import com.ecommerce.entity.ProductVariant;
+import com.ecommerce.entity.User;
 import com.ecommerce.repository.DiscountRepository;
 import com.ecommerce.repository.ProductRepository;
 import com.ecommerce.repository.ProductVariantRepository;
+import com.ecommerce.repository.UserRepository;
 import com.ecommerce.service.DiscountService;
+import com.ecommerce.service.ShopAuthorizationService;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.core.userdetails.UserDetails;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.media.Content;
@@ -49,6 +55,8 @@ public class DiscountController {
     private final DiscountRepository discountRepository;
     private final ProductRepository productRepository;
     private final ProductVariantRepository productVariantRepository;
+    private final ShopAuthorizationService shopAuthorizationService;
+    private final UserRepository userRepository;
 
     @Operation(
         summary = "Create a new discount",
@@ -109,12 +117,18 @@ public class DiscountController {
         )
     })
     @PostMapping
-    @PreAuthorize("hasAnyRole('ADMIN', 'EMPLOYEE')")
+    @PreAuthorize("hasAnyRole('VENDOR', 'EMPLOYEE')")
     public ResponseEntity<DiscountDTO> createDiscount(@Valid @RequestBody CreateDiscountDTO createDiscountDTO) {
-        log.info("Creating new discount: {}", createDiscountDTO.getName());
+        log.info("Creating new discount: {} for shop: {}", createDiscountDTO.getName(), createDiscountDTO.getShopId());
 
         try {
-            DiscountDTO createdDiscount = discountService.createDiscount(createDiscountDTO);
+            UUID vendorId = getCurrentUserId();
+            if (createDiscountDTO.getShopId() == null) {
+                throw new IllegalArgumentException("shopId is required");
+            }
+            shopAuthorizationService.assertCanManageShop(vendorId, createDiscountDTO.getShopId());
+            
+            DiscountDTO createdDiscount = discountService.createDiscount(vendorId, createDiscountDTO);
             return ResponseEntity.status(HttpStatus.CREATED).body(createdDiscount);
         } catch (IllegalArgumentException e) {
             log.error("Invalid input for discount creation: {}", e.getMessage());
@@ -157,15 +171,19 @@ public class DiscountController {
         )
     })
     @PutMapping("/{discountId}")
-    @PreAuthorize("hasAnyRole('ADMIN', 'EMPLOYEE')")
+    @PreAuthorize("hasAnyRole('VENDOR', 'EMPLOYEE')")
     public ResponseEntity<DiscountDTO> updateDiscount(
             @Parameter(description = "UUID of the discount to update", required = true)
             @PathVariable UUID discountId,
+            @RequestParam UUID shopId,
             @Valid @RequestBody UpdateDiscountDTO updateDiscountDTO) {
-        log.info("Updating discount with ID: {}", discountId);
+        log.info("Updating discount with ID: {} for shop: {}", discountId, shopId);
 
         try {
-            DiscountDTO updatedDiscount = discountService.updateDiscount(discountId, updateDiscountDTO);
+            UUID vendorId = getCurrentUserId();
+            shopAuthorizationService.assertCanManageShop(vendorId, shopId);
+            
+            DiscountDTO updatedDiscount = discountService.updateDiscount(discountId, vendorId, updateDiscountDTO);
             return ResponseEntity.ok(updatedDiscount);
         } catch (EntityNotFoundException e) {
             log.error("Discount not found with ID: {}", discountId);
@@ -215,23 +233,32 @@ public class DiscountController {
         )
     })
     @DeleteMapping("/{discountId}")
-    @PreAuthorize("hasAnyRole('ADMIN', 'EMPLOYEE')")
+    @PreAuthorize("hasAnyRole('VENDOR', 'EMPLOYEE')")
     public ResponseEntity<Map<String, Object>> deleteDiscount(
             @Parameter(description = "UUID of the discount to delete", required = true)
-            @PathVariable UUID discountId) {
-        log.info("Deleting discount with ID: {}", discountId);
+            @PathVariable UUID discountId,
+            @RequestParam UUID shopId) {
+        log.info("Deleting discount with ID: {} for shop: {}", discountId, shopId);
 
         try {
+            UUID vendorId = getCurrentUserId();
+            shopAuthorizationService.assertCanManageShop(vendorId, shopId);
+            
             // Get discount info before deletion for response
             Discount discount = discountRepository.findById(discountId)
                     .orElseThrow(() -> new EntityNotFoundException("Discount not found with ID: " + discountId));
+            
+            // Verify discount belongs to the shop
+            if (discount.getShop() == null || !discount.getShop().getShopId().equals(shopId)) {
+                throw new EntityNotFoundException("Discount not found with ID: " + discountId + " for shop: " + shopId);
+            }
             
             // Count affected products and variants
             long affectedProducts = productRepository.countByDiscount(discount);
             long affectedVariants = productVariantRepository.countByDiscount(discount);
             
             // Perform deletion (service will handle removing discount from products/variants)
-            boolean deleted = discountService.deleteDiscount(discountId);
+            discountService.deleteDiscount(discountId, vendorId);
             
             Map<String, Object> response = new HashMap<>();
             response.put("success", true);
@@ -273,11 +300,12 @@ public class DiscountController {
     @GetMapping("/{discountId}")
     public ResponseEntity<DiscountDTO> getDiscountById(
             @Parameter(description = "UUID of the discount to retrieve", required = true)
-            @PathVariable UUID discountId) {
-        log.info("Fetching discount with ID: {}", discountId);
+            @PathVariable UUID discountId,
+            @RequestParam UUID shopId) {
+        log.info("Fetching discount with ID: {} for shop: {}", discountId, shopId);
 
         try {
-            DiscountDTO discount = discountService.getDiscountById(discountId);
+            DiscountDTO discount = discountService.getDiscountById(discountId, shopId);
             return ResponseEntity.ok(discount);
         } catch (EntityNotFoundException e) {
             log.error("Discount not found with ID: {}", discountId);
@@ -338,6 +366,8 @@ public class DiscountController {
     })
     @GetMapping
     public ResponseEntity<Page<DiscountDTO>> getAllDiscounts(
+            @Parameter(description = "Shop ID to filter discounts", required = true)
+            @RequestParam UUID shopId,
             @Parameter(description = "Page number (0-based)", example = "0")
             @RequestParam(defaultValue = "0") int page,
             @Parameter(description = "Number of items per page", example = "10")
@@ -349,8 +379,8 @@ public class DiscountController {
             @Parameter(description = "Filter to show only active discounts", example = "false")
             @RequestParam(defaultValue = "false") boolean activeOnly) {
 
-        log.info("Fetching discounts - page: {}, size: {}, sortBy: {}, sortDirection: {}, activeOnly: {}",
-                page, size, sortBy, sortDirection, activeOnly);
+        log.info("Fetching discounts for shop: {} - page: {}, size: {}, sortBy: {}, sortDirection: {}, activeOnly: {}",
+                shopId, page, size, sortBy, sortDirection, activeOnly);
 
         try {
             Sort sort = Sort.by(Sort.Direction.fromString(sortDirection), sortBy);
@@ -358,9 +388,9 @@ public class DiscountController {
 
             Page<DiscountDTO> discounts;
             if (activeOnly) {
-                discounts = discountService.getActiveDiscounts(pageable);
+                discounts = discountService.getActiveDiscounts(shopId, pageable);
             } else {
-                discounts = discountService.getAllDiscounts(pageable);
+                discounts = discountService.getAllDiscounts(shopId, pageable);
             }
 
             return ResponseEntity.ok(discounts);
@@ -391,11 +421,12 @@ public class DiscountController {
     @GetMapping("/code/{discountCode}")
     public ResponseEntity<DiscountDTO> getDiscountByCode(
             @Parameter(description = "Discount code to search for", example = "SUMMER20", required = true)
-            @PathVariable String discountCode) {
-        log.info("Fetching discount by code: {}", discountCode);
+            @PathVariable String discountCode,
+            @RequestParam UUID shopId) {
+        log.info("Fetching discount by code: {} for shop: {}", discountCode, shopId);
 
         try {
-            DiscountDTO discount = discountService.getDiscountByCode(discountCode);
+            DiscountDTO discount = discountService.getDiscountByCode(discountCode, shopId);
             return ResponseEntity.ok(discount);
         } catch (EntityNotFoundException e) {
             log.error("Discount not found with code: {}", discountCode);
@@ -431,11 +462,12 @@ public class DiscountController {
     @GetMapping("/{discountId}/valid")
     public ResponseEntity<Map<String, Object>> isDiscountValid(
             @Parameter(description = "UUID of the discount to validate", required = true)
-            @PathVariable UUID discountId) {
-        log.info("Checking if discount is valid with ID: {}", discountId);
+            @PathVariable UUID discountId,
+            @RequestParam UUID shopId) {
+        log.info("Checking if discount is valid with ID: {} for shop: {}", discountId, shopId);
 
         try {
-            boolean isValid = discountService.isDiscountValid(discountId);
+            boolean isValid = discountService.isDiscountValid(discountId, shopId);
             Map<String, Object> response = new HashMap<>();
             response.put("discountId", discountId.toString());
             response.put("isValid", isValid);
@@ -471,11 +503,12 @@ public class DiscountController {
     @GetMapping("/code/{discountCode}/valid")
     public ResponseEntity<Map<String, Object>> isDiscountCodeValid(
             @Parameter(description = "Discount code to validate", example = "SUMMER20", required = true)
-            @PathVariable String discountCode) {
-        log.info("Checking if discount code is valid: {}", discountCode);
+            @PathVariable String discountCode,
+            @RequestParam UUID shopId) {
+        log.info("Checking if discount code is valid: {} for shop: {}", discountCode, shopId);
 
         try {
-            boolean isValid = discountService.isDiscountCodeValid(discountCode);
+            boolean isValid = discountService.isDiscountCodeValid(discountCode, shopId);
             Map<String, Object> response = new HashMap<>();
             response.put("discountCode", discountCode);
             response.put("isValid", isValid);
@@ -518,13 +551,16 @@ public class DiscountController {
         )
     })
     @PostMapping("/fix-dates")
-    @PreAuthorize("hasAnyRole('ADMIN', 'EMPLOYEE')")
-    public ResponseEntity<Map<String, String>> fixDiscountDates() {
+    @PreAuthorize("hasAnyRole('VENDOR', 'EMPLOYEE')")
+    public ResponseEntity<Map<String, String>> fixDiscountDates(@RequestParam UUID shopId) {
         log.info("Fixing discount dates to 2024");
 
         try {
-            // Get all discounts and update their dates to 2024
-            List<Discount> discounts = discountService.getAllDiscountEntities();
+            UUID vendorId = getCurrentUserId();
+            shopAuthorizationService.assertCanManageShop(vendorId, shopId);
+            
+            // Get all discounts for the shop and update their dates to 2024
+            List<Discount> discounts = discountRepository.findByShopShopId(shopId);
             int updatedCount = 0;
 
             for (Discount discount : discounts) {
@@ -610,11 +646,11 @@ public class DiscountController {
         )
     })
     @GetMapping("/active")
-    public ResponseEntity<Map<String, Object>> getActiveDiscounts() {
+    public ResponseEntity<Map<String, Object>> getActiveDiscounts(@RequestParam UUID shopId) {
         try {
-            log.info("Fetching active discounts");
+            log.info("Fetching active discounts for shop: {}", shopId);
 
-            List<Discount> activeDiscounts = discountRepository.findActiveAndValidDiscounts(LocalDateTime.now());
+            List<Discount> activeDiscounts = discountRepository.findActiveAndValidDiscountsByShop(shopId, LocalDateTime.now());
 
             List<Map<String, Object>> discountData = activeDiscounts.stream()
                     .map(discount -> {
@@ -716,15 +752,25 @@ public class DiscountController {
         )
     })
     @GetMapping("/{discountId}/products")
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAnyRole('VENDOR', 'EMPLOYEE')")
     public ResponseEntity<Map<String, Object>> getProductsByDiscount(
             @Parameter(description = "UUID of the discount to get products for", required = true)
-            @PathVariable String discountId) {
+            @PathVariable String discountId,
+            @RequestParam UUID shopId) {
         try {
-            log.info("Fetching products for discount: {}", discountId);
+            log.info("Fetching products for discount: {} in shop: {}", discountId, shopId);
 
-            Discount discount = discountRepository.findByDiscountId(discountId)
+            UUID vendorId = getCurrentUserId();
+            shopAuthorizationService.assertCanManageShop(vendorId, shopId);
+            
+            UUID discountUuid = UUID.fromString(discountId);
+            Discount discount = discountRepository.findById(discountUuid)
                     .orElseThrow(() -> new EntityNotFoundException("Discount not found with ID: " + discountId));
+
+            // Verify discount belongs to the shop
+            if (discount.getShop() == null || !discount.getShop().getShopId().equals(shopId)) {
+                throw new EntityNotFoundException("Discount not found with ID: " + discountId + " for shop: " + shopId);
+            }
 
             List<Product> products = productRepository.findByDiscount(discount, Pageable.unpaged()).getContent();
             List<ProductVariant> variants = productVariantRepository.findByDiscount(discount, Pageable.unpaged())
@@ -789,5 +835,38 @@ public class DiscountController {
         }
         // Fallback to product's main image if variant has no images
         return variant.getProduct().getMainImageUrl();
+    }
+
+    private UUID getCurrentUserId() {
+        try {
+            Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+            if (auth == null || !auth.isAuthenticated()) {
+                return null;
+            }
+
+            Object principal = auth.getPrincipal();
+
+            if (principal instanceof com.ecommerce.ServiceImpl.CustomUserDetails customUserDetails) {
+                String email = customUserDetails.getUsername();
+                return userRepository.findByUserEmail(email).map(User::getId).orElse(null);
+            }
+
+            if (principal instanceof User user && user.getId() != null) {
+                return user.getId();
+            }
+
+            if (principal instanceof UserDetails userDetails) {
+                String email = userDetails.getUsername();
+                return userRepository.findByUserEmail(email).map(User::getId).orElse(null);
+            }
+
+            String name = auth.getName();
+            if (name != null && !name.isBlank()) {
+                return userRepository.findByUserEmail(name).map(User::getId).orElse(null);
+            }
+        } catch (Exception e) {
+            log.error("Error getting current user ID: {}", e.getMessage(), e);
+        }
+        return null;
     }
 }

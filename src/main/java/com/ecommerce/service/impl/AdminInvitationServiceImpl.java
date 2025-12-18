@@ -3,8 +3,10 @@ package com.ecommerce.service.impl;
 import com.ecommerce.Enum.UserRole;
 import com.ecommerce.dto.*;
 import com.ecommerce.entity.AdminInvitation;
+import com.ecommerce.entity.Shop;
 import com.ecommerce.entity.User;
 import com.ecommerce.repository.AdminInvitationRepository;
+import com.ecommerce.repository.ShopRepository;
 import com.ecommerce.repository.UserRepository;
 import com.ecommerce.service.AdminInvitationService;
 import com.ecommerce.service.EmailService;
@@ -29,6 +31,7 @@ public class AdminInvitationServiceImpl implements AdminInvitationService {
 
     private final AdminInvitationRepository adminInvitationRepository;
     private final UserRepository userRepository;
+    private final ShopRepository shopRepository;
     private final PasswordEncoder passwordEncoder;
     private final EmailService emailService;
 
@@ -37,25 +40,42 @@ public class AdminInvitationServiceImpl implements AdminInvitationService {
     private static final int TOKEN_LENGTH = 32;
 
     @Override
-    public AdminInvitationDTO createInvitation(UUID adminId, CreateAdminInvitationDTO createInvitationDTO) {
+    public AdminInvitationDTO createInvitation(UUID vendorId, CreateAdminInvitationDTO createInvitationDTO) {
         log.info("Creating admin invitation for email: {}", createInvitationDTO.getEmail());
 
-        User admin = userRepository.findById(adminId)
-                .orElseThrow(() -> new EntityNotFoundException("Admin not found with ID: " + adminId));
+        User vendor = userRepository.findById(vendorId)
+                .orElseThrow(() -> new EntityNotFoundException("Vendor not found with ID: " + vendorId));
+
+        if (createInvitationDTO.getShopId() == null) {
+            throw new IllegalArgumentException("shopId is required");
+        }
+
+        Shop shop = shopRepository.findById(createInvitationDTO.getShopId())
+                .orElseThrow(() -> new EntityNotFoundException("Shop not found with ID: " + createInvitationDTO.getShopId()));
 
         // Check if user already has a pending invitation
-        if (adminInvitationRepository.existsByEmailAndStatus(createInvitationDTO.getEmail(),
-                AdminInvitation.InvitationStatus.PENDING)) {
+        if (adminInvitationRepository.existsByEmailAndStatusAndShopShopId(createInvitationDTO.getEmail(),
+                AdminInvitation.InvitationStatus.PENDING, shop.getShopId())) {
             throw new IllegalArgumentException(
                     "User already has a pending invitation: " + createInvitationDTO.getEmail());
         }
 
-        // Validate role
+        // Validate role - only VENDOR, EMPLOYEE, and DELIVERY_AGENT can be invited
         UserRole assignedRole;
         try {
             assignedRole = UserRole.valueOf(createInvitationDTO.getAssignedRole().toUpperCase());
         } catch (IllegalArgumentException e) {
             throw new IllegalArgumentException("Invalid role: " + createInvitationDTO.getAssignedRole());
+        }
+
+        // Prevent inviting ADMIN role - admins are not shop-scoped
+        if (assignedRole == UserRole.ADMIN) {
+            throw new IllegalArgumentException("ADMIN role cannot be invited. Only VENDOR, EMPLOYEE, and DELIVERY_AGENT roles can be invited to shops.");
+        }
+
+        // Only allow VENDOR, EMPLOYEE, and DELIVERY_AGENT
+        if (assignedRole != UserRole.VENDOR && assignedRole != UserRole.EMPLOYEE && assignedRole != UserRole.DELIVERY_AGENT) {
+            throw new IllegalArgumentException("Only VENDOR, EMPLOYEE, and DELIVERY_AGENT roles can be invited. Role provided: " + assignedRole);
         }
 
         // Generate unique invitation token
@@ -68,7 +88,8 @@ public class AdminInvitationServiceImpl implements AdminInvitationService {
         invitation.setLastName(createInvitationDTO.getLastName());
         invitation.setAssignedRole(assignedRole);
         invitation.setInvitationToken(invitationToken);
-        invitation.setInvitedBy(admin);
+        invitation.setInvitedBy(vendor);
+        invitation.setShop(shop);
         invitation.setInvitationMessage(createInvitationDTO.getInvitationMessage());
         invitation.setDepartment(createInvitationDTO.getDepartment());
         invitation.setPosition(createInvitationDTO.getPosition());
@@ -93,7 +114,7 @@ public class AdminInvitationServiceImpl implements AdminInvitationService {
                         createInvitationDTO.getEmail(),
                         createInvitationDTO.getFirstName(),
                         createInvitationDTO.getLastName(),
-                        admin.getFullName(),
+                        vendor.getFullName(),
                         assignedRole.name(),
                         createInvitationDTO.getInvitationMessage(),
                         createInvitationDTO.getDepartment(),
@@ -106,7 +127,7 @@ public class AdminInvitationServiceImpl implements AdminInvitationService {
                         createInvitationDTO.getFirstName(),
                         createInvitationDTO.getLastName(),
                         invitationToken,
-                        admin.getFullName(),
+                        vendor.getFullName(),
                         assignedRole.name(),
                         createInvitationDTO.getInvitationMessage(),
                         createInvitationDTO.getDepartment(),
@@ -145,9 +166,20 @@ public class AdminInvitationServiceImpl implements AdminInvitationService {
         if (updateInvitationDTO.getAssignedRole() != null) {
             try {
                 UserRole assignedRole = UserRole.valueOf(updateInvitationDTO.getAssignedRole().toUpperCase());
+                
+                // Prevent ADMIN role - admins are not shop-scoped
+                if (assignedRole == UserRole.ADMIN) {
+                    throw new IllegalArgumentException("ADMIN role cannot be assigned. Only VENDOR, EMPLOYEE, and DELIVERY_AGENT roles can be assigned to shops.");
+                }
+                
+                // Only allow VENDOR, EMPLOYEE, and DELIVERY_AGENT
+                if (assignedRole != UserRole.VENDOR && assignedRole != UserRole.EMPLOYEE && assignedRole != UserRole.DELIVERY_AGENT) {
+                    throw new IllegalArgumentException("Only VENDOR, EMPLOYEE, and DELIVERY_AGENT roles can be assigned. Role provided: " + assignedRole);
+                }
+                
                 invitation.setAssignedRole(assignedRole);
             } catch (IllegalArgumentException e) {
-                throw new IllegalArgumentException("Invalid role: " + updateInvitationDTO.getAssignedRole());
+                throw new IllegalArgumentException("Invalid role: " + updateInvitationDTO.getAssignedRole() + ". " + e.getMessage());
             }
         }
         if (updateInvitationDTO.getInvitationMessage() != null) {
@@ -249,6 +281,38 @@ public class AdminInvitationServiceImpl implements AdminInvitationService {
         }
 
         return true;
+    }
+
+    @Override
+    public void releaseShopMember(UUID shopId, UUID userId) {
+        if (shopId == null) {
+            throw new IllegalArgumentException("shopId is required");
+        }
+        if (userId == null) {
+            throw new IllegalArgumentException("userId is required");
+        }
+
+        // Ensure shop exists (authorization is handled in controller)
+        shopRepository.findById(shopId)
+                .orElseThrow(() -> new EntityNotFoundException("Shop not found with ID: " + shopId));
+
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new EntityNotFoundException("User not found with ID: " + userId));
+
+        if (user.getRole() != UserRole.EMPLOYEE && user.getRole() != UserRole.DELIVERY_AGENT) {
+            throw new IllegalArgumentException("Only EMPLOYEE or DELIVERY_AGENT can be released from a shop");
+        }
+
+        // Verify user is associated with the correct shop
+        if (user.getShop() == null || !user.getShop().getShopId().equals(shopId)) {
+            throw new IllegalArgumentException("User is not associated with the specified shop");
+        }
+
+        user.setRole(UserRole.CUSTOMER);
+        user.setShop(null); // Clear shop relationship
+        userRepository.save(user);
+        
+        log.info("Released user {} from shop {}", userId, shopId);
     }
 
     @Override
@@ -358,9 +422,14 @@ public class AdminInvitationServiceImpl implements AdminInvitationService {
         User existingUser = userRepository.findByUserEmail(invitation.getEmail()).orElse(null);
 
         if (existingUser != null) {
-            // Update existing user's role
+            // Update existing user's role and link to shop
             log.info("Updating existing user role for email: {}", invitation.getEmail());
             existingUser.setRole(invitation.getAssignedRole());
+            // Link user to the shop from the invitation
+            if (invitation.getShop() != null) {
+                existingUser.setShop(invitation.getShop());
+                log.info("Linked existing user to shop: {}", invitation.getShop().getShopId());
+            }
             if (acceptInvitationDTO.getPhoneNumber() != null
                     && !acceptInvitationDTO.getPhoneNumber().trim().isEmpty()) {
                 existingUser.setPhoneNumber(acceptInvitationDTO.getPhoneNumber());
@@ -370,7 +439,11 @@ public class AdminInvitationServiceImpl implements AdminInvitationService {
 
             log.info("Existing user role updated successfully for email: {}", invitation.getEmail());
         } else {
-            // Create new user
+            // Create new user - password is required for new users
+            if (acceptInvitationDTO.getPassword() == null || acceptInvitationDTO.getPassword().trim().isEmpty()) {
+                throw new IllegalArgumentException("Password is required when creating a new account. The user with email " + invitation.getEmail() + " does not exist in the system.");
+            }
+            
             log.info("Creating new user for email: {}", invitation.getEmail());
             User newUser = new User();
             newUser.setFirstName(invitation.getFirstName());
@@ -381,6 +454,11 @@ public class AdminInvitationServiceImpl implements AdminInvitationService {
             newUser.setPhoneNumber(acceptInvitationDTO.getPhoneNumber());
             newUser.setEmailVerified(true);
             newUser.setEnabled(true);
+            // Link user to the shop from the invitation
+            if (invitation.getShop() != null) {
+                newUser.setShop(invitation.getShop());
+                log.info("Linking new user to shop: {}", invitation.getShop().getShopId());
+            }
 
             User savedUser = userRepository.save(newUser);
             invitation.accept(savedUser);
@@ -528,6 +606,22 @@ public class AdminInvitationServiceImpl implements AdminInvitationService {
         log.info("All pending invitations resent for email: {}", email);
     }
 
+    @Override
+    @Transactional(readOnly = true)
+    public boolean doesUserExistForInvitation(String invitationToken) {
+        log.info("Checking if user exists for invitation token: {}", invitationToken);
+        
+        AdminInvitation invitation = adminInvitationRepository
+                .findByInvitationToken(invitationToken)
+                .orElseThrow(() -> new EntityNotFoundException(
+                        "Invitation not found with token: " + invitationToken));
+        
+        boolean userExists = userRepository.findByUserEmail(invitation.getEmail()).isPresent();
+        log.info("User exists for invitation email {}: {}", invitation.getEmail(), userExists);
+        
+        return userExists;
+    }
+
     private String generateUniqueInvitationToken() {
         SecureRandom random = new SecureRandom();
         StringBuilder token = new StringBuilder(TOKEN_LENGTH);
@@ -574,6 +668,8 @@ public class AdminInvitationServiceImpl implements AdminInvitationService {
                 .position(invitation.getPosition())
                 .phoneNumber(invitation.getPhoneNumber())
                 .notes(invitation.getNotes())
+                .shopId(invitation.getShop() != null ? invitation.getShop().getShopId() : null)
+                .shopName(invitation.getShop() != null ? invitation.getShop().getName() : null)
                 .isExpired(invitation.isExpired())
                 .canBeAccepted(invitation.canBeAccepted())
                 .canBeCancelled(invitation.canBeCancelled())

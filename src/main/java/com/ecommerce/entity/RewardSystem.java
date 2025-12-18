@@ -6,6 +6,7 @@ import jakarta.validation.constraints.NotNull;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
+import com.fasterxml.jackson.annotation.JsonBackReference;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -21,6 +22,12 @@ public class RewardSystem {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
+
+    @NotNull(message = "Shop is required")
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "shop_id", nullable = false)
+    @JsonBackReference
+    private Shop shop;
 
     @NotNull(message = "Point value is required")
     @DecimalMin(value = "0.01", message = "Point value must be greater than 0")
@@ -38,12 +45,6 @@ public class RewardSystem {
 
     @Column(name = "review_points_amount")
     private Integer reviewPointsAmount = 0;
-
-    @Column(name = "is_signup_points_enabled", nullable = false)
-    private Boolean isSignupPointsEnabled = false;
-
-    @Column(name = "signup_points_amount")
-    private Integer signupPointsAmount = 0;
 
     @Column(name = "is_purchase_points_enabled", nullable = false)
     private Boolean isPurchasePointsEnabled = false;
@@ -88,13 +89,6 @@ public class RewardSystem {
             return 0;
         }
         return reviewPointsAmount;
-    }
-
-    public Integer calculateSignupPoints() {
-        if (!isSystemEnabled || !isSignupPointsEnabled || signupPointsAmount == null) {
-            return 0;
-        }
-        return signupPointsAmount;
     }
 
     public Integer calculatePurchasePoints(Integer productCount, BigDecimal orderAmount) {

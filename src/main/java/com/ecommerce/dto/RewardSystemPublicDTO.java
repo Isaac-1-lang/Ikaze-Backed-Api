@@ -16,8 +16,6 @@ public class RewardSystemPublicDTO {
     private Boolean isActive;
     private Boolean isReviewPointsEnabled;
     private Integer reviewPointsAmount;
-    private Boolean isSignupPointsEnabled;
-    private Integer signupPointsAmount;
     private Boolean isPurchasePointsEnabled;
     private Boolean isQuantityBasedEnabled;
     private Boolean isAmountBasedEnabled;

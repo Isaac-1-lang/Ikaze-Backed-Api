@@ -2,8 +2,10 @@ package com.ecommerce.service.impl;
 
 import com.ecommerce.Exception.CustomException;
 import com.ecommerce.dto.ShopDTO;
+import com.ecommerce.entity.AdminInvitation;
 import com.ecommerce.entity.Shop;
 import com.ecommerce.entity.User;
+import com.ecommerce.repository.AdminInvitationRepository;
 import com.ecommerce.repository.ShopRepository;
 import com.ecommerce.repository.UserRepository;
 import com.ecommerce.service.ShopService;
@@ -14,23 +16,29 @@ import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import lombok.extern.slf4j.Slf4j;
 
 import java.util.List;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
 @Service
+@Slf4j
 public class ShopServiceImpl implements ShopService {
 
     private final ShopRepository shopRepository;
     private final UserRepository userRepository;
     private final com.ecommerce.repository.ProductRepository productRepository;
+    private final AdminInvitationRepository adminInvitationRepository;
 
     @Autowired
-    public ShopServiceImpl(ShopRepository shopRepository, UserRepository userRepository, com.ecommerce.repository.ProductRepository productRepository) {
+    public ShopServiceImpl(ShopRepository shopRepository, UserRepository userRepository, 
+                          com.ecommerce.repository.ProductRepository productRepository,
+                          AdminInvitationRepository adminInvitationRepository) {
         this.shopRepository = shopRepository;
         this.userRepository = userRepository;
         this.productRepository = productRepository;
+        this.adminInvitationRepository = adminInvitationRepository;
     }
 
     @Override
@@ -237,7 +245,7 @@ public class ShopServiceImpl implements ShopService {
     }
 
     @Override
-    @Transactional(readOnly = true)
+    @Transactional
     public List<ShopDTO> getUserShops(UUID userId) {
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new EntityNotFoundException("User not found with id: " + userId));
@@ -248,22 +256,38 @@ public class ShopServiceImpl implements ShopService {
             shops = getShopsByOwner(userId);
         } else if (user.getRole() == com.ecommerce.Enum.UserRole.EMPLOYEE || 
                    user.getRole() == com.ecommerce.Enum.UserRole.DELIVERY_AGENT) {
-            List<Shop> employeeShops = shopRepository.findAll().stream()
-                    .filter(shop -> {
-                        if (user.getRole() == com.ecommerce.Enum.UserRole.EMPLOYEE) {
-                            return false;
-                        }
-                        return false;
-                    })
-                    .collect(java.util.stream.Collectors.toList());
-
-            if (employeeShops.size() > 1) {
-                throw new CustomException("Employee/Delivery Agent can only be associated with one shop");
+            // Get shop from user's shop relationship (set when accepting invitation)
+            if (user.getShop() != null) {
+                Shop shop = user.getShop();
+                shops = List.of(convertToDTO(shop));
+                log.info("Found shop {} for {} user {} via direct relationship", shop.getShopId(), user.getRole(), userId);
+            } else {
+                // Fallback: try to find shop from accepted invitation
+                log.warn("User {} has no shop relationship, checking accepted invitations", userId);
+                List<AdminInvitation> acceptedInvitations = adminInvitationRepository.findAcceptedInvitationsByUser(userId);
+                
+                if (!acceptedInvitations.isEmpty()) {
+                    // Get the most recent accepted invitation and use its shop
+                    AdminInvitation latestInvitation = acceptedInvitations.get(0);
+                    if (latestInvitation.getShop() != null) {
+                        Shop shop = latestInvitation.getShop();
+                        shops = List.of(convertToDTO(shop));
+                        log.info("Found shop {} for {} user {} via accepted invitation, updating user relationship", 
+                                shop.getShopId(), user.getRole(), userId);
+                        
+                        // Update user's shop relationship for future queries
+                        user.setShop(shop);
+                        userRepository.save(user);
+                        log.info("Updated user {} shop relationship to shop {}", userId, shop.getShopId());
+                    } else {
+                        log.warn("Accepted invitation {} has no shop associated", latestInvitation.getInvitationId());
+                        shops = new java.util.ArrayList<>();
+                    }
+                } else {
+                    log.warn("No accepted invitations found for user {}", userId);
+                    shops = new java.util.ArrayList<>();
+                }
             }
-
-            shops = employeeShops.stream()
-                    .map(this::convertToDTO)
-                    .collect(java.util.stream.Collectors.toList());
         }
 
         return shops;

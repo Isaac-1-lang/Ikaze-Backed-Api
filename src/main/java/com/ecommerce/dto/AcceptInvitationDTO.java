@@ -13,7 +13,7 @@ public class AcceptInvitationDTO {
     @NotBlank(message = "Invitation token is required")
     private String invitationToken;
 
-    @NotBlank(message = "Password is required")
+    // Password is optional - required only when creating a new user account
     @Size(min = 8, message = "Password must be at least 8 characters long")
     private String password;
 

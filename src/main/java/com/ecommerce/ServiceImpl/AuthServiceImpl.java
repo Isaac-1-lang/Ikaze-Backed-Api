@@ -13,11 +13,9 @@ import com.ecommerce.Exception.CustomException;
 import com.ecommerce.dto.UserRegistrationDTO;
 import com.ecommerce.dto.UserDTO;
 import com.ecommerce.dto.SignupResponseDTO;
-import com.ecommerce.dto.UserPointsDTO;
 import com.ecommerce.entity.User;
 import com.ecommerce.repository.UserRepository;
 import com.ecommerce.service.AuthService;
-import com.ecommerce.service.RewardService;
 
 import lombok.extern.slf4j.Slf4j;
 
@@ -32,7 +30,6 @@ public class AuthServiceImpl implements AuthService {
     private final PasswordEncoder passwordEncoder;
     private final AuthenticationManager authenticationManager;
     private final JwtService jwtService;
-    private final RewardService rewardService;
     @Autowired
     private EmailService emailService;
 
@@ -40,13 +37,11 @@ public class AuthServiceImpl implements AuthService {
     public AuthServiceImpl(UserRepository userRepository,
             PasswordEncoder passwordEncoder,
             AuthenticationManager authenticationManager,
-            JwtService jwtService,
-            RewardService rewardService) {
+            JwtService jwtService) {
         this.userRepository = userRepository;
         this.passwordEncoder = passwordEncoder;
         this.authenticationManager = authenticationManager;
         this.jwtService = jwtService;
-        this.rewardService = rewardService;
     }
 
     @Override
@@ -76,24 +71,9 @@ public class AuthServiceImpl implements AuthService {
                 "Welcome to Our App!",
                 "Hello " + savedUser.getFirstName() + ",\n\nThank you for signing up!");
 
-        Integer awardedPoints = 0;
-        String pointsDescription = null;
-
-        try {
-            UserPointsDTO rewardResult = rewardService.awardPointsForSignup(savedUser.getId());
-            if (rewardResult != null) {
-                awardedPoints = rewardResult.getPoints();
-                pointsDescription = rewardResult.getDescription();
-            }
-        } catch (Exception e) {
-            log.warn("Failed to award signup points for user {}: {}", savedUser.getId(), e.getMessage());
-        }
-
         return new SignupResponseDTO(
                 "User registered successfully",
-                savedUser.getId(),
-                awardedPoints,
-                pointsDescription);
+                savedUser.getId());
     }
 
 

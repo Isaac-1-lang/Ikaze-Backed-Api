@@ -6,10 +6,13 @@ import com.ecommerce.dto.UpdateDiscountDTO;
 import com.ecommerce.entity.Discount;
 import com.ecommerce.entity.Product;
 import com.ecommerce.entity.ProductVariant;
+import com.ecommerce.entity.Shop;
 import com.ecommerce.repository.DiscountRepository;
 import com.ecommerce.repository.ProductRepository;
 import com.ecommerce.repository.ProductVariantRepository;
+import com.ecommerce.repository.ShopRepository;
 import com.ecommerce.service.DiscountService;
+import com.ecommerce.service.ShopAuthorizationService;
 import jakarta.persistence.EntityNotFoundException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -31,16 +34,28 @@ public class DiscountServiceImpl implements DiscountService {
     private final DiscountRepository discountRepository;
     private final ProductRepository productRepository;
     private final ProductVariantRepository productVariantRepository;
+    private final ShopRepository shopRepository;
+    private final ShopAuthorizationService shopAuthorizationService;
 
     @Override
-    public DiscountDTO createDiscount(CreateDiscountDTO createDiscountDTO) {
-        log.info("Creating new discount: {}", createDiscountDTO.getName());
+    public DiscountDTO createDiscount(UUID vendorId, CreateDiscountDTO createDiscountDTO) {
+        log.info("Creating new discount: {} for shop: {}", createDiscountDTO.getName(), createDiscountDTO.getShopId());
 
-        // Validate discount code uniqueness if provided
+        if (createDiscountDTO.getShopId() == null) {
+            throw new IllegalArgumentException("shopId is required");
+        }
+
+        // Verify shop exists and user has access
+        Shop shop = shopRepository.findById(createDiscountDTO.getShopId())
+                .orElseThrow(() -> new EntityNotFoundException("Shop not found with ID: " + createDiscountDTO.getShopId()));
+
+        shopAuthorizationService.assertCanManageShop(vendorId, createDiscountDTO.getShopId());
+
+        // Validate discount code uniqueness within the shop if provided
         if (createDiscountDTO.getDiscountCode() != null && !createDiscountDTO.getDiscountCode().trim().isEmpty()) {
-            if (discountRepository.findByDiscountCode(createDiscountDTO.getDiscountCode()).isPresent()) {
+            if (discountRepository.findByDiscountCodeAndShopShopId(createDiscountDTO.getDiscountCode(), createDiscountDTO.getShopId()).isPresent()) {
                 throw new IllegalArgumentException(
-                        "Discount code already exists: " + createDiscountDTO.getDiscountCode());
+                        "Discount code already exists in this shop: " + createDiscountDTO.getDiscountCode());
             }
         }
 
@@ -59,6 +74,7 @@ public class DiscountServiceImpl implements DiscountService {
         discount.setEndDate(createDiscountDTO.getEndDate());
         discount.setActive(createDiscountDTO.isActive());
         discount.setUsageLimit(createDiscountDTO.getUsageLimit());
+        discount.setShop(shop);
 
         // Set discount type
         if (createDiscountDTO.getDiscountType() != null) {
@@ -76,19 +92,25 @@ public class DiscountServiceImpl implements DiscountService {
     }
 
     @Override
-    public DiscountDTO updateDiscount(UUID discountId, UpdateDiscountDTO updateDiscountDTO) {
+    public DiscountDTO updateDiscount(UUID discountId, UUID vendorId, UpdateDiscountDTO updateDiscountDTO) {
         log.info("Updating discount with ID: {}", discountId);
 
         Discount discount = discountRepository.findById(discountId)
                 .orElseThrow(() -> new EntityNotFoundException("Discount not found with ID: " + discountId));
 
-        // Validate discount code uniqueness if being updated
+        // Verify user has access to the shop
+        if (discount.getShop() == null) {
+            throw new IllegalStateException("Discount is not associated with a shop");
+        }
+        shopAuthorizationService.assertCanManageShop(vendorId, discount.getShop().getShopId());
+
+        // Validate discount code uniqueness within the shop if being updated
         if (updateDiscountDTO.getDiscountCode() != null && !updateDiscountDTO.getDiscountCode().trim().isEmpty()) {
-            discountRepository.findByDiscountCode(updateDiscountDTO.getDiscountCode())
+            discountRepository.findByDiscountCodeAndShopShopId(updateDiscountDTO.getDiscountCode(), discount.getShop().getShopId())
                     .filter(existing -> !existing.getDiscountId().equals(discountId))
                     .ifPresent(existing -> {
                         throw new IllegalArgumentException(
-                                "Discount code already exists: " + updateDiscountDTO.getDiscountCode());
+                                "Discount code already exists in this shop: " + updateDiscountDTO.getDiscountCode());
                     });
         }
 
@@ -137,11 +159,17 @@ public class DiscountServiceImpl implements DiscountService {
     }
 
     @Override
-    public boolean deleteDiscount(UUID discountId) {
+    public boolean deleteDiscount(UUID discountId, UUID vendorId) {
         log.info("Deleting discount with ID: {}", discountId);
 
         Discount discount = discountRepository.findById(discountId)
                 .orElseThrow(() -> new EntityNotFoundException("Discount not found with ID: " + discountId));
+
+        // Verify user has access to the shop
+        if (discount.getShop() == null) {
+            throw new IllegalStateException("Discount is not associated with a shop");
+        }
+        shopAuthorizationService.assertCanManageShop(vendorId, discount.getShop().getShopId());
 
         List<Product> productsWithDiscount = productRepository.findByDiscount(discount, Pageable.unpaged()).getContent();
         if (!productsWithDiscount.isEmpty()) {
@@ -172,58 +200,64 @@ public class DiscountServiceImpl implements DiscountService {
 
     @Override
     @Transactional(readOnly = true)
-    public DiscountDTO getDiscountById(UUID discountId) {
+    public DiscountDTO getDiscountById(UUID discountId, UUID shopId) {
         Discount discount = discountRepository.findById(discountId)
                 .orElseThrow(() -> new EntityNotFoundException("Discount not found with ID: " + discountId));
 
-        return mapToDTO(discount);
-    }
-
-    @Override
-    @Transactional(readOnly = true)
-    public Page<DiscountDTO> getAllDiscounts(Pageable pageable) {
-        log.info("Fetching all discounts with pagination");
-
-        Page<Discount> discounts = discountRepository.findAll(pageable);
-        return discounts.map(this::mapToDTO);
-    }
-
-    @Override
-    @Transactional(readOnly = true)
-    public Page<DiscountDTO> getActiveDiscounts(Pageable pageable) {
-        log.info("Fetching active discounts with pagination");
-
-        Page<Discount> discounts = discountRepository.findByIsActiveTrue(pageable);
-        return discounts.map(this::mapToDTO);
-    }
-
-    @Override
-    @Transactional(readOnly = true)
-    public DiscountDTO getDiscountByCode(String discountCode) {
-        log.info("Fetching discount by code: {}", discountCode);
-
-        Discount discount = discountRepository.findByDiscountCode(discountCode)
-                .orElseThrow(() -> new EntityNotFoundException("Discount not found with code: " + discountCode));
+        // Verify discount belongs to the shop
+        if (discount.getShop() == null || !discount.getShop().getShopId().equals(shopId)) {
+            throw new EntityNotFoundException("Discount not found with ID: " + discountId + " for shop: " + shopId);
+        }
 
         return mapToDTO(discount);
     }
 
     @Override
     @Transactional(readOnly = true)
-    public boolean isDiscountValid(UUID discountId) {
-        log.info("Checking if discount is valid with ID: {}", discountId);
+    public Page<DiscountDTO> getAllDiscounts(UUID shopId, Pageable pageable) {
+        log.info("Fetching all discounts for shop: {} with pagination", shopId);
+
+        Page<Discount> discounts = discountRepository.findByShopShopId(shopId, pageable);
+        return discounts.map(this::mapToDTO);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Page<DiscountDTO> getActiveDiscounts(UUID shopId, Pageable pageable) {
+        log.info("Fetching active discounts for shop: {} with pagination", shopId);
+
+        Page<Discount> discounts = discountRepository.findByShopShopIdAndIsActiveTrue(shopId, pageable);
+        return discounts.map(this::mapToDTO);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public DiscountDTO getDiscountByCode(String discountCode, UUID shopId) {
+        log.info("Fetching discount by code: {} for shop: {}", discountCode, shopId);
+
+        Discount discount = discountRepository.findByDiscountCodeAndShopShopId(discountCode, shopId)
+                .orElseThrow(() -> new EntityNotFoundException("Discount not found with code: " + discountCode + " for shop: " + shopId));
+
+        return mapToDTO(discount);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public boolean isDiscountValid(UUID discountId, UUID shopId) {
+        log.info("Checking if discount is valid with ID: {} for shop: {}", discountId, shopId);
 
         return discountRepository.findById(discountId)
+                .filter(d -> d.getShop() != null && d.getShop().getShopId().equals(shopId))
                 .map(Discount::isValid)
                 .orElse(false);
     }
 
     @Override
     @Transactional(readOnly = true)
-    public boolean isDiscountCodeValid(String discountCode) {
-        log.info("Checking if discount code is valid: {}", discountCode);
+    public boolean isDiscountCodeValid(String discountCode, UUID shopId) {
+        log.info("Checking if discount code is valid: {} for shop: {}", discountCode, shopId);
 
-        return discountRepository.findValidDiscountByCode(discountCode, LocalDateTime.now())
+        return discountRepository.findValidDiscountByCodeAndShop(discountCode, shopId, LocalDateTime.now())
                 .isPresent();
     }
 
@@ -244,6 +278,8 @@ public class DiscountServiceImpl implements DiscountService {
                 .updatedAt(discount.getUpdatedAt())
                 .valid(discount.isValid())
                 .canBeUsed(discount.canBeUsed())
+                .shopId(discount.getShop() != null ? discount.getShop().getShopId() : null)
+                .shopName(discount.getShop() != null ? discount.getShop().getName() : null)
                 .build();
     }
 
