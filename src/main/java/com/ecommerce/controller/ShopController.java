@@ -42,12 +42,15 @@ public class ShopController {
     private final ShopService shopService;
     private final com.ecommerce.repository.UserRepository userRepository;
     private final CloudinaryService cloudinaryService;
+    private final com.ecommerce.service.ProductService productService;
 
     @Autowired
-    public ShopController(ShopService shopService, com.ecommerce.repository.UserRepository userRepository, CloudinaryService cloudinaryService) {
+    public ShopController(ShopService shopService, com.ecommerce.repository.UserRepository userRepository,
+            CloudinaryService cloudinaryService, com.ecommerce.service.ProductService productService) {
         this.shopService = shopService;
         this.userRepository = userRepository;
         this.cloudinaryService = cloudinaryService;
+        this.productService = productService;
     }
 
     @PostMapping(consumes = MediaType.APPLICATION_JSON_VALUE)
@@ -269,11 +272,12 @@ public class ShopController {
     })
     public ResponseEntity<?> getUserShops() {
         log.info("ShopController.getUserShops: Request received");
-        
+
         try {
-            org.springframework.security.core.Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+            org.springframework.security.core.Authentication auth = SecurityContextHolder.getContext()
+                    .getAuthentication();
             log.info("ShopController.getUserShops: SecurityContext authentication - present: {}", auth != null);
-            
+
             if (auth == null) {
                 log.error("ShopController.getUserShops: No authentication found in SecurityContext");
                 return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(
@@ -281,29 +285,30 @@ public class ShopController {
                                 "success", false,
                                 "message", "Authentication required"));
             }
-            
-            log.info("ShopController.getUserShops: Authentication details - name: {}, principal: {}, authenticated: {}", 
+
+            log.info("ShopController.getUserShops: Authentication details - name: {}, principal: {}, authenticated: {}",
                     auth.getName(), auth.getPrincipal().getClass().getSimpleName(), auth.isAuthenticated());
             log.info("ShopController.getUserShops: Authorities: {}", auth.getAuthorities());
-            
+
             if (auth.getAuthorities() != null) {
                 auth.getAuthorities().forEach(authority -> {
                     log.info("ShopController.getUserShops: Authority - {}", authority.getAuthority());
                 });
             }
-            
+
             UUID userId = getCurrentUserId();
             log.info("ShopController.getUserShops: Extracted userId: {}", userId);
-            
+
             List<ShopDTO> shops = shopService.getUserShops(userId);
             log.info("ShopController.getUserShops: Retrieved {} shops for user {}", shops.size(), userId);
-            
+
             return ResponseEntity.ok(shops);
         } catch (org.springframework.security.access.AccessDeniedException e) {
             log.error("ShopController.getUserShops: Access denied exception", e);
-            org.springframework.security.core.Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+            org.springframework.security.core.Authentication auth = SecurityContextHolder.getContext()
+                    .getAuthentication();
             if (auth != null) {
-                log.error("ShopController.getUserShops: User: {}, Authorities: {}", 
+                log.error("ShopController.getUserShops: User: {}, Authorities: {}",
                         auth.getName(), auth.getAuthorities());
             }
             return ResponseEntity.status(HttpStatus.FORBIDDEN).body(
@@ -312,9 +317,10 @@ public class ShopController {
                             "message", "Access denied: " + e.getMessage()));
         } catch (Exception e) {
             log.error("ShopController.getUserShops: Exception occurred", e);
-            org.springframework.security.core.Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+            org.springframework.security.core.Authentication auth = SecurityContextHolder.getContext()
+                    .getAuthentication();
             if (auth != null) {
-                log.error("ShopController.getUserShops: Exception context - User: {}, Authorities: {}", 
+                log.error("ShopController.getUserShops: Exception context - User: {}, Authorities: {}",
                         auth.getName(), auth.getAuthorities());
             }
             return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(
@@ -350,6 +356,75 @@ public class ShopController {
         }
     }
 
+    @GetMapping("/search")
+    @Operation(summary = "Search shops", description = "Search shops by name, description, address, or owner with filtering and sorting")
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200", description = "Shops retrieved successfully", content = @Content(mediaType = "application/json", schema = @Schema(implementation = Page.class))),
+            @ApiResponse(responseCode = "400", description = "Bad request - Invalid parameters", content = @Content(mediaType = "application/json"))
+    })
+    public ResponseEntity<?> searchShops(
+            @RequestParam(required = false) String search,
+            @RequestParam(required = false) String category,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "10") int size,
+            @RequestParam(defaultValue = "rating-desc") String sort) {
+        try {
+            String[] sortParams = sort.split("-");
+            String sortBy = sortParams[0];
+            String sortDirection = sortParams.length > 1 ? sortParams[1] : "desc";
+
+            // Map frontend sort keys to DATABASE COLUMN NAMES (for native SQL)
+            String sortField = switch (sortBy) {
+                case "rating" -> "rating";
+                case "products" -> "product_count"; // Database column name
+                case "name" -> "shop_name"; // Database column name
+                default -> "created_at"; // Database column name
+            };
+
+            Sort sorting = sortDirection.equalsIgnoreCase("asc") ? Sort.by(sortField).ascending()
+                    : Sort.by(sortField).descending();
+
+            Pageable pageable = PageRequest.of(page, size, sorting);
+            Page<ShopDTO> shops = shopService.searchShops(search, category, pageable);
+            return ResponseEntity.ok(shops);
+        } catch (Exception e) {
+            log.error("Failed to search shops", e);
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(
+                    java.util.Map.of(
+                            "success", false,
+                            "message", e.getMessage() != null ? e.getMessage() : "Failed to search shops"));
+        }
+    }
+
+    @GetMapping("/{shopId}/products")
+    @Operation(summary = "Get shop products", description = "Retrieve products for a specific shop with pagination (available for customers)")
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200", description = "Shop products retrieved successfully", content = @Content(mediaType = "application/json", schema = @Schema(implementation = Page.class))),
+            @ApiResponse(responseCode = "400", description = "Bad request - Invalid shop ID", content = @Content(mediaType = "application/json")),
+            @ApiResponse(responseCode = "404", description = "Shop not found", content = @Content(mediaType = "application/json"))
+    })
+    public ResponseEntity<?> getShopProducts(
+            @PathVariable UUID shopId,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "12") int size,
+            @RequestParam(defaultValue = "createdAt") String sortBy,
+            @RequestParam(defaultValue = "desc") String sortDir) {
+        try {
+            Sort sort = sortDir.equalsIgnoreCase("asc") ? Sort.by(sortBy).ascending()
+                    : Sort.by(sortBy).descending();
+            Pageable pageable = PageRequest.of(page, size, sort);
+            Page<com.ecommerce.dto.ManyProductsDto> products = productService.getProductsByShopForCustomers(shopId,
+                    pageable);
+            return ResponseEntity.ok(products);
+        } catch (Exception e) {
+            log.error("Failed to get products for shop {}", shopId, e);
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(
+                    java.util.Map.of(
+                            "success", false,
+                            "message", e.getMessage() != null ? e.getMessage() : "Failed to get shop products"));
+        }
+    }
+
     @GetMapping("/active")
     @Operation(summary = "Get active shops", description = "Retrieve all active shops")
     @ApiResponses(value = {
@@ -381,8 +456,8 @@ public class ShopController {
             if (principal instanceof com.ecommerce.ServiceImpl.CustomUserDetails customUserDetails) {
                 String email = customUserDetails.getUsername();
                 return userRepository.findByUserEmail(email)
-                    .map(com.ecommerce.entity.User::getId)
-                    .orElseThrow(() -> new RuntimeException("User not found with email: " + email));
+                        .map(com.ecommerce.entity.User::getId)
+                        .orElseThrow(() -> new RuntimeException("User not found with email: " + email));
             }
 
             if (principal instanceof com.ecommerce.entity.User user && user.getId() != null) {
@@ -392,15 +467,15 @@ public class ShopController {
             if (principal instanceof UserDetails userDetails) {
                 String email = userDetails.getUsername();
                 return userRepository.findByUserEmail(email)
-                    .map(com.ecommerce.entity.User::getId)
-                    .orElseThrow(() -> new RuntimeException("User not found with email: " + email));
+                        .map(com.ecommerce.entity.User::getId)
+                        .orElseThrow(() -> new RuntimeException("User not found with email: " + email));
             }
 
             String name = auth.getName();
             if (name != null && !name.isBlank()) {
                 return userRepository.findByUserEmail(name)
-                    .map(com.ecommerce.entity.User::getId)
-                    .orElseThrow(() -> new RuntimeException("User not found with email: " + name));
+                        .map(com.ecommerce.entity.User::getId)
+                        .orElseThrow(() -> new RuntimeException("User not found with email: " + name));
             }
         } catch (Exception e) {
             log.error("Error getting current user ID: {}", e.getMessage(), e);
@@ -409,4 +484,3 @@ public class ShopController {
         throw new RuntimeException("Unable to get current user ID");
     }
 }
-

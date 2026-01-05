@@ -61,6 +61,18 @@ public class Shop {
     @Column(name = "is_active")
     private Boolean isActive = true;
 
+    @Column(name = "category")
+    private String category;
+
+    @Column(name = "rating")
+    private Double rating = 0.0;
+
+    @Column(name = "total_reviews")
+    private Integer totalReviews = 0;
+
+    @Column(name = "product_count")
+    private Integer productCount = 0;
+
     @Column(name = "created_at")
     private LocalDateTime createdAt;
 
@@ -117,4 +129,3 @@ public class Shop {
         PENDING, ACTIVE, SUSPENDED, INACTIVE
     }
 }
-

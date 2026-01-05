@@ -24,6 +24,8 @@ public interface ShopService {
 
     Page<ShopDTO> getAllShops(Pageable pageable);
 
+    Page<ShopDTO> searchShops(String search, String category, Pageable pageable);
+
     List<ShopDTO> getActiveShops();
 
     ShopDTO convertToDTO(Shop shop);
@@ -34,4 +36,3 @@ public interface ShopService {
 
     List<ShopDTO> getUserShops(UUID userId);
 }
-

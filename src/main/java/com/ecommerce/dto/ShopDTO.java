@@ -44,10 +44,15 @@ public class ShopDTO {
 
     private Boolean isActive;
 
+    private String category;
+
+    private Double rating;
+
+    private Integer totalReviews;
+
     private Long productCount;
 
     private LocalDateTime createdAt;
 
     private LocalDateTime updatedAt;
 }
-

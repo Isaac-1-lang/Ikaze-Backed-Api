@@ -36,7 +36,7 @@ public interface ProductService {
         /**
          * Create an empty product for step-by-step editing
          * 
-         * @param name The initial product name
+         * @param name   The initial product name
          * @param shopId The shop ID this product belongs to
          * @return Map containing product ID and status information
          */
@@ -113,7 +113,8 @@ public interface ProductService {
         ProductDTO getProductById(UUID productId);
 
         /**
-         * Get a product by its ID for customers (without warehouse/batch data, with ProductDetail info)
+         * Get a product by its ID for customers (without warehouse/batch data, with
+         * ProductDetail info)
          * 
          * @param productId The product ID
          * @return The customer product DTO
@@ -121,7 +122,8 @@ public interface ProductService {
         CustomerProductDTO getCustomerProductById(UUID productId);
 
         /**
-         * Get a product by its slug for customers (without warehouse/batch data, with ProductDetail info)
+         * Get a product by its slug for customers (without warehouse/batch data, with
+         * ProductDetail info)
          * 
          * @param slug The product slug
          * @return The customer product DTO
@@ -155,7 +157,8 @@ public interface ProductService {
         Page<ManyProductsDto> getAllProducts(Pageable pageable);
 
         /**
-         * Get all products available for customers (active, displayToCustomers=true, with stock)
+         * Get all products available for customers (active, displayToCustomers=true,
+         * with stock)
          * 
          * @param pageable Pagination information
          * @return Page of ManyProductsDto for customer display
@@ -163,7 +166,8 @@ public interface ProductService {
         Page<ManyProductsDto> getAllProductsForCustomers(Pageable pageable);
 
         /**
-         * Get all products available for admins (all products regardless of stock or display status)
+         * Get all products available for admins (all products regardless of stock or
+         * display status)
          * 
          * @param pageable Pagination information
          * @return Page of ManyProductsDto for admin display
@@ -173,7 +177,7 @@ public interface ProductService {
         /**
          * Get all products for a specific shop with pagination
          * 
-         * @param shopId The shop ID to filter products by
+         * @param shopId   The shop ID to filter products by
          * @param pageable Pagination information
          * @return Page of ManyProductsDto for the shop
          */
@@ -225,7 +229,8 @@ public interface ProductService {
         Page<ManyProductsDto> searchProductsForCustomers(ProductSearchDTO searchDTO);
 
         /**
-         * Search products for admins (all products regardless of stock or display status)
+         * Search products for admins (all products regardless of stock or display
+         * status)
          * 
          * @param searchDTO The search criteria DTO
          * @return Page of ManyProductsDto for admin search results
@@ -344,7 +349,7 @@ public interface ProductService {
          * Get products by category for customers
          * 
          * @param categoryId The category ID
-         * @param pageable Pagination information
+         * @param pageable   Pagination information
          * @return Page of products in the category available to customers
          */
         Page<ManyProductsDto> getProductsByCategoryForCustomers(Long categoryId, Pageable pageable);
@@ -352,7 +357,7 @@ public interface ProductService {
         /**
          * Get products by brand for customers
          * 
-         * @param brandId The brand ID
+         * @param brandId  The brand ID
          * @param pageable Pagination information
          * @return Page of products by the brand available to customers
          */
@@ -373,4 +378,13 @@ public interface ProductService {
          * @return List of available variants
          */
         List<ProductVariantDTO> getAvailableVariantsForCustomers(UUID productId);
+
+        /**
+         * Get products for a specific shop available for customers
+         *
+         * @param shopId   The shop ID
+         * @param pageable Pagination information
+         * @return Page of ManyProductsDto for customer display
+         */
+        Page<ManyProductsDto> getProductsByShopForCustomers(UUID shopId, Pageable pageable);
 }

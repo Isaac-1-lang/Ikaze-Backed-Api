@@ -32,9 +32,9 @@ public class ShopServiceImpl implements ShopService {
     private final AdminInvitationRepository adminInvitationRepository;
 
     @Autowired
-    public ShopServiceImpl(ShopRepository shopRepository, UserRepository userRepository, 
-                          com.ecommerce.repository.ProductRepository productRepository,
-                          AdminInvitationRepository adminInvitationRepository) {
+    public ShopServiceImpl(ShopRepository shopRepository, UserRepository userRepository,
+            com.ecommerce.repository.ProductRepository productRepository,
+            AdminInvitationRepository adminInvitationRepository) {
         this.shopRepository = shopRepository;
         this.userRepository = userRepository;
         this.productRepository = productRepository;
@@ -53,13 +53,12 @@ public class ShopServiceImpl implements ShopService {
             throw new CustomException("Administrators cannot create shops. Only vendors can own shops.");
         }
 
-        if (userRole == com.ecommerce.Enum.UserRole.DELIVERY_AGENT || 
-            userRole == com.ecommerce.Enum.UserRole.EMPLOYEE) {
+        if (userRole == com.ecommerce.Enum.UserRole.DELIVERY_AGENT ||
+                userRole == com.ecommerce.Enum.UserRole.EMPLOYEE) {
             throw new CustomException(
-                "You are currently associated with a shop as " + userRole.name() + ". " +
-                "Please contact the shop administrator to remove your association first. " +
-                "Once your role is changed back to CUSTOMER, you can create your own shop."
-            );
+                    "You are currently associated with a shop as " + userRole.name() + ". " +
+                            "Please contact the shop administrator to remove your association first. " +
+                            "Once your role is changed back to CUSTOMER, you can create your own shop.");
         }
 
         List<Shop> existingShops = shopRepository.findByOwnerId(ownerId);
@@ -184,6 +183,37 @@ public class ShopServiceImpl implements ShopService {
 
     @Override
     @Transactional(readOnly = true)
+    public Page<ShopDTO> searchShops(String search, String category, Pageable pageable) {
+        log.info("========== SEARCH SHOPS DEBUG ==========");
+        log.info("Search term: {}", search);
+        log.info("Category: {}", category);
+        log.info("Pageable: {}", pageable);
+        log.info("Sort: {}", pageable.getSort());
+
+        try {
+            log.info("Calling shopRepository.searchShops...");
+            Page<Shop> shops = shopRepository.searchShops(search, category, pageable);
+            log.info("Successfully retrieved {} shops", shops.getTotalElements());
+
+            List<ShopDTO> shopDTOs = shops.getContent().stream()
+                    .map(this::convertToDTO)
+                    .collect(Collectors.toList());
+
+            log.info("Successfully converted to DTOs");
+            log.info("========== END SEARCH SHOPS DEBUG ==========");
+            return new PageImpl<>(shopDTOs, pageable, shops.getTotalElements());
+        } catch (Exception e) {
+            log.error("========== ERROR IN SEARCH SHOPS ==========");
+            log.error("Error message: {}", e.getMessage());
+            log.error("Error class: {}", e.getClass().getName());
+            log.error("Stack trace:", e);
+            log.error("========== END ERROR ==========");
+            throw e;
+        }
+    }
+
+    @Override
+    @Transactional(readOnly = true)
     public List<ShopDTO> getActiveShops() {
         List<Shop> shops = shopRepository.findActiveShops();
         return shops.stream()
@@ -204,6 +234,10 @@ public class ShopServiceImpl implements ShopService {
         dto.setContactPhone(shop.getContactPhone());
         dto.setAddress(shop.getAddress());
         dto.setIsActive(shop.getIsActive());
+        dto.setCategory(shop.getCategory());
+        dto.setRating(shop.getRating());
+        dto.setTotalReviews(shop.getTotalReviews());
+        dto.setProductCount(shop.getProductCount() != null ? shop.getProductCount().longValue() : 0L);
         dto.setCreatedAt(shop.getCreatedAt());
         dto.setUpdatedAt(shop.getUpdatedAt());
 
@@ -212,9 +246,6 @@ public class ShopServiceImpl implements ShopService {
             dto.setOwnerName(shop.getOwner().getFirstName() + " " + shop.getOwner().getLastName());
             dto.setOwnerEmail(shop.getOwner().getUserEmail());
         }
-
-        long productCount = productRepository.countByShopId(shop.getShopId());
-        dto.setProductCount(productCount);
 
         return dto;
     }
@@ -230,6 +261,7 @@ public class ShopServiceImpl implements ShopService {
         shop.setContactPhone(shopDTO.getContactPhone());
         shop.setAddress(shopDTO.getAddress());
         shop.setIsActive(shopDTO.getIsActive());
+        shop.setCategory(shopDTO.getCategory());
         if (shopDTO.getStatus() != null) {
             shop.setStatus(shopDTO.getStatus());
         }
@@ -254,27 +286,29 @@ public class ShopServiceImpl implements ShopService {
 
         if (user.getRole() == com.ecommerce.Enum.UserRole.VENDOR) {
             shops = getShopsByOwner(userId);
-        } else if (user.getRole() == com.ecommerce.Enum.UserRole.EMPLOYEE || 
-                   user.getRole() == com.ecommerce.Enum.UserRole.DELIVERY_AGENT) {
+        } else if (user.getRole() == com.ecommerce.Enum.UserRole.EMPLOYEE ||
+                user.getRole() == com.ecommerce.Enum.UserRole.DELIVERY_AGENT) {
             // Get shop from user's shop relationship (set when accepting invitation)
             if (user.getShop() != null) {
                 Shop shop = user.getShop();
                 shops = List.of(convertToDTO(shop));
-                log.info("Found shop {} for {} user {} via direct relationship", shop.getShopId(), user.getRole(), userId);
+                log.info("Found shop {} for {} user {} via direct relationship", shop.getShopId(), user.getRole(),
+                        userId);
             } else {
                 // Fallback: try to find shop from accepted invitation
                 log.warn("User {} has no shop relationship, checking accepted invitations", userId);
-                List<AdminInvitation> acceptedInvitations = adminInvitationRepository.findAcceptedInvitationsByUser(userId);
-                
+                List<AdminInvitation> acceptedInvitations = adminInvitationRepository
+                        .findAcceptedInvitationsByUser(userId);
+
                 if (!acceptedInvitations.isEmpty()) {
                     // Get the most recent accepted invitation and use its shop
                     AdminInvitation latestInvitation = acceptedInvitations.get(0);
                     if (latestInvitation.getShop() != null) {
                         Shop shop = latestInvitation.getShop();
                         shops = List.of(convertToDTO(shop));
-                        log.info("Found shop {} for {} user {} via accepted invitation, updating user relationship", 
+                        log.info("Found shop {} for {} user {} via accepted invitation, updating user relationship",
                                 shop.getShopId(), user.getRole(), userId);
-                        
+
                         // Update user's shop relationship for future queries
                         user.setShop(shop);
                         userRepository.save(user);
@@ -293,4 +327,3 @@ public class ShopServiceImpl implements ShopService {
         return shops;
     }
 }
-

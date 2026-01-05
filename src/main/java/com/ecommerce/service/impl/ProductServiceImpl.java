@@ -168,7 +168,8 @@ public class ProductServiceImpl implements ProductService {
             log.info("Creating empty product with name: {} for shop: {}", name, shopId);
 
             com.ecommerce.entity.Shop shop = shopRepository.findById(shopId)
-                    .orElseThrow(() -> new jakarta.persistence.EntityNotFoundException("Shop not found with id: " + shopId));
+                    .orElseThrow(
+                            () -> new jakarta.persistence.EntityNotFoundException("Shop not found with id: " + shopId));
 
             Product product = new Product();
             product.setProductName(name);
@@ -1303,7 +1304,8 @@ public class ProductServiceImpl implements ProductService {
                     (searchDTO.getSearchKeyword() != null && !searchDTO.getSearchKeyword().trim().isEmpty());
             boolean hasShopFilter = searchDTO.getShopId() != null;
 
-            // If shop filter is present, skip Elasticsearch to ensure shop scoping is enforced
+            // If shop filter is present, skip Elasticsearch to ensure shop scoping is
+            // enforced
             if (isTextSearch && !hasShopFilter) {
                 return searchProductsWithElasticsearch(searchDTO, page, size, sortBy, sortDirection);
             } else {
@@ -3079,7 +3081,7 @@ public class ProductServiceImpl implements ProductService {
         dto.setIsActive(variant.isActive());
         dto.setIsInStock(variant.isInStock());
         dto.setIsLowStock(variant.isLowStock());
-        
+
         // Calculate total stock quantity across all warehouses
         int totalStockQuantity = 0;
         List<Stock> stocks = stockRepository.findByProductVariantWithWarehouse(variant);
@@ -3092,7 +3094,7 @@ public class ProductServiceImpl implements ProductService {
             }
         }
         dto.setStockQuantity(totalStockQuantity);
-        
+
         dto.setCreatedAt(variant.getCreatedAt());
         dto.setUpdatedAt(variant.getUpdatedAt());
 
@@ -4827,7 +4829,7 @@ public class ProductServiceImpl implements ProductService {
      */
     private void validateVideo(MultipartFile video) {
         String filename = video.getOriginalFilename();
-        
+
         // Validate file size (max 100MB)
         long maxSize = 100L * 1024 * 1024; // 100MB in bytes
         if (video.getSize() > maxSize) {
@@ -4853,7 +4855,8 @@ public class ProductServiceImpl implements ProductService {
         } catch (Exception e) {
             log.error("Failed to extract video duration for '{}': {}", filename, e.getMessage());
             throw new IllegalArgumentException(
-                    String.format("Failed to validate video '%s'. The file may be corrupted or in an unsupported format.",
+                    String.format(
+                            "Failed to validate video '%s'. The file may be corrupted or in an unsupported format.",
                             filename));
         }
     }
@@ -4875,14 +4878,14 @@ public class ProductServiceImpl implements ProductService {
             parser.parse(inputStream, handler, metadata, context);
 
             String durationStr = null;
-            
+
             String[] durationKeys = {
-                "xmpDM:duration",
-                "xmpDM:Duration",
-                "duration",
-                "Duration",
-                "video:duration",
-                "Content-Duration"
+                    "xmpDM:duration",
+                    "xmpDM:Duration",
+                    "duration",
+                    "Duration",
+                    "video:duration",
+                    "Content-Duration"
             };
 
             for (String key : durationKeys) {
@@ -5739,6 +5742,24 @@ public class ProductServiceImpl implements ProductService {
         } catch (Exception e) {
             log.error("Error getting available variants for customers: {}", e.getMessage(), e);
             throw new RuntimeException("Failed to get available variants for customers: " + e.getMessage(), e);
+        }
+    }
+
+    @Override
+    public Page<ManyProductsDto> getProductsByShopForCustomers(UUID shopId, Pageable pageable) {
+        try {
+            log.info("Getting products for shop {} for customers with pagination: {}", shopId, pageable);
+
+            // Validate shop exists
+            if (!shopRepository.existsById(shopId)) {
+                throw new EntityNotFoundException("Shop not found with ID: " + shopId);
+            }
+
+            Page<Product> products = productRepository.findByShopIdForCustomers(shopId, pageable);
+            return products.map(this::convertToManyProductsDto);
+        } catch (Exception e) {
+            log.error("Error getting products by shop for customers: {}", e.getMessage(), e);
+            throw new RuntimeException("Failed to get products by shop for customers: " + e.getMessage(), e);
         }
     }
 
