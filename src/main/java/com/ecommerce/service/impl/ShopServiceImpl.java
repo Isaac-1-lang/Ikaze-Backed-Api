@@ -21,6 +21,9 @@ import lombok.extern.slf4j.Slf4j;
 import java.util.List;
 import java.util.UUID;
 import java.util.stream.Collectors;
+import com.ecommerce.dto.ShopDetailsDTO;
+import com.ecommerce.entity.Product;
+import org.springframework.data.domain.PageRequest;
 
 @Service
 @Slf4j
@@ -325,5 +328,66 @@ public class ShopServiceImpl implements ShopService {
         }
 
         return shops;
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public ShopDetailsDTO getShopDetails(UUID shopId) {
+        log.info("Fetching details for shop ID: {}", shopId);
+        Shop shop = shopRepository.findById(shopId)
+                .orElseThrow(() -> new EntityNotFoundException("Shop not found with ID: " + shopId));
+
+        User owner = shop.getOwner();
+
+        // Fetch top products for the shop
+        Page<Product> productsPage = productRepository.findByShopIdForCustomers(shopId, PageRequest.of(0, 8));
+
+        List<ShopDetailsDTO.FeaturedProduct> featuredProducts = productsPage.getContent().stream()
+                .map(product -> ShopDetailsDTO.FeaturedProduct.builder()
+                        .productId(product.getProductId())
+                        .name(product.getProductName())
+                        .slug(product.getSlug())
+                        .price(product.getVariants().isEmpty() ? 0.0
+                                : product.getVariants().get(0).getPrice().doubleValue())
+                        .compareAtPrice(product.getVariants().isEmpty() ? 0.0
+                                : (product.getVariants().get(0).getCompareAtPrice() != null
+                                        ? product.getVariants().get(0).getCompareAtPrice().doubleValue()
+                                        : null))
+                        .primaryImage(product.getMainImageUrl())
+                        .rating(product.getAverageRating())
+                        .reviewCount(product.getReviewCount())
+                        .categoryName(product.getCategory() != null ? product.getCategory().getName() : null)
+                        .isInStock(product.isInStock())
+                        .build())
+                .collect(Collectors.toList());
+
+        ShopDetailsDTO.OwnerInfo ownerInfo = ShopDetailsDTO.OwnerInfo.builder()
+                .id(owner.getId())
+                .firstName(owner.getFirstName())
+                .lastName(owner.getLastName())
+                .email(owner.getUserEmail())
+                .avatar(null) // User entity doesn't seem to have an avatar field in the viewed code
+                .build();
+
+        return ShopDetailsDTO.builder()
+                .shopId(shop.getShopId())
+                .name(shop.getName())
+                .slug(shop.getSlug())
+                .description(shop.getDescription())
+                .logoUrl(shop.getLogoUrl())
+                .category(shop.getCategory())
+                .address(shop.getAddress())
+                .contactEmail(shop.getContactEmail())
+                .contactPhone(shop.getContactPhone())
+                .isActive(shop.getIsActive())
+                .status(shop.getStatus().name())
+                .rating(shop.getRating())
+                .totalReviews(shop.getTotalReviews())
+                .productCount(shop.getProductCount())
+                .createdAt(shop.getCreatedAt())
+                .updatedAt(shop.getUpdatedAt())
+                .owner(ownerInfo)
+                .featuredProducts(featuredProducts)
+                .build();
     }
 }

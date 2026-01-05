@@ -35,4 +35,6 @@ public interface ShopService {
     boolean isOwner(UUID shopId, UUID userId);
 
     List<ShopDTO> getUserShops(UUID userId);
+
+    com.ecommerce.dto.ShopDetailsDTO getShopDetails(UUID shopId);
 }

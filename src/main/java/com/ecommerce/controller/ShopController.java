@@ -218,6 +218,25 @@ public class ShopController {
         }
     }
 
+    @GetMapping("/{shopId}/details")
+    @Operation(summary = "Get shop details for profile", description = "Retrieve detailed shop information for profile page")
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200", description = "Shop details retrieved successfully", content = @Content(mediaType = "application/json", schema = @Schema(implementation = com.ecommerce.dto.ShopDetailsDTO.class))),
+            @ApiResponse(responseCode = "404", description = "Shop not found", content = @Content(mediaType = "application/json"))
+    })
+    public ResponseEntity<?> getShopDetails(@PathVariable UUID shopId) {
+        try {
+            com.ecommerce.dto.ShopDetailsDTO details = shopService.getShopDetails(shopId);
+            return ResponseEntity.ok(details);
+        } catch (Exception e) {
+            log.error("Failed to get shop details {}", shopId, e);
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(
+                    java.util.Map.of(
+                            "success", false,
+                            "message", "Shop not found: " + e.getMessage()));
+        }
+    }
+
     @GetMapping("/slug/{slug}")
     @Operation(summary = "Get shop by slug", description = "Retrieve a shop by its slug")
     @ApiResponses(value = {
