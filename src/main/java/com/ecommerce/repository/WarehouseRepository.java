@@ -70,4 +70,19 @@ public interface WarehouseRepository extends JpaRepository<Warehouse, Long> {
          * Find active warehouses by country (case insensitive)
          */
         List<Warehouse> findByCountryIgnoreCaseAndIsActiveTrue(String country);
+
+        /**
+         * Find warehouses by shop ID
+         */
+        List<Warehouse> findByShopShopId(java.util.UUID shopId);
+
+        /**
+         * Find warehouses by shop ID with pagination
+         */
+        org.springframework.data.domain.Page<Warehouse> findByShopShopId(java.util.UUID shopId, org.springframework.data.domain.Pageable pageable);
+
+        /**
+         * Find active warehouses by shop ID
+         */
+        List<Warehouse> findByShopShopIdAndIsActiveTrue(java.util.UUID shopId);
 }

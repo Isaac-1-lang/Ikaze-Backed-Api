@@ -2,7 +2,7 @@ package com.ecommerce.controller;
 
 import com.ecommerce.dto.*;
 import com.ecommerce.service.AdminInvitationService;
-import com.ecommerce.ServiceImpl.JwtService;
+import com.ecommerce.service.ShopAuthorizationService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.Schema;
@@ -39,12 +39,12 @@ import java.util.UUID;
 public class AdminInvitationController {
 
     private final AdminInvitationService adminInvitationService;
-    private final JwtService jwtService;
     private final com.ecommerce.repository.UserRepository userRepository;
+    private final ShopAuthorizationService shopAuthorizationService;
 
     @PostMapping
-    @PreAuthorize("hasRole('ADMIN')")
-    @Operation(summary = "Create a new admin invitation", description = "Create an invitation for a new admin user. Only ADMIN role can create invitations.")
+    @PreAuthorize("hasRole('VENDOR')")
+    @Operation(summary = "Create a shop invitation", description = "Create an invitation for a shop member. Only VENDOR (shop owner) can create invitations.")
     @ApiResponses(value = {
             @ApiResponse(responseCode = "201", description = "Invitation created successfully", content = @Content(schema = @Schema(implementation = AdminInvitationDTO.class))),
             @ApiResponse(responseCode = "400", description = "Invalid request data"),
@@ -61,9 +61,13 @@ public class AdminInvitationController {
         try {
             log.info("Creating admin invitation for email: {}", createInvitationDTO.getEmail());
 
-            UUID adminId = getCurrentUserId();
+            UUID vendorId = getCurrentUserId();
+            if (createInvitationDTO.getShopId() == null) {
+                throw new IllegalArgumentException("shopId is required");
+            }
+            shopAuthorizationService.assertCanManageShop(vendorId, createInvitationDTO.getShopId());
 
-            AdminInvitationDTO createdInvitation = adminInvitationService.createInvitation(adminId,
+            AdminInvitationDTO createdInvitation = adminInvitationService.createInvitation(vendorId,
                     createInvitationDTO);
 
             response.put("success", true);
@@ -94,8 +98,8 @@ public class AdminInvitationController {
     }
 
     @PutMapping("/{invitationId}")
-    @PreAuthorize("hasRole('ADMIN')")
-    @Operation(summary = "Update an admin invitation", description = "Update an existing admin invitation. Only ADMIN role can update invitations.")
+    @PreAuthorize("hasRole('VENDOR')")
+    @Operation(summary = "Update a shop invitation", description = "Update an existing shop invitation. Only VENDOR (shop owner) can update invitations.")
     @ApiResponses(value = {
             @ApiResponse(responseCode = "200", description = "Invitation updated successfully", content = @Content(schema = @Schema(implementation = AdminInvitationDTO.class))),
             @ApiResponse(responseCode = "400", description = "Invalid request data"),
@@ -113,6 +117,13 @@ public class AdminInvitationController {
 
         try {
             log.info("Updating admin invitation with ID: {}", invitationId);
+
+            UUID vendorId = getCurrentUserId();
+            AdminInvitationDTO existing = adminInvitationService.getInvitationById(invitationId);
+            if (existing.getShopId() == null) {
+                throw new IllegalArgumentException("Invitation is not associated with a shop");
+            }
+            shopAuthorizationService.assertCanManageShop(vendorId, existing.getShopId());
 
             AdminInvitationDTO updatedInvitation = adminInvitationService.updateInvitation(invitationId,
                     updateInvitationDTO);
@@ -151,8 +162,8 @@ public class AdminInvitationController {
     }
 
     @DeleteMapping("/{invitationId}")
-    @PreAuthorize("hasRole('ADMIN')")
-    @Operation(summary = "Delete an admin invitation", description = "Delete an admin invitation. Only ADMIN role can delete invitations.")
+    @PreAuthorize("hasRole('VENDOR')")
+    @Operation(summary = "Delete a shop invitation", description = "Delete a shop invitation. Only VENDOR (shop owner) can delete invitations.")
     @ApiResponses(value = {
             @ApiResponse(responseCode = "200", description = "Invitation deleted successfully"),
             @ApiResponse(responseCode = "401", description = "Unauthorized - Admin access required"),
@@ -166,6 +177,13 @@ public class AdminInvitationController {
 
         try {
             log.info("Deleting admin invitation with ID: {}", invitationId);
+
+            UUID vendorId = getCurrentUserId();
+            AdminInvitationDTO existing = adminInvitationService.getInvitationById(invitationId);
+            if (existing.getShopId() == null) {
+                throw new IllegalArgumentException("Invitation is not associated with a shop");
+            }
+            shopAuthorizationService.assertCanManageShop(vendorId, existing.getShopId());
 
             boolean deleted = adminInvitationService.deleteInvitation(invitationId);
 
@@ -196,8 +214,8 @@ public class AdminInvitationController {
     }
 
     @PostMapping("/{invitationId}/cancel")
-    @PreAuthorize("hasRole('ADMIN')")
-    @Operation(summary = "Cancel an admin invitation", description = "Cancel a pending admin invitation. Only ADMIN role can cancel invitations.")
+    @PreAuthorize("hasRole('VENDOR')")
+    @Operation(summary = "Cancel a shop invitation", description = "Cancel a pending shop invitation. Only VENDOR (shop owner) can cancel invitations.")
     @ApiResponses(value = {
             @ApiResponse(responseCode = "200", description = "Invitation cancelled successfully"),
             @ApiResponse(responseCode = "401", description = "Unauthorized - Admin access required"),
@@ -212,6 +230,13 @@ public class AdminInvitationController {
 
         try {
             log.info("Cancelling admin invitation with ID: {}", invitationId);
+
+            UUID vendorId = getCurrentUserId();
+            AdminInvitationDTO existing = adminInvitationService.getInvitationById(invitationId);
+            if (existing.getShopId() == null) {
+                throw new IllegalArgumentException("Invitation is not associated with a shop");
+            }
+            shopAuthorizationService.assertCanManageShop(vendorId, existing.getShopId());
 
             boolean cancelled = adminInvitationService.cancelInvitation(invitationId);
 
@@ -248,8 +273,8 @@ public class AdminInvitationController {
     }
 
     @PostMapping("/{invitationId}/resend")
-    @PreAuthorize("hasRole('ADMIN')")
-    @Operation(summary = "Resend an admin invitation", description = "Resend a pending admin invitation with a new token. Only ADMIN role can resend invitations.")
+    @PreAuthorize("hasRole('VENDOR')")
+    @Operation(summary = "Resend a shop invitation", description = "Resend a pending shop invitation with a new token. Only VENDOR (shop owner) can resend invitations.")
     @ApiResponses(value = {
             @ApiResponse(responseCode = "200", description = "Invitation resent successfully"),
             @ApiResponse(responseCode = "401", description = "Unauthorized - Admin access required"),
@@ -264,6 +289,13 @@ public class AdminInvitationController {
 
         try {
             log.info("Resending admin invitation with ID: {}", invitationId);
+
+            UUID vendorId = getCurrentUserId();
+            AdminInvitationDTO existing = adminInvitationService.getInvitationById(invitationId);
+            if (existing.getShopId() == null) {
+                throw new IllegalArgumentException("Invitation is not associated with a shop");
+            }
+            shopAuthorizationService.assertCanManageShop(vendorId, existing.getShopId());
 
             boolean resent = adminInvitationService.resendInvitation(invitationId);
 
@@ -300,8 +332,8 @@ public class AdminInvitationController {
     }
 
     @GetMapping("/{invitationId}")
-    @PreAuthorize("hasAnyRole('ADMIN', 'EMPLOYEE')")
-    @Operation(summary = "Get invitation by ID", description = "Get admin invitation details by ID. ADMIN and EMPLOYEE roles can view invitations.")
+    @PreAuthorize("hasRole('VENDOR')")
+    @Operation(summary = "Get invitation by ID", description = "Get shop invitation details by ID. Only VENDOR (shop owner) can view invitations.")
     @ApiResponses(value = {
             @ApiResponse(responseCode = "200", description = "Invitation retrieved successfully", content = @Content(schema = @Schema(implementation = AdminInvitationDTO.class))),
             @ApiResponse(responseCode = "401", description = "Unauthorized"),
@@ -317,6 +349,12 @@ public class AdminInvitationController {
             log.info("Fetching admin invitation with ID: {}", invitationId);
 
             AdminInvitationDTO invitation = adminInvitationService.getInvitationById(invitationId);
+
+            UUID vendorId = getCurrentUserId();
+            if (invitation.getShopId() == null) {
+                throw new IllegalArgumentException("Invitation is not associated with a shop");
+            }
+            shopAuthorizationService.assertCanManageShop(vendorId, invitation.getShopId());
 
             response.put("success", true);
             response.put("message", "Admin invitation retrieved successfully");
@@ -375,8 +413,8 @@ public class AdminInvitationController {
     }
 
     @GetMapping
-    @PreAuthorize("hasAnyRole('ADMIN', 'EMPLOYEE')")
-    @Operation(summary = "Get all invitations", description = "Get all admin invitations with pagination. ADMIN and EMPLOYEE roles can view invitations.")
+    @PreAuthorize("hasRole('VENDOR')")
+    @Operation(summary = "Get all invitations", description = "Get all shop invitations with pagination. Only VENDOR (shop owner) can view invitations.")
     @ApiResponses(value = {
             @ApiResponse(responseCode = "200", description = "Invitations retrieved successfully"),
             @ApiResponse(responseCode = "401", description = "Unauthorized"),
@@ -387,25 +425,33 @@ public class AdminInvitationController {
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "10") int size,
             @RequestParam(defaultValue = "createdAt") String sortBy,
-            @RequestParam(defaultValue = "desc") String sortDirection) {
+            @RequestParam(defaultValue = "desc") String sortDirection,
+            @RequestParam UUID shopId) {
 
         Map<String, Object> response = new HashMap<>();
 
         try {
             log.info("Fetching all admin invitations with pagination - page: {}, size: {}", page, size);
 
+            UUID vendorId = getCurrentUserId();
+            shopAuthorizationService.assertCanManageShop(vendorId, shopId);
+
             Sort sort = Sort.by(Sort.Direction.fromString(sortDirection), sortBy);
             Pageable pageable = PageRequest.of(page, size, sort);
 
+            // Filter to the shop in-memory (repo-level filtering can be added later)
             Page<AdminInvitationDTO> invitations = adminInvitationService.getAllInvitations(pageable);
+            java.util.List<AdminInvitationDTO> filtered = invitations.getContent().stream()
+                    .filter(i -> shopId.equals(i.getShopId()))
+                    .toList();
 
             response.put("success", true);
             response.put("message", "Admin invitations retrieved successfully");
-            response.put("data", invitations.getContent());
+            response.put("data", filtered);
             response.put("pagination", Map.of(
                     "currentPage", invitations.getNumber(),
                     "totalPages", invitations.getTotalPages(),
-                    "totalElements", invitations.getTotalElements(),
+                    "totalElements", filtered.size(),
                     "size", invitations.getSize(),
                     "hasNext", invitations.hasNext(),
                     "hasPrevious", invitations.hasPrevious()));
@@ -421,8 +467,8 @@ public class AdminInvitationController {
     }
 
     @PostMapping("/search")
-    @PreAuthorize("hasAnyRole('ADMIN', 'EMPLOYEE')")
-    @Operation(summary = "Search invitations", description = "Search admin invitations with various criteria. ADMIN and EMPLOYEE roles can search invitations.")
+    @PreAuthorize("hasRole('VENDOR')")
+    @Operation(summary = "Search invitations", description = "Search shop invitations with various criteria. Only VENDOR (shop owner) can search invitations.")
     @ApiResponses(value = {
             @ApiResponse(responseCode = "200", description = "Search completed successfully"),
             @ApiResponse(responseCode = "400", description = "Invalid search criteria"),
@@ -433,23 +479,30 @@ public class AdminInvitationController {
     public ResponseEntity<?> searchInvitations(
             @Valid @RequestBody AdminInvitationSearchDTO searchDTO,
             @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "10") int size) {
+            @RequestParam(defaultValue = "10") int size,
+            @RequestParam UUID shopId) {
 
         Map<String, Object> response = new HashMap<>();
 
         try {
             log.info("Searching admin invitations with criteria");
 
+            UUID vendorId = getCurrentUserId();
+            shopAuthorizationService.assertCanManageShop(vendorId, shopId);
+
             Pageable pageable = PageRequest.of(page, size);
             Page<AdminInvitationDTO> invitations = adminInvitationService.searchInvitations(searchDTO, pageable);
+            java.util.List<AdminInvitationDTO> filtered = invitations.getContent().stream()
+                    .filter(i -> shopId.equals(i.getShopId()))
+                    .toList();
 
             response.put("success", true);
             response.put("message", "Search completed successfully");
-            response.put("data", invitations.getContent());
+            response.put("data", filtered);
             response.put("pagination", Map.of(
                     "currentPage", invitations.getNumber(),
                     "totalPages", invitations.getTotalPages(),
-                    "totalElements", invitations.getTotalElements(),
+                    "totalElements", filtered.size(),
                     "size", invitations.getSize(),
                     "hasNext", invitations.hasNext(),
                     "hasPrevious", invitations.hasPrevious()));
@@ -471,8 +524,8 @@ public class AdminInvitationController {
     }
 
     @GetMapping("/status/{status}")
-    @PreAuthorize("hasAnyRole('ADMIN', 'EMPLOYEE')")
-    @Operation(summary = "Get invitations by status", description = "Get admin invitations filtered by status. ADMIN and EMPLOYEE roles can view invitations.")
+    @PreAuthorize("hasRole('VENDOR')")
+    @Operation(summary = "Get invitations by status", description = "Get shop invitations filtered by status. Only VENDOR (shop owner) can view invitations.")
     @ApiResponses(value = {
             @ApiResponse(responseCode = "200", description = "Invitations retrieved successfully"),
             @ApiResponse(responseCode = "400", description = "Invalid status"),
@@ -483,23 +536,30 @@ public class AdminInvitationController {
     public ResponseEntity<?> getInvitationsByStatus(
             @PathVariable String status,
             @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "10") int size) {
+            @RequestParam(defaultValue = "10") int size,
+            @RequestParam UUID shopId) {
 
         Map<String, Object> response = new HashMap<>();
 
         try {
             log.info("Fetching admin invitations by status: {}", status);
 
+            UUID vendorId = getCurrentUserId();
+            shopAuthorizationService.assertCanManageShop(vendorId, shopId);
+
             Pageable pageable = PageRequest.of(page, size);
             Page<AdminInvitationDTO> invitations = adminInvitationService.getInvitationsByStatus(status, pageable);
+            java.util.List<AdminInvitationDTO> filtered = invitations.getContent().stream()
+                    .filter(i -> shopId.equals(i.getShopId()))
+                    .toList();
 
             response.put("success", true);
             response.put("message", "Admin invitations retrieved successfully");
-            response.put("data", invitations.getContent());
+            response.put("data", filtered);
             response.put("pagination", Map.of(
                     "currentPage", invitations.getNumber(),
                     "totalPages", invitations.getTotalPages(),
-                    "totalElements", invitations.getTotalElements(),
+                    "totalElements", filtered.size(),
                     "size", invitations.getSize(),
                     "hasNext", invitations.hasNext(),
                     "hasPrevious", invitations.hasPrevious()));
@@ -632,13 +692,15 @@ public class AdminInvitationController {
             boolean isValid = adminInvitationService.isInvitationValid(invitationToken);
             boolean isExpired = adminInvitationService.isInvitationExpired(invitationToken);
             boolean canBeAccepted = adminInvitationService.canInvitationBeAccepted(invitationToken);
+            boolean userExists = adminInvitationService.doesUserExistForInvitation(invitationToken);
 
             response.put("success", true);
             response.put("message", "Invitation validation completed");
             response.put("data", Map.of(
                     "isValid", isValid,
                     "isExpired", isExpired,
-                    "canBeAccepted", canBeAccepted));
+                    "canBeAccepted", canBeAccepted,
+                    "userExists", userExists));
 
             return ResponseEntity.ok(response);
 
@@ -650,21 +712,59 @@ public class AdminInvitationController {
         }
     }
 
+    @GetMapping("/check-user-exists/{invitationToken}")
+    @Operation(summary = "Check if user exists for invitation", description = "Check if a user account exists for the invitation email. Used to determine if 'I already have an account' toggle should be enabled.")
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200", description = "User existence check completed"),
+            @ApiResponse(responseCode = "404", description = "Invitation not found"),
+            @ApiResponse(responseCode = "500", description = "Internal server error")
+    })
+    public ResponseEntity<?> checkUserExists(@PathVariable String invitationToken) {
+        Map<String, Object> response = new HashMap<>();
+
+        try {
+            log.info("Checking if user exists for invitation token: {}", invitationToken);
+
+            boolean userExists = adminInvitationService.doesUserExistForInvitation(invitationToken);
+
+            response.put("success", true);
+            response.put("message", "User existence check completed");
+            response.put("data", Map.of("userExists", userExists));
+
+            return ResponseEntity.ok(response);
+
+        } catch (EntityNotFoundException e) {
+            log.error("Invitation not found: {}", e.getMessage());
+            response.put("success", false);
+            response.put("message", e.getMessage());
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(response);
+
+        } catch (Exception e) {
+            log.error("Error checking user existence for invitation: {}", e.getMessage(), e);
+            response.put("success", false);
+            response.put("message", "Failed to check user existence");
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(response);
+        }
+    }
+
     @GetMapping("/statistics")
-    @PreAuthorize("hasAnyRole('ADMIN', 'EMPLOYEE')")
-    @Operation(summary = "Get invitation statistics", description = "Get statistics about admin invitations. ADMIN and EMPLOYEE roles can view statistics.")
+    @PreAuthorize("hasRole('VENDOR')")
+    @Operation(summary = "Get invitation statistics", description = "Get statistics about shop invitations. Only VENDOR (shop owner) can view statistics.")
     @ApiResponses(value = {
             @ApiResponse(responseCode = "200", description = "Statistics retrieved successfully"),
             @ApiResponse(responseCode = "401", description = "Unauthorized"),
             @ApiResponse(responseCode = "403", description = "Forbidden - Insufficient privileges"),
             @ApiResponse(responseCode = "500", description = "Internal server error")
     })
-    public ResponseEntity<?> getInvitationStatistics() {
+    public ResponseEntity<?> getInvitationStatistics(@RequestParam UUID shopId) {
 
         Map<String, Object> response = new HashMap<>();
 
         try {
             log.info("Fetching admin invitation statistics");
+
+            UUID vendorId = getCurrentUserId();
+            shopAuthorizationService.assertCanManageShop(vendorId, shopId);
 
             long pendingCount = adminInvitationService.getInvitationsCountByStatus("PENDING");
             long acceptedCount = adminInvitationService.getInvitationsCountByStatus("ACCEPTED");
@@ -695,20 +795,23 @@ public class AdminInvitationController {
     }
 
     @PostMapping("/expired/mark")
-    @PreAuthorize("hasRole('ADMIN')")
-    @Operation(summary = "Mark expired invitations", description = "Mark pending invitations that have expired. Only ADMIN role can perform this action.")
+    @PreAuthorize("hasRole('VENDOR')")
+    @Operation(summary = "Mark expired invitations", description = "Mark pending invitations that have expired (shop-scoped). Only VENDOR (shop owner) can perform this action.")
     @ApiResponses(value = {
             @ApiResponse(responseCode = "200", description = "Expired invitations marked successfully"),
             @ApiResponse(responseCode = "401", description = "Unauthorized - Admin access required"),
             @ApiResponse(responseCode = "403", description = "Forbidden - Insufficient privileges"),
             @ApiResponse(responseCode = "500", description = "Internal server error")
     })
-    public ResponseEntity<?> markExpiredInvitations() {
+    public ResponseEntity<?> markExpiredInvitations(@RequestParam UUID shopId) {
 
         Map<String, Object> response = new HashMap<>();
 
         try {
             log.info("Marking expired admin invitations");
+
+            UUID vendorId = getCurrentUserId();
+            shopAuthorizationService.assertCanManageShop(vendorId, shopId);
 
             adminInvitationService.markExpiredInvitations();
 
@@ -727,20 +830,23 @@ public class AdminInvitationController {
     }
 
     @DeleteMapping("/expired")
-    @PreAuthorize("hasRole('ADMIN')")
-    @Operation(summary = "Delete expired invitations", description = "Delete expired invitations older than 30 days. Only ADMIN role can perform this action.")
+    @PreAuthorize("hasRole('VENDOR')")
+    @Operation(summary = "Delete expired invitations", description = "Delete expired invitations older than 30 days (shop-scoped). Only VENDOR (shop owner) can perform this action.")
     @ApiResponses(value = {
             @ApiResponse(responseCode = "200", description = "Expired invitations deleted successfully"),
             @ApiResponse(responseCode = "401", description = "Unauthorized - Admin access required"),
             @ApiResponse(responseCode = "403", description = "Forbidden - Insufficient privileges"),
             @ApiResponse(responseCode = "500", description = "Internal server error")
     })
-    public ResponseEntity<?> deleteExpiredInvitations() {
+    public ResponseEntity<?> deleteExpiredInvitations(@RequestParam UUID shopId) {
 
         Map<String, Object> response = new HashMap<>();
 
         try {
             log.info("Deleting expired admin invitations");
+
+            UUID vendorId = getCurrentUserId();
+            shopAuthorizationService.assertCanManageShop(vendorId, shopId);
 
             adminInvitationService.deleteExpiredInvitations();
 
@@ -755,6 +861,28 @@ public class AdminInvitationController {
             response.put("success", false);
             response.put("message", "Failed to delete expired invitations");
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(response);
+        }
+    }
+
+    @PostMapping("/shops/{shopId}/members/{userId}/release")
+    @PreAuthorize("hasRole('VENDOR')")
+    @Operation(summary = "Release a shop member", description = "Release an EMPLOYEE or DELIVERY_AGENT from a shop. The user's role will be set back to CUSTOMER. Only the shop owner (VENDOR) can do this.")
+    public ResponseEntity<?> releaseShopMember(@PathVariable UUID shopId, @PathVariable UUID userId) {
+        Map<String, Object> response = new HashMap<>();
+        try {
+            UUID vendorId = getCurrentUserId();
+            shopAuthorizationService.assertCanManageShop(vendorId, shopId);
+
+            adminInvitationService.releaseShopMember(shopId, userId);
+
+            response.put("success", true);
+            response.put("message", "Member released successfully");
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            log.error("Error releasing shop member {} from shop {}: {}", userId, shopId, e.getMessage(), e);
+            response.put("success", false);
+            response.put("message", e.getMessage() != null ? e.getMessage() : "Failed to release member");
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(response);
         }
     }
 

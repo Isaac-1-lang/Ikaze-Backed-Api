@@ -4,6 +4,8 @@ import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+import java.util.UUID;
+
 /**
  * Data Transfer Object for category search criteria
  */
@@ -19,6 +21,7 @@ public class CategorySearchDTO {
     private Boolean sortByChildrenCount;
     private Boolean sortByProductCount;
     private String sortDirection; // "asc" or "desc"
+    private UUID shopId;
     
     // Pagination parameters
     private Integer page = 0;

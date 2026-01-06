@@ -35,6 +35,8 @@ public class AdminInvitationDTO {
     private String position;
     private String phoneNumber;
     private String notes;
+    private UUID shopId;
+    private String shopName;
     private boolean isExpired;
     private boolean canBeAccepted;
     private boolean canBeCancelled;

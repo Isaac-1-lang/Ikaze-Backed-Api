@@ -96,8 +96,14 @@ public class ProductSearchDTO {
     private String sortBy;
     private String sortDirection;
 
+    // Shop scope
+    private UUID shopId;
+
     // Text search
     private String searchKeyword; // For full-text search across name, description, SKU, etc.
+
+    // Internal flags
+    private Boolean displayOnly; // When true, only return active/published products
 
     /**
      * Validate that at least one filter criterion is provided
@@ -151,6 +157,7 @@ public class ProductSearchDTO {
                 updatedAtMin != null ||
                 updatedAtMax != null ||
                 createdBy != null ||
+                shopId != null ||
                 (searchKeyword != null && !searchKeyword.trim().isEmpty());
     }
 }

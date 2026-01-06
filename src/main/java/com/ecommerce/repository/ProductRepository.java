@@ -160,31 +160,31 @@ public interface ProductRepository extends JpaRepository<Product, UUID>, JpaSpec
         Page<Product> findAvailableForAdmins(Pageable pageable);
 
         @Query("SELECT DISTINCT p FROM Product p " +
-                "LEFT JOIN p.variants v " +
-                "LEFT JOIN Stock s ON (s.product = p OR s.productVariant = v) " +
-                "LEFT JOIN StockBatch sb ON sb.stock = s " +
-                "WHERE p.isActive = true AND p.displayToCustomers = true " +
-                "AND ((p.variants IS EMPTY AND sb.status = 'ACTIVE' AND sb.quantity > 0) " +
-                "OR (p.variants IS NOT EMPTY AND v.isActive = true AND sb.status = 'ACTIVE' AND sb.quantity > 0))")
+                        "LEFT JOIN p.variants v " +
+                        "LEFT JOIN Stock s ON (s.product = p OR s.productVariant = v) " +
+                        "LEFT JOIN StockBatch sb ON sb.stock = s " +
+                        "WHERE p.isActive = true AND p.displayToCustomers = true " +
+                        "AND ((p.variants IS EMPTY AND sb.status = 'ACTIVE' AND sb.quantity > 0) " +
+                        "OR (p.variants IS NOT EMPTY AND v.isActive = true AND sb.status = 'ACTIVE' AND sb.quantity > 0))")
         Page<Product> findAvailableForCustomersWithStock(Pageable pageable);
 
         @Query("SELECT p FROM Product p " +
-                "WHERE p.isActive = true AND p.displayToCustomers = true " +
-                "AND (LOWER(p.productName) LIKE LOWER(CONCAT('%', :searchTerm, '%')) " +
-                "OR LOWER(p.shortDescription) LIKE LOWER(CONCAT('%', :searchTerm, '%')) " +
-                "OR LOWER(p.sku) LIKE LOWER(CONCAT('%', :searchTerm, '%')))")
+                        "WHERE p.isActive = true AND p.displayToCustomers = true " +
+                        "AND (LOWER(p.productName) LIKE LOWER(CONCAT('%', :searchTerm, '%')) " +
+                        "OR LOWER(p.shortDescription) LIKE LOWER(CONCAT('%', :searchTerm, '%')) " +
+                        "OR LOWER(p.sku) LIKE LOWER(CONCAT('%', :searchTerm, '%')))")
         Page<Product> searchAvailableForCustomers(@Param("searchTerm") String searchTerm, Pageable pageable);
 
         @Query("SELECT DISTINCT p FROM Product p " +
-                "LEFT JOIN p.variants v " +
-                "LEFT JOIN Stock s ON (s.product = p OR s.productVariant = v) " +
-                "LEFT JOIN StockBatch sb ON sb.stock = s " +
-                "WHERE p.isActive = true AND p.displayToCustomers = true " +
-                "AND (LOWER(p.productName) LIKE LOWER(CONCAT('%', :searchTerm, '%')) " +
-                "OR LOWER(p.shortDescription) LIKE LOWER(CONCAT('%', :searchTerm, '%')) " +
-                "OR LOWER(p.sku) LIKE LOWER(CONCAT('%', :searchTerm, '%'))) " +
-                "AND ((p.variants IS EMPTY AND sb.status = 'ACTIVE' AND sb.quantity > 0) " +
-                "OR (p.variants IS NOT EMPTY AND v.isActive = true AND sb.status = 'ACTIVE' AND sb.quantity > 0))")
+                        "LEFT JOIN p.variants v " +
+                        "LEFT JOIN Stock s ON (s.product = p OR s.productVariant = v) " +
+                        "LEFT JOIN StockBatch sb ON sb.stock = s " +
+                        "WHERE p.isActive = true AND p.displayToCustomers = true " +
+                        "AND (LOWER(p.productName) LIKE LOWER(CONCAT('%', :searchTerm, '%')) " +
+                        "OR LOWER(p.shortDescription) LIKE LOWER(CONCAT('%', :searchTerm, '%')) " +
+                        "OR LOWER(p.sku) LIKE LOWER(CONCAT('%', :searchTerm, '%'))) " +
+                        "AND ((p.variants IS EMPTY AND sb.status = 'ACTIVE' AND sb.quantity > 0) " +
+                        "OR (p.variants IS NOT EMPTY AND v.isActive = true AND sb.status = 'ACTIVE' AND sb.quantity > 0))")
         Page<Product> searchAvailableForCustomersWithStock(@Param("searchTerm") String searchTerm, Pageable pageable);
 
         @Query("SELECT p FROM Product p WHERE p.category = :category AND p.isActive = true AND p.displayToCustomers = true")
@@ -194,21 +194,21 @@ public interface ProductRepository extends JpaRepository<Product, UUID>, JpaSpec
         Page<Product> findByBrandForCustomers(@Param("brand") Brand brand, Pageable pageable);
 
         @Query("SELECT DISTINCT p FROM Product p " +
-                "LEFT JOIN p.variants v " +
-                "LEFT JOIN Stock s ON (s.product = p OR s.productVariant = v) " +
-                "LEFT JOIN StockBatch sb ON sb.stock = s " +
-                "WHERE p.category = :category AND p.isActive = true AND p.displayToCustomers = true " +
-                "AND ((p.variants IS EMPTY AND sb.status = 'ACTIVE' AND sb.quantity > 0) " +
-                "OR (p.variants IS NOT EMPTY AND v.isActive = true AND sb.status = 'ACTIVE' AND sb.quantity > 0))")
+                        "LEFT JOIN p.variants v " +
+                        "LEFT JOIN Stock s ON (s.product = p OR s.productVariant = v) " +
+                        "LEFT JOIN StockBatch sb ON sb.stock = s " +
+                        "WHERE p.category = :category AND p.isActive = true AND p.displayToCustomers = true " +
+                        "AND ((p.variants IS EMPTY AND sb.status = 'ACTIVE' AND sb.quantity > 0) " +
+                        "OR (p.variants IS NOT EMPTY AND v.isActive = true AND sb.status = 'ACTIVE' AND sb.quantity > 0))")
         Page<Product> findByCategoryForCustomersWithStock(@Param("category") Category category, Pageable pageable);
 
         @Query("SELECT DISTINCT p FROM Product p " +
-                "LEFT JOIN p.variants v " +
-                "LEFT JOIN Stock s ON (s.product = p OR s.productVariant = v) " +
-                "LEFT JOIN StockBatch sb ON sb.stock = s " +
-                "WHERE p.brand = :brand AND p.isActive = true AND p.displayToCustomers = true " +
-                "AND ((p.variants IS EMPTY AND sb.status = 'ACTIVE' AND sb.quantity > 0) " +
-                "OR (p.variants IS NOT EMPTY AND v.isActive = true AND sb.status = 'ACTIVE' AND sb.quantity > 0))")
+                        "LEFT JOIN p.variants v " +
+                        "LEFT JOIN Stock s ON (s.product = p OR s.productVariant = v) " +
+                        "LEFT JOIN StockBatch sb ON sb.stock = s " +
+                        "WHERE p.brand = :brand AND p.isActive = true AND p.displayToCustomers = true " +
+                        "AND ((p.variants IS EMPTY AND sb.status = 'ACTIVE' AND sb.quantity > 0) " +
+                        "OR (p.variants IS NOT EMPTY AND v.isActive = true AND sb.status = 'ACTIVE' AND sb.quantity > 0))")
         Page<Product> findByBrandForCustomersWithStock(@Param("brand") Brand brand, Pageable pageable);
 
         @Query("SELECT p FROM Product p WHERE p.isFeatured = true AND p.isActive = true AND p.displayToCustomers = true")
@@ -221,36 +221,59 @@ public interface ProductRepository extends JpaRepository<Product, UUID>, JpaSpec
         Page<Product> findNewArrivalsForCustomers(Pageable pageable);
 
         @Query("SELECT DISTINCT p FROM Product p " +
-                "LEFT JOIN p.variants v " +
-                "LEFT JOIN Stock s ON (s.product = p OR s.productVariant = v) " +
-                "LEFT JOIN StockBatch sb ON sb.stock = s " +
-                "WHERE p.isFeatured = true AND p.isActive = true AND p.displayToCustomers = true " +
-                "AND ((p.variants IS EMPTY AND sb.status = 'ACTIVE' AND sb.quantity > 0) " +
-                "OR (p.variants IS NOT EMPTY AND v.isActive = true AND sb.status = 'ACTIVE' AND sb.quantity > 0))")
+                        "LEFT JOIN p.variants v " +
+                        "LEFT JOIN Stock s ON (s.product = p OR s.productVariant = v) " +
+                        "LEFT JOIN StockBatch sb ON sb.stock = s " +
+                        "WHERE p.isFeatured = true AND p.isActive = true AND p.displayToCustomers = true " +
+                        "AND ((p.variants IS EMPTY AND sb.status = 'ACTIVE' AND sb.quantity > 0) " +
+                        "OR (p.variants IS NOT EMPTY AND v.isActive = true AND sb.status = 'ACTIVE' AND sb.quantity > 0))")
         Page<Product> findFeaturedForCustomersWithStock(Pageable pageable);
 
         @Query("SELECT DISTINCT p FROM Product p " +
-                "LEFT JOIN p.variants v " +
-                "LEFT JOIN Stock s ON (s.product = p OR s.productVariant = v) " +
-                "LEFT JOIN StockBatch sb ON sb.stock = s " +
-                "WHERE p.isBestseller = true AND p.isActive = true AND p.displayToCustomers = true " +
-                "AND ((p.variants IS EMPTY AND sb.status = 'ACTIVE' AND sb.quantity > 0) " +
-                "OR (p.variants IS NOT EMPTY AND v.isActive = true AND sb.status = 'ACTIVE' AND sb.quantity > 0))")
+                        "LEFT JOIN p.variants v " +
+                        "LEFT JOIN Stock s ON (s.product = p OR s.productVariant = v) " +
+                        "LEFT JOIN StockBatch sb ON sb.stock = s " +
+                        "WHERE p.isBestseller = true AND p.isActive = true AND p.displayToCustomers = true " +
+                        "AND ((p.variants IS EMPTY AND sb.status = 'ACTIVE' AND sb.quantity > 0) " +
+                        "OR (p.variants IS NOT EMPTY AND v.isActive = true AND sb.status = 'ACTIVE' AND sb.quantity > 0))")
         Page<Product> findBestsellersForCustomersWithStock(Pageable pageable);
 
         @Query("SELECT DISTINCT p FROM Product p " +
-                "LEFT JOIN p.variants v " +
-                "LEFT JOIN Stock s ON (s.product = p OR s.productVariant = v) " +
-                "LEFT JOIN StockBatch sb ON sb.stock = s " +
-                "WHERE p.isNewArrival = true AND p.isActive = true AND p.displayToCustomers = true " +
-                "AND ((p.variants IS EMPTY AND sb.status = 'ACTIVE' AND sb.quantity > 0) " +
-                "OR (p.variants IS NOT EMPTY AND v.isActive = true AND sb.status = 'ACTIVE' AND sb.quantity > 0))")
+                        "LEFT JOIN p.variants v " +
+                        "LEFT JOIN Stock s ON (s.product = p OR s.productVariant = v) " +
+                        "LEFT JOIN StockBatch sb ON sb.stock = s " +
+                        "WHERE p.isNewArrival = true AND p.isActive = true AND p.displayToCustomers = true " +
+                        "AND ((p.variants IS EMPTY AND sb.status = 'ACTIVE' AND sb.quantity > 0) " +
+                        "OR (p.variants IS NOT EMPTY AND v.isActive = true AND sb.status = 'ACTIVE' AND sb.quantity > 0))")
         Page<Product> findNewArrivalsForCustomersWithStock(Pageable pageable);
 
         // Methods for featured categories and brands with products
         @Query("SELECT p FROM Product p WHERE p.category = :category AND p.isActive = true ORDER BY p.createdAt DESC")
-        Page<Product> findByCategoryAndIsActiveTrueOrderByCreatedAtDesc(@Param("category") Category category, Pageable pageable);
-        
+        Page<Product> findByCategoryAndIsActiveTrueOrderByCreatedAtDesc(@Param("category") Category category,
+                        Pageable pageable);
+
         @Query("SELECT p FROM Product p WHERE p.brand = :brand AND p.isActive = true ORDER BY p.createdAt DESC")
         Page<Product> findByBrandAndIsActiveTrueOrderByCreatedAtDesc(@Param("brand") Brand brand, Pageable pageable);
+
+        @Query("SELECT COUNT(p) FROM Product p WHERE p.shop.shopId = :shopId")
+        long countByShopId(@Param("shopId") UUID shopId);
+
+        /**
+         * Count low stock products for a specific shop
+         */
+        @Query("SELECT COUNT(p) FROM Product p " +
+                        "WHERE p.shop.shopId = :shopId " +
+                        "AND p.id IN " +
+                        "(SELECT s.product.id FROM Stock s WHERE s.product IS NOT NULL " +
+                        "AND s.quantity > 0 AND s.quantity <= s.lowStockThreshold)")
+        long countLowStockByShopId(@Param("shopId") UUID shopId);
+
+        /**
+         * Find all products for a specific shop with pagination
+         */
+        @Query("SELECT p FROM Product p WHERE p.shop.shopId = :shopId ORDER BY p.createdAt DESC")
+        Page<Product> findByShopId(@Param("shopId") UUID shopId, Pageable pageable);
+
+        @Query("SELECT p FROM Product p WHERE p.shop.shopId = :shopId AND p.isActive = true AND p.displayToCustomers = true ORDER BY p.createdAt DESC")
+        Page<Product> findByShopIdForCustomers(@Param("shopId") UUID shopId, Pageable pageable);
 }

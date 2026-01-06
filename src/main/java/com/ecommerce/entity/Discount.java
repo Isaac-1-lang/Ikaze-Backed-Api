@@ -8,6 +8,7 @@ import jakarta.validation.constraints.NotNull;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
+import com.fasterxml.jackson.annotation.JsonBackReference;
 import com.fasterxml.jackson.annotation.JsonManagedReference;
 
 import java.math.BigDecimal;
@@ -70,6 +71,11 @@ public class Discount {
     @OneToMany(mappedBy = "discount", fetch = FetchType.LAZY)
     @JsonManagedReference
     private List<ProductVariant> productVariants = new ArrayList<>();
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "shop_id", nullable = false)
+    @JsonBackReference
+    private Shop shop;
 
     @Column(name = "created_at")
     private LocalDateTime createdAt;

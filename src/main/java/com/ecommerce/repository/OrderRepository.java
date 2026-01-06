@@ -145,6 +145,23 @@ public interface OrderRepository extends JpaRepository<Order, Long>, OrderReposi
         List<Order> findAllWithDetailsForAdmin();
 
         /**
+         * Find all orders with all details for admin filtered by shop
+         * Orders are filtered by checking if any order item has a product from the specified shop
+         */
+        @Query("SELECT DISTINCT o FROM Order o " +
+                        "LEFT JOIN FETCH o.user u " +
+                        "LEFT JOIN FETCH o.orderItems oi " +
+                        "LEFT JOIN FETCH oi.product p " +
+                        "LEFT JOIN FETCH oi.productVariant v " +
+                        "LEFT JOIN FETCH v.product pv " +
+                        "LEFT JOIN FETCH o.orderInfo info " +
+                        "LEFT JOIN FETCH o.orderAddress addr " +
+                        "LEFT JOIN FETCH o.orderCustomerInfo customer " +
+                        "LEFT JOIN FETCH o.orderTransaction tx " +
+                        "WHERE (p.shop.shopId = :shopId OR pv.shop.shopId = :shopId)")
+        Page<Order> findAllWithDetailsForAdminByShop(@Param("shopId") UUID shopId, Pageable pageable);
+        
+        /**
          * Find all orders with all details for admin with pagination
          */
         @Query("SELECT DISTINCT o FROM Order o " +
@@ -274,5 +291,49 @@ public interface OrderRepository extends JpaRepository<Order, Long>, OrderReposi
         @Query("SELECT o FROM Order o " +
                "WHERE o.readyForDeliveryGroup.deliveryGroupId = :groupId")
         Page<Order> findByReadyForDeliveryGroupId(@Param("groupId") Long groupId, Pageable pageable);
+
+        /**
+         * Count orders for a specific shop (orders containing products from that shop)
+         */
+        @Query("SELECT COUNT(DISTINCT o) FROM Order o " +
+               "JOIN o.orderItems oi " +
+               "JOIN oi.productVariant pv " +
+               "JOIN pv.product p " +
+               "WHERE p.shop.shopId = :shopId")
+        long countByShopId(@Param("shopId") UUID shopId);
+
+        /**
+         * Count distinct customers who have placed orders for a specific shop
+         */
+        @Query("SELECT COUNT(DISTINCT o.user.id) FROM Order o " +
+               "JOIN o.orderItems oi " +
+               "JOIN oi.productVariant pv " +
+               "JOIN pv.product p " +
+               "WHERE p.shop.shopId = :shopId AND o.user IS NOT NULL")
+        long countDistinctCustomersByShopId(@Param("shopId") UUID shopId);
+
+        /**
+         * Count pending orders for a specific shop
+         */
+        @Query("SELECT COUNT(DISTINCT o) FROM Order o " +
+               "JOIN o.orderItems oi " +
+               "JOIN oi.productVariant pv " +
+               "JOIN pv.product p " +
+               "WHERE p.shop.shopId = :shopId AND o.orderStatus = 'PENDING'")
+        long countPendingOrdersByShopId(@Param("shopId") UUID shopId);
+
+        /**
+         * Find recent orders for a specific shop
+         */
+        @Query("SELECT DISTINCT o FROM Order o " +
+               "JOIN FETCH o.user u " +
+               "JOIN FETCH o.orderTransaction tx " +
+               "JOIN FETCH o.orderInfo info " +
+               "JOIN o.orderItems oi " +
+               "JOIN oi.productVariant pv " +
+               "JOIN pv.product p " +
+               "WHERE p.shop.shopId = :shopId " +
+               "ORDER BY o.createdAt DESC")
+        List<Order> findRecentOrdersByShopId(@Param("shopId") UUID shopId, Pageable pageable);
 
 }

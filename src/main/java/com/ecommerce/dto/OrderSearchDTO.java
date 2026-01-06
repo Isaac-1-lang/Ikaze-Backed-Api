@@ -8,6 +8,7 @@ import lombok.NoArgsConstructor;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.UUID;
 
 /**
  * DTO for comprehensive order search and filtering
@@ -73,6 +74,9 @@ public class OrderSearchDTO {
     // Text search (searches across multiple fields)
     private String searchKeyword;
 
+    // Shop filter
+    private UUID shopId;
+
     // Pagination and sorting
     private Integer page;
     private Integer size;
@@ -118,6 +122,7 @@ public class OrderSearchDTO {
                 itemCountMax != null ||
                 (productName != null && !productName.trim().isEmpty()) ||
                 (productSku != null && !productSku.trim().isEmpty()) ||
-                (searchKeyword != null && !searchKeyword.trim().isEmpty());
+                (searchKeyword != null && !searchKeyword.trim().isEmpty()) ||
+                shopId != null;
     }
 }

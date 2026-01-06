@@ -3,6 +3,8 @@ package com.ecommerce.controller;
 import com.ecommerce.dto.AdminOrderDTO;
 import com.ecommerce.dto.OrderSearchDTO;
 import com.ecommerce.service.OrderService;
+import com.ecommerce.service.ShopAuthorizationService;
+import com.ecommerce.ServiceImpl.CustomUserDetails;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -15,6 +17,8 @@ import org.springframework.data.domain.Sort;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.*;
 import jakarta.persistence.EntityNotFoundException;
 import jakarta.validation.Valid;
@@ -22,16 +26,18 @@ import jakarta.validation.Valid;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 
 @RestController
 @RequestMapping("/api/v1/admin/orders")
 @RequiredArgsConstructor
 @Slf4j
 @Tag(name = "Admin Order Management", description = "APIs for administrators to manage all orders")
-@PreAuthorize("hasAnyRole('ADMIN', 'EMPLOYEE')")
+@PreAuthorize("hasAnyRole('ADMIN', 'EMPLOYEE', 'VENDOR')")
 public class AdminOrderController {
 
     private final OrderService orderService;
+    private final ShopAuthorizationService shopAuthorizationService;
 
     @GetMapping
     @Operation(summary = "Get all orders with pagination", description = "Retrieve all orders in the system with pagination support")
@@ -43,8 +49,33 @@ public class AdminOrderController {
             @Parameter(description = "Sort by field", example = "createdAt")
             @RequestParam(defaultValue = "createdAt") String sortBy,
             @Parameter(description = "Sort direction", example = "desc")
-            @RequestParam(defaultValue = "desc") String sortDir) {
+            @RequestParam(defaultValue = "desc") String sortDir,
+            @Parameter(description = "Shop ID to filter orders by shop")
+            @RequestParam(required = false) String shopId) {
         try {
+            UUID shopUuid = null;
+            if (shopId != null && !shopId.trim().isEmpty()) {
+                try {
+                    shopUuid = UUID.fromString(shopId);
+                    UUID currentUserId = getCurrentUserId();
+                    if (currentUserId != null) {
+                        shopAuthorizationService.assertCanManageShop(currentUserId, shopUuid);
+                    }
+                } catch (IllegalArgumentException e) {
+                    Map<String, Object> response = new HashMap<>();
+                    response.put("success", false);
+                    response.put("message", "Invalid shopId format");
+                    response.put("errorCode", "VALIDATION_ERROR");
+                    return ResponseEntity.badRequest().body(response);
+                } catch (com.ecommerce.Exception.CustomException e) {
+                    Map<String, Object> response = new HashMap<>();
+                    response.put("success", false);
+                    response.put("message", "Access denied to this shop");
+                    response.put("errorCode", "ACCESS_DENIED");
+                    return ResponseEntity.status(HttpStatus.FORBIDDEN).body(response);
+                }
+            }
+            
             // Create sort object
             Sort sort = sortDir.equalsIgnoreCase("desc") 
                 ? Sort.by(sortBy).descending() 
@@ -54,7 +85,7 @@ public class AdminOrderController {
             Pageable pageable = PageRequest.of(page, size, sort);
             
             // Get paginated orders
-            Page<AdminOrderDTO> ordersPage = orderService.getAllAdminOrdersPaginated(pageable);
+            Page<AdminOrderDTO> ordersPage = orderService.getAllAdminOrdersPaginated(pageable, shopUuid);
 
             Map<String, Object> response = new HashMap<>();
             response.put("success", true);
@@ -303,6 +334,22 @@ public class AdminOrderController {
             // Create pageable object
             Pageable pageable = PageRequest.of(searchRequest.getPage(), searchRequest.getSize(), sort);
             
+            // Validate shop access if shopId is provided
+            if (searchRequest.getShopId() != null) {
+                UUID currentUserId = getCurrentUserId();
+                if (currentUserId != null) {
+                    try {
+                        shopAuthorizationService.assertCanManageShop(currentUserId, searchRequest.getShopId());
+                    } catch (com.ecommerce.Exception.CustomException e) {
+                        Map<String, Object> response = new HashMap<>();
+                        response.put("success", false);
+                        response.put("message", "Access denied to this shop");
+                        response.put("errorCode", "ACCESS_DENIED");
+                        return ResponseEntity.status(HttpStatus.FORBIDDEN).body(response);
+                    }
+                }
+            }
+            
             // Search orders
             Page<AdminOrderDTO> ordersPage = orderService.searchOrders(searchRequest, pageable);
 
@@ -358,6 +405,26 @@ public class AdminOrderController {
             response.put("message", "Failed to get pending orders count");
             response.put("count", 0);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(response);
+        }
+    }
+    
+    private UUID getCurrentUserId() {
+        try {
+            Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+            if (auth == null || !auth.isAuthenticated()) {
+                return null;
+            }
+
+            Object principal = auth.getPrincipal();
+
+            if (principal instanceof CustomUserDetails customUserDetails) {
+                return customUserDetails.getUserId();
+            }
+
+            return null;
+        } catch (Exception e) {
+            log.error("Error getting current user ID: {}", e.getMessage(), e);
+            return null;
         }
     }
 }

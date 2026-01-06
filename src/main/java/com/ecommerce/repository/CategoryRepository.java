@@ -23,6 +23,21 @@ public interface CategoryRepository extends JpaRepository<Category, Long>, JpaSp
     List<Category> findByParentIsNull();
 
     /**
+     * Find all top-level categories for a specific shop
+     * 
+     * @param shopId the shop ID
+     * @return list of top-level categories for the shop
+     */
+    List<Category> findByParentIsNullAndShopShopId(java.util.UUID shopId);
+
+    /**
+     * Find all top-level categories that are global (no shop assigned)
+     * 
+     * @return list of global top-level categories
+     */
+    List<Category> findByParentIsNullAndShopIsNull();
+
+    /**
      * Find all sub-categories of a given parent category
      * 
      * @param parentId the ID of the parent category

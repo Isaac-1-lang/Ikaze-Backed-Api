@@ -21,8 +21,11 @@ import com.ecommerce.repository.StockBatchRepository;
 import com.ecommerce.repository.ProductRepository;
 import com.ecommerce.repository.ProductVariantRepository;
 import com.ecommerce.repository.OrderItemBatchRepository;
+import com.ecommerce.repository.ShopRepository;
 import com.ecommerce.service.CloudinaryService;
+import com.ecommerce.service.ShopAuthorizationService;
 import com.ecommerce.service.WarehouseService;
+import com.ecommerce.entity.Shop;
 import jakarta.persistence.EntityNotFoundException;
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
@@ -54,6 +57,8 @@ public class WarehouseServiceImpl implements WarehouseService {
     private final ProductVariantRepository productVariantRepository;
     private final OrderItemBatchRepository orderItemBatchRepository;
     private final CloudinaryService cloudinaryService;
+    private final ShopRepository shopRepository;
+    private final ShopAuthorizationService shopAuthorizationService;
 
     @Override
     @Transactional
@@ -80,6 +85,15 @@ public class WarehouseServiceImpl implements WarehouseService {
             }
             warehouse.setActive(createWarehouseDTO.getIsActive() != null ? createWarehouseDTO.getIsActive() : true);
 
+            // Set shop if shopId is provided
+            if (createWarehouseDTO.getShopId() != null) {
+                Shop shop = shopRepository.findById(createWarehouseDTO.getShopId())
+                        .orElseThrow(() -> new EntityNotFoundException("Shop not found with ID: " + createWarehouseDTO.getShopId()));
+                warehouse.setShop(shop);
+            } else {
+                throw new IllegalArgumentException("shopId is required");
+            }
+
             Warehouse savedWarehouse = warehouseRepository.save(warehouse);
             log.info("Warehouse created with ID: {}", savedWarehouse.getId());
 
@@ -103,12 +117,29 @@ public class WarehouseServiceImpl implements WarehouseService {
 
     @Override
     public Page<WarehouseDTO> getAllWarehouses(Pageable pageable) {
+        return getAllWarehouses(null, pageable);
+    }
+
+    public Page<WarehouseDTO> getAllWarehouses(UUID shopId, Pageable pageable) {
+        if (shopId != null) {
+            return warehouseRepository.findByShopShopId(shopId, pageable)
+                    .map(this::mapWarehouseToDTO);
+        }
         return warehouseRepository.findAll(pageable)
                 .map(this::mapWarehouseToDTO);
     }
 
     @Override
     public List<WarehouseDTO> getAllWarehouses() {
+        return getAllWarehouses((UUID) null);
+    }
+
+    public List<WarehouseDTO> getAllWarehouses(UUID shopId) {
+        if (shopId != null) {
+            return warehouseRepository.findByShopShopId(shopId).stream()
+                    .map(this::mapWarehouseToDTO)
+                    .collect(Collectors.toList());
+        }
         return warehouseRepository.findAll().stream()
                 .map(this::mapWarehouseToDTO)
                 .collect(Collectors.toList());
@@ -491,14 +522,40 @@ public class WarehouseServiceImpl implements WarehouseService {
 
     @Override
     public List<WarehouseDTO> getWarehousesByLocation(String location) {
-        return warehouseRepository.findByAddressContaining(location).stream()
+        return getWarehousesByLocation(location, null);
+    }
+    
+    public List<WarehouseDTO> getWarehousesByLocation(String location, UUID shopId) {
+        List<Warehouse> warehouses;
+        if (shopId != null) {
+            // Filter by location and shop
+            warehouses = warehouseRepository.findByAddressContaining(location).stream()
+                    .filter(w -> w.getShop() != null && w.getShop().getShopId().equals(shopId))
+                    .collect(Collectors.toList());
+        } else {
+            warehouses = warehouseRepository.findByAddressContaining(location);
+        }
+        return warehouses.stream()
                 .map(this::mapWarehouseToDTO)
                 .collect(Collectors.toList());
     }
 
     @Override
     public List<WarehouseDTO> getWarehousesNearLocation(Double latitude, Double longitude, Double radiusKm) {
-        return warehouseRepository.findWarehousesNearLocation(latitude, longitude, radiusKm).stream()
+        return getWarehousesNearLocation(latitude, longitude, radiusKm, null);
+    }
+    
+    public List<WarehouseDTO> getWarehousesNearLocation(Double latitude, Double longitude, Double radiusKm, UUID shopId) {
+        List<Warehouse> warehouses = warehouseRepository.findWarehousesNearLocation(latitude, longitude, radiusKm);
+        
+        if (shopId != null) {
+            // Filter by shop
+            warehouses = warehouses.stream()
+                    .filter(w -> w.getShop() != null && w.getShop().getShopId().equals(shopId))
+                    .collect(Collectors.toList());
+        }
+        
+        return warehouses.stream()
                 .map(this::mapWarehouseToDTO)
                 .collect(Collectors.toList());
     }
@@ -600,6 +657,12 @@ public class WarehouseServiceImpl implements WarehouseService {
 
         dto.setCreatedAt(warehouse.getCreatedAt());
         dto.setUpdatedAt(warehouse.getUpdatedAt());
+
+        // Set shop information
+        if (warehouse.getShop() != null) {
+            dto.setShopId(warehouse.getShop().getShopId());
+            dto.setShopName(warehouse.getShop().getName());
+        }
 
         List<WarehouseImage> images = warehouseImageRepository.findByWarehouseId(warehouse.getId());
         dto.setImages(images.stream()

@@ -12,6 +12,4 @@ import java.util.UUID;
 public class SignupResponseDTO {
     private String message;
     private UUID userId;
-    private Integer awardedPoints;
-    private String pointsDescription;
 }

@@ -17,6 +17,8 @@ import java.util.List;
 public class RewardSystemDTO {
 
     private Long id;
+    private java.util.UUID shopId;
+    private String shopName;
 
     @NotNull(message = "Point value is required")
     @DecimalMin(value = "0.01", message = "Point value must be greater than 0")
@@ -26,8 +28,6 @@ public class RewardSystemDTO {
     private Boolean isSystemEnabled;
     private Boolean isReviewPointsEnabled;
     private Integer reviewPointsAmount;
-    private Boolean isSignupPointsEnabled;
-    private Integer signupPointsAmount;
     private Boolean isPurchasePointsEnabled;
     private Boolean isQuantityBasedEnabled;
     private Boolean isAmountBasedEnabled;

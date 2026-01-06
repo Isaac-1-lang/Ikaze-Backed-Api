@@ -4,11 +4,16 @@ import com.ecommerce.dto.RewardSystemDTO;
 import com.ecommerce.dto.UserPointsDTO;
 import com.ecommerce.dto.UserRewardSummaryDTO;
 import com.ecommerce.service.RewardService;
+import com.ecommerce.service.ShopAuthorizationService;
+import com.ecommerce.repository.UserRepository;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.web.bind.annotation.*;
 
 import jakarta.validation.Valid;
@@ -26,34 +31,40 @@ import java.util.Map;
 public class RewardController {
 
     private final RewardService rewardService;
+    private final ShopAuthorizationService shopAuthorizationService;
+    private final UserRepository userRepository;
 
     @GetMapping("/system")
-    public ResponseEntity<RewardSystemDTO> getActiveRewardSystem() {
+    public ResponseEntity<RewardSystemDTO> getActiveRewardSystem(@RequestParam UUID shopId) {
         try {
-            log.info("Fetching active reward system");
-            RewardSystemDTO system = rewardService.getActiveRewardSystem();
+            log.info("Fetching active reward system for shop: {}", shopId);
+            RewardSystemDTO system = rewardService.getActiveRewardSystem(shopId);
             if (system != null) {
-                log.info("Active reward system found with ID: {}", system.getId());
+                log.info("Active reward system found with ID: {} for shop: {}", system.getId(), shopId);
                 return ResponseEntity.ok(system);
             }
-            log.warn("No active reward system found");
+            log.warn("No active reward system found for shop: {}", shopId);
             return ResponseEntity.notFound().build();
         } catch (Exception e) {
-            log.error("Error fetching active reward system: {}", e.getMessage(), e);
+            log.error("Error fetching active reward system for shop {}: {}", shopId, e.getMessage(), e);
             return ResponseEntity.internalServerError().build();
         }
     }
 
     @GetMapping("/systems")
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAnyRole('VENDOR', 'EMPLOYEE')")
     public ResponseEntity<Map<String, Object>> getAllRewardSystems(
+            @RequestParam UUID shopId,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "10") int size,
             @RequestParam(defaultValue = "id") String sortBy,
             @RequestParam(defaultValue = "desc") String sortDir) {
         try {
-            log.info("Fetching all reward systems: page={}, size={}, sortBy={}, sortDir={}", page, size, sortBy,
-                    sortDir);
+            UUID vendorId = getCurrentUserId();
+            shopAuthorizationService.assertCanManageShop(vendorId, shopId);
+
+            log.info("Fetching all reward systems for shop {}: page={}, size={}, sortBy={}, sortDir={}", 
+                    shopId, page, size, sortBy, sortDir);
 
             // Validate pagination parameters
             if (page < 0) {
@@ -71,189 +82,260 @@ public class RewardController {
                 sortDir = "desc";
             }
 
-            Map<String, Object> result = rewardService.getAllRewardSystems(page, size, sortBy, sortDir);
-            log.info("Retrieved {} reward systems successfully", result.get("totalElements"));
+            Map<String, Object> result = rewardService.getAllRewardSystems(shopId, page, size, sortBy, sortDir);
+            log.info("Retrieved {} reward systems successfully for shop {}", result.get("totalElements"), shopId);
             return ResponseEntity.ok(result);
         } catch (Exception e) {
-            log.error("Error fetching all reward systems: {}", e.getMessage(), e);
+            log.error("Error fetching all reward systems for shop {}: {}", shopId, e.getMessage(), e);
             return ResponseEntity.internalServerError().build();
         }
     }
 
     @GetMapping("/system/{id}")
-    @PreAuthorize("hasRole('ADMIN')")
-    public ResponseEntity<RewardSystemDTO> getRewardSystemById(@PathVariable Long id) {
+    @PreAuthorize("hasAnyRole('VENDOR', 'EMPLOYEE')")
+    public ResponseEntity<RewardSystemDTO> getRewardSystemById(@PathVariable Long id, @RequestParam UUID shopId) {
         try {
-            log.info("Fetching reward system with ID: {}", id);
-            RewardSystemDTO system = rewardService.getRewardSystemById(id);
+            UUID vendorId = getCurrentUserId();
+            shopAuthorizationService.assertCanManageShop(vendorId, shopId);
+
+            log.info("Fetching reward system with ID: {} for shop: {}", id, shopId);
+            RewardSystemDTO system = rewardService.getRewardSystemById(id, shopId);
             if (system != null) {
                 return ResponseEntity.ok(system);
             }
-            log.warn("Reward system not found with ID: {}", id);
+            log.warn("Reward system not found with ID: {} for shop: {}", id, shopId);
             return ResponseEntity.notFound().build();
         } catch (Exception e) {
-            log.error("Error fetching reward system with ID {}: {}", id, e.getMessage(), e);
+            log.error("Error fetching reward system with ID {} for shop {}: {}", id, shopId, e.getMessage(), e);
             return ResponseEntity.internalServerError().build();
         }
     }
 
     @PostMapping("/system")
-    @PreAuthorize("hasRole('ADMIN')")
-    public ResponseEntity<RewardSystemDTO> saveRewardSystem(@Valid @RequestBody RewardSystemDTO rewardSystemDTO) {
+    @PreAuthorize("hasAnyRole('VENDOR', 'EMPLOYEE')")
+    public ResponseEntity<RewardSystemDTO> saveRewardSystem(
+            @Valid @RequestBody RewardSystemDTO rewardSystemDTO,
+            @RequestParam UUID shopId) {
         try {
-            log.info("Saving reward system: {}", rewardSystemDTO.getId() != null ? "update" : "create");
-            RewardSystemDTO saved = rewardService.saveRewardSystem(rewardSystemDTO);
-            log.info("Reward system saved successfully with ID: {}", saved.getId());
+            UUID vendorId = getCurrentUserId();
+            shopAuthorizationService.assertCanManageShop(vendorId, shopId);
+
+            log.info("Saving reward system: {} for shop: {}", 
+                    rewardSystemDTO.getId() != null ? "update" : "create", shopId);
+            RewardSystemDTO saved = rewardService.saveRewardSystem(rewardSystemDTO, shopId);
+            log.info("Reward system saved successfully with ID: {} for shop: {}", saved.getId(), shopId);
             return ResponseEntity.ok(saved);
         } catch (IllegalArgumentException e) {
             log.warn("Invalid request for saving reward system: {}", e.getMessage());
             return ResponseEntity.badRequest().build();
         } catch (Exception e) {
-            log.error("Error saving reward system: {}", e.getMessage(), e);
+            log.error("Error saving reward system for shop {}: {}", shopId, e.getMessage(), e);
             return ResponseEntity.internalServerError().build();
         }
     }
 
     @PutMapping("/system/{id}/activate")
-    @PreAuthorize("hasRole('ADMIN')")
-    public ResponseEntity<RewardSystemDTO> activateRewardSystem(@PathVariable Long id) {
+    @PreAuthorize("hasAnyRole('VENDOR', 'EMPLOYEE')")
+    public ResponseEntity<RewardSystemDTO> activateRewardSystem(
+            @PathVariable Long id,
+            @RequestParam UUID shopId) {
         try {
-            log.info("Activating reward system with ID: {}", id);
-            RewardSystemDTO activated = rewardService.activateRewardSystem(id);
-            log.info("Reward system activated successfully with ID: {}", id);
+            UUID vendorId = getCurrentUserId();
+            shopAuthorizationService.assertCanManageShop(vendorId, shopId);
+
+            log.info("Activating reward system with ID: {} for shop: {}", id, shopId);
+            RewardSystemDTO activated = rewardService.activateRewardSystem(id, shopId);
+            log.info("Reward system activated successfully with ID: {} for shop: {}", id, shopId);
             return ResponseEntity.ok(activated);
         } catch (IllegalArgumentException e) {
             log.warn("Invalid request for activating reward system: {}", e.getMessage());
             return ResponseEntity.badRequest().build();
         } catch (Exception e) {
-            log.error("Error activating reward system with ID {}: {}", id, e.getMessage(), e);
+            log.error("Error activating reward system with ID {} for shop {}: {}", id, shopId, e.getMessage(), e);
             return ResponseEntity.internalServerError().build();
         }
     }
 
     @PutMapping("/system/{id}/toggle-system")
-    @PreAuthorize("hasRole('ADMIN')")
-    public ResponseEntity<RewardSystemDTO> toggleSystemEnabled(@PathVariable Long id, @RequestParam Boolean enabled) {
+    @PreAuthorize("hasAnyRole('VENDOR', 'EMPLOYEE')")
+    public ResponseEntity<RewardSystemDTO> toggleSystemEnabled(
+            @PathVariable Long id,
+            @RequestParam UUID shopId,
+            @RequestParam Boolean enabled) {
         try {
-            log.info("Toggling system enabled for reward system ID: {} to: {}", id, enabled);
-            RewardSystemDTO updated = rewardService.toggleSystemEnabled(id, enabled);
-            log.info("System enabled toggled successfully for reward system ID: {}", id);
+            UUID vendorId = getCurrentUserId();
+            shopAuthorizationService.assertCanManageShop(vendorId, shopId);
+
+            log.info("Toggling system enabled for reward system ID: {} to: {} for shop: {}", id, enabled, shopId);
+            RewardSystemDTO updated = rewardService.toggleSystemEnabled(id, shopId, enabled);
+            log.info("System enabled toggled successfully for reward system ID: {} for shop: {}", id, shopId);
             return ResponseEntity.ok(updated);
         } catch (IllegalArgumentException e) {
             log.warn("Invalid request for toggling system enabled: {}", e.getMessage());
             return ResponseEntity.badRequest().build();
         } catch (Exception e) {
-            log.error("Error toggling system enabled for reward system ID {}: {}", id, e.getMessage(), e);
+            log.error("Error toggling system enabled for reward system ID {} for shop {}: {}", id, shopId, e.getMessage(), e);
             return ResponseEntity.internalServerError().build();
         }
     }
 
     @PutMapping("/system/{id}/toggle-review-points")
-    @PreAuthorize("hasRole('ADMIN')")
-    public ResponseEntity<RewardSystemDTO> toggleReviewPoints(@PathVariable Long id, @RequestParam Boolean enabled,
+    @PreAuthorize("hasAnyRole('VENDOR', 'EMPLOYEE')")
+    public ResponseEntity<RewardSystemDTO> toggleReviewPoints(
+            @PathVariable Long id,
+            @RequestParam UUID shopId,
+            @RequestParam Boolean enabled,
             @RequestParam(required = false) Integer pointsAmount) {
         try {
-            log.info("Toggling review points for reward system ID: {} to: {} with points: {}", id, enabled,
-                    pointsAmount);
-            RewardSystemDTO updated = rewardService.toggleReviewPoints(id, enabled, pointsAmount);
-            log.info("Review points toggled successfully for reward system ID: {}", id);
+            UUID vendorId = getCurrentUserId();
+            shopAuthorizationService.assertCanManageShop(vendorId, shopId);
+
+            log.info("Toggling review points for reward system ID: {} to: {} with points: {} for shop: {}", 
+                    id, enabled, pointsAmount, shopId);
+            RewardSystemDTO updated = rewardService.toggleReviewPoints(id, shopId, enabled, pointsAmount);
+            log.info("Review points toggled successfully for reward system ID: {} for shop: {}", id, shopId);
             return ResponseEntity.ok(updated);
         } catch (IllegalArgumentException e) {
             log.warn("Invalid request for toggling review points: {}", e.getMessage());
             return ResponseEntity.badRequest().build();
         } catch (Exception e) {
-            log.error("Error toggling review points for reward system ID {}: {}", id, e.getMessage(), e);
-            return ResponseEntity.internalServerError().build();
-        }
-    }
-
-    @PutMapping("/system/{id}/toggle-signup-points")
-    @PreAuthorize("hasRole('ADMIN')")
-    public ResponseEntity<RewardSystemDTO> toggleSignupPoints(@PathVariable Long id, @RequestParam Boolean enabled,
-            @RequestParam(required = false) Integer pointsAmount) {
-        try {
-            log.info("Toggling signup points for reward system ID: {} to: {} with points: {}", id, enabled,
-                    pointsAmount);
-            RewardSystemDTO updated = rewardService.toggleSignupPoints(id, enabled, pointsAmount);
-            log.info("Signup points toggled successfully for reward system ID: {}", id);
-            return ResponseEntity.ok(updated);
-        } catch (IllegalArgumentException e) {
-            log.warn("Invalid request for toggling signup points: {}", e.getMessage());
-            return ResponseEntity.badRequest().build();
-        } catch (Exception e) {
-            log.error("Error toggling signup points for reward system ID {}: {}", id, e.getMessage(), e);
+            log.error("Error toggling review points for reward system ID {} for shop {}: {}", id, shopId, e.getMessage(), e);
             return ResponseEntity.internalServerError().build();
         }
     }
 
     @PutMapping("/system/{id}/toggle-purchase-points")
-    @PreAuthorize("hasRole('ADMIN')")
-    public ResponseEntity<RewardSystemDTO> togglePurchasePoints(@PathVariable Long id, @RequestParam Boolean enabled) {
+    @PreAuthorize("hasAnyRole('VENDOR', 'EMPLOYEE')")
+    public ResponseEntity<RewardSystemDTO> togglePurchasePoints(
+            @PathVariable Long id,
+            @RequestParam UUID shopId,
+            @RequestParam Boolean enabled) {
         try {
-            log.info("Toggling purchase points for reward system ID: {} to: {}", id, enabled);
-            RewardSystemDTO updated = rewardService.togglePurchasePoints(id, enabled);
-            log.info("Purchase points toggled successfully for reward system ID: {}", id);
+            UUID vendorId = getCurrentUserId();
+            shopAuthorizationService.assertCanManageShop(vendorId, shopId);
+
+            log.info("Toggling purchase points for reward system ID: {} to: {} for shop: {}", id, enabled, shopId);
+            RewardSystemDTO updated = rewardService.togglePurchasePoints(id, shopId, enabled);
+            log.info("Purchase points toggled successfully for reward system ID: {} for shop: {}", id, shopId);
             return ResponseEntity.ok(updated);
         } catch (IllegalArgumentException e) {
             log.warn("Invalid request for toggling purchase points: {}", e.getMessage());
             return ResponseEntity.badRequest().build();
         } catch (Exception e) {
-            log.error("Error toggling purchase points for reward system ID {}: {}", id, e.getMessage(), e);
+            log.error("Error toggling purchase points for reward system ID {} for shop {}: {}", id, shopId, e.getMessage(), e);
             return ResponseEntity.internalServerError().build();
         }
     }
 
     @PutMapping("/system/{id}/toggle-quantity-based")
-    @PreAuthorize("hasRole('ADMIN')")
-    public ResponseEntity<RewardSystemDTO> toggleQuantityBased(@PathVariable Long id, @RequestParam Boolean enabled) {
+    @PreAuthorize("hasAnyRole('VENDOR', 'EMPLOYEE')")
+    public ResponseEntity<RewardSystemDTO> toggleQuantityBased(
+            @PathVariable Long id,
+            @RequestParam UUID shopId,
+            @RequestParam Boolean enabled) {
         try {
-            log.info("Toggling quantity-based rewards for reward system ID: {} to: {}", id, enabled);
-            RewardSystemDTO updated = rewardService.toggleQuantityBased(id, enabled);
-            log.info("Quantity-based rewards toggled successfully for reward system ID: {}", id);
+            UUID vendorId = getCurrentUserId();
+            shopAuthorizationService.assertCanManageShop(vendorId, shopId);
+
+            log.info("Toggling quantity-based rewards for reward system ID: {} to: {} for shop: {}", id, enabled, shopId);
+            RewardSystemDTO updated = rewardService.toggleQuantityBased(id, shopId, enabled);
+            log.info("Quantity-based rewards toggled successfully for reward system ID: {} for shop: {}", id, shopId);
             return ResponseEntity.ok(updated);
         } catch (IllegalArgumentException e) {
             log.warn("Invalid request for toggling quantity-based rewards: {}", e.getMessage());
             return ResponseEntity.badRequest().build();
         } catch (Exception e) {
-            log.error("Error toggling quantity-based rewards for reward system ID {}: {}", id, e.getMessage(), e);
+            log.error("Error toggling quantity-based rewards for reward system ID {} for shop {}: {}", id, shopId, e.getMessage(), e);
             return ResponseEntity.internalServerError().build();
         }
     }
 
     @PutMapping("/system/{id}/toggle-amount-based")
-    @PreAuthorize("hasRole('ADMIN')")
-    public ResponseEntity<RewardSystemDTO> toggleAmountBased(@PathVariable Long id, @RequestParam Boolean enabled) {
+    @PreAuthorize("hasAnyRole('VENDOR', 'EMPLOYEE')")
+    public ResponseEntity<RewardSystemDTO> toggleAmountBased(
+            @PathVariable Long id,
+            @RequestParam UUID shopId,
+            @RequestParam Boolean enabled) {
         try {
-            log.info("Toggling amount-based rewards for reward system ID: {} to: {}", id, enabled);
-            RewardSystemDTO updated = rewardService.toggleAmountBased(id, enabled);
-            log.info("Amount-based rewards toggled successfully for reward system ID: {}", id);
+            UUID vendorId = getCurrentUserId();
+            shopAuthorizationService.assertCanManageShop(vendorId, shopId);
+
+            log.info("Toggling amount-based rewards for reward system ID: {} to: {} for shop: {}", id, enabled, shopId);
+            RewardSystemDTO updated = rewardService.toggleAmountBased(id, shopId, enabled);
+            log.info("Amount-based rewards toggled successfully for reward system ID: {} for shop: {}", id, shopId);
             return ResponseEntity.ok(updated);
         } catch (IllegalArgumentException e) {
             log.warn("Invalid request for toggling amount-based rewards: {}", e.getMessage());
             return ResponseEntity.badRequest().build();
         } catch (Exception e) {
-            log.error("Error toggling amount-based rewards for reward system ID {}: {}", id, e.getMessage(), e);
+            log.error("Error toggling amount-based rewards for reward system ID {} for shop {}: {}", id, shopId, e.getMessage(), e);
             return ResponseEntity.internalServerError().build();
         }
     }
 
     @PutMapping("/system/{id}/toggle-percentage-based")
-    @PreAuthorize("hasRole('ADMIN')")
-    public ResponseEntity<RewardSystemDTO> togglePercentageBased(@PathVariable Long id, @RequestParam Boolean enabled,
+    @PreAuthorize("hasAnyRole('VENDOR', 'EMPLOYEE')")
+    public ResponseEntity<RewardSystemDTO> togglePercentageBased(
+            @PathVariable Long id,
+            @RequestParam UUID shopId,
+            @RequestParam Boolean enabled,
             @RequestParam(required = false) BigDecimal percentageRate) {
         try {
-            log.info("Toggling percentage-based rewards for reward system ID: {} to: {} with rate: {}", id, enabled,
-                    percentageRate);
-            RewardSystemDTO updated = rewardService.togglePercentageBased(id, enabled, percentageRate);
-            log.info("Percentage-based rewards toggled successfully for reward system ID: {}", id);
+            UUID vendorId = getCurrentUserId();
+            shopAuthorizationService.assertCanManageShop(vendorId, shopId);
+
+            log.info("Toggling percentage-based rewards for reward system ID: {} to: {} with rate: {} for shop: {}", 
+                    id, enabled, percentageRate, shopId);
+            RewardSystemDTO updated = rewardService.togglePercentageBased(id, shopId, enabled, percentageRate);
+            log.info("Percentage-based rewards toggled successfully for reward system ID: {} for shop: {}", id, shopId);
             return ResponseEntity.ok(updated);
         } catch (IllegalArgumentException e) {
             log.warn("Invalid request for toggling percentage-based rewards: {}", e.getMessage());
             return ResponseEntity.badRequest().build();
         } catch (Exception e) {
-            log.error("Error toggling percentage-based rewards for reward system ID {}: {}", id, e.getMessage(), e);
+            log.error("Error toggling percentage-based rewards for reward system ID {} for shop {}: {}", id, shopId, e.getMessage(), e);
             return ResponseEntity.internalServerError().build();
         }
+    }
+
+    private UUID getCurrentUserId() {
+        try {
+            Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+            if (auth == null || !auth.isAuthenticated()) {
+                throw new RuntimeException("User not authenticated");
+            }
+
+            Object principal = auth.getPrincipal();
+
+            if (principal instanceof com.ecommerce.ServiceImpl.CustomUserDetails customUserDetails) {
+                String email = customUserDetails.getUsername();
+                return userRepository.findByUserEmail(email)
+                    .map(com.ecommerce.entity.User::getId)
+                    .orElseThrow(() -> new RuntimeException("User not found with email: " + email));
+            }
+
+            if (principal instanceof com.ecommerce.entity.User user && user.getId() != null) {
+                return user.getId();
+            }
+
+            if (principal instanceof UserDetails userDetails) {
+                String email = userDetails.getUsername();
+                return userRepository.findByUserEmail(email)
+                    .map(com.ecommerce.entity.User::getId)
+                    .orElseThrow(() -> new RuntimeException("User not found with email: " + email));
+            }
+
+            String name = auth.getName();
+            if (name != null && !name.isBlank()) {
+                return userRepository.findByUserEmail(name)
+                    .map(com.ecommerce.entity.User::getId)
+                    .orElseThrow(() -> new RuntimeException("User not found with email: " + name));
+            }
+        } catch (Exception e) {
+            log.error("Error getting current user ID: {}", e.getMessage(), e);
+            throw new RuntimeException("Unable to get current user ID: " + e.getMessage());
+        }
+        throw new RuntimeException("Unable to get current user ID");
     }
 
     @PostMapping("/users/{userId}/order-points")
@@ -296,26 +378,6 @@ public class RewardController {
             return ResponseEntity.badRequest().build();
         } catch (Exception e) {
             log.error("Error awarding points for review by user {}: {}", userId, e.getMessage(), e);
-            return ResponseEntity.internalServerError().build();
-        }
-    }
-
-    @PostMapping("/users/{userId}/signup-points")
-    public ResponseEntity<UserPointsDTO> awardPointsForSignup(@PathVariable UUID userId) {
-        try {
-            log.info("Awarding signup points for user: {}", userId);
-            UserPointsDTO awarded = rewardService.awardPointsForSignup(userId);
-            if (awarded != null) {
-                log.info("Signup points awarded successfully for user: {}", userId);
-                return ResponseEntity.ok(awarded);
-            }
-            log.warn("No signup points awarded for user: {}", userId);
-            return ResponseEntity.badRequest().build();
-        } catch (IllegalArgumentException e) {
-            log.warn("Invalid request for awarding signup points: {}", e.getMessage());
-            return ResponseEntity.badRequest().build();
-        } catch (Exception e) {
-            log.error("Error awarding signup points for user {}: {}", userId, e.getMessage(), e);
             return ResponseEntity.internalServerError().build();
         }
     }

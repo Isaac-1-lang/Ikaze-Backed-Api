@@ -48,18 +48,11 @@ public class ProductStatusCalculationService {
     }
 
     public boolean isVisibleToCustomers(Product product) {
-        ProductStatus status = product.getStatus();
-        if (status == null) {
-            status = ProductStatus.DRAFT;
-        }
-        
         Boolean displayToCustomers = product.getDisplayToCustomers();
         if (displayToCustomers == null) {
             displayToCustomers = false;
         }
-        
-        return status == ProductStatus.PUBLISHED
-                && displayToCustomers
-                && product.isActive();
+
+        return displayToCustomers && product.isActive();
     }
 }

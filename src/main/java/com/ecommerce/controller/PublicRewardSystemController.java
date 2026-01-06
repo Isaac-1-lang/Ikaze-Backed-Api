@@ -80,8 +80,6 @@ public class PublicRewardSystemController {
         dto.setIsActive(rewardSystem.getIsActive());
         dto.setIsReviewPointsEnabled(rewardSystem.getIsReviewPointsEnabled());
         dto.setReviewPointsAmount(rewardSystem.getReviewPointsAmount());
-        dto.setIsSignupPointsEnabled(rewardSystem.getIsSignupPointsEnabled());
-        dto.setSignupPointsAmount(rewardSystem.getSignupPointsAmount());
         dto.setIsPurchasePointsEnabled(rewardSystem.getIsPurchasePointsEnabled());
         dto.setIsQuantityBasedEnabled(rewardSystem.getIsQuantityBasedEnabled());
         dto.setIsAmountBasedEnabled(rewardSystem.getIsAmountBasedEnabled());

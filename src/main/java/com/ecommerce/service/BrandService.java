@@ -57,23 +57,26 @@ public interface BrandService {
      * Get all brands with pagination
      * 
      * @param pageable pagination information
+     * @param shopId   optional shop ID to filter by
      * @return page of brands
      */
-    Page<BrandDTO> getAllBrands(Pageable pageable);
+    Page<BrandDTO> getAllBrands(Pageable pageable, UUID shopId);
 
     /**
      * Get all active brands
      * 
+     * @param shopId optional shop ID to filter by
      * @return list of active brands
      */
-    List<BrandDTO> getActiveBrands();
+    List<BrandDTO> getActiveBrands(UUID shopId);
 
     /**
      * Get all featured brands
      * 
+     * @param shopId optional shop ID to filter by
      * @return list of featured brands
      */
-    List<BrandDTO> getFeaturedBrands();
+    List<BrandDTO> getFeaturedBrands(UUID shopId);
 
     /**
      * Search brands with multiple criteria

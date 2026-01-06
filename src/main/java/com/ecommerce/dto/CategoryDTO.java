@@ -9,6 +9,7 @@ import lombok.NoArgsConstructor;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.UUID;
 
 @Data
 @NoArgsConstructor
@@ -53,6 +54,10 @@ public class CategoryDTO {
     private int level;
     
     private Long productCount = 0L;
+    
+    private UUID shopId;
+    
+    private String shopName;
     
     /**
      * Simplified constructor for creating a new category

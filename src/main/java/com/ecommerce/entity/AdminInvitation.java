@@ -12,6 +12,7 @@ import lombok.NoArgsConstructor;
 import java.time.LocalDateTime;
 import java.util.UUID;
 import jakarta.validation.constraints.Size;
+import com.fasterxml.jackson.annotation.JsonBackReference;
 
 @Entity
 @Table(name = "admin_invitations")
@@ -86,6 +87,11 @@ public class AdminInvitation {
 
     @Column(name = "notes")
     private String notes;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "shop_id", nullable = false)
+    @JsonBackReference
+    private Shop shop;
 
     public enum InvitationStatus {
         PENDING, // Invitation sent, waiting for response

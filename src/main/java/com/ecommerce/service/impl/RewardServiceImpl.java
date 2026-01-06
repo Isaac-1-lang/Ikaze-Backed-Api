@@ -4,13 +4,16 @@ import com.ecommerce.dto.RewardSystemDTO;
 import com.ecommerce.dto.UserPointsDTO;
 import com.ecommerce.dto.UserRewardSummaryDTO;
 import com.ecommerce.entity.RewardSystem;
+import com.ecommerce.entity.Shop;
 import com.ecommerce.entity.User;
 import com.ecommerce.entity.UserPoints;
 import com.ecommerce.entity.UserPoints.PointsType;
 import com.ecommerce.repository.RewardSystemRepository;
+import com.ecommerce.repository.ShopRepository;
 import com.ecommerce.repository.UserPointsRepository;
 import com.ecommerce.repository.UserRepository;
 import com.ecommerce.service.RewardService;
+import com.ecommerce.service.ShopAuthorizationService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
@@ -39,9 +42,23 @@ public class RewardServiceImpl implements RewardService {
     private final RewardSystemRepository rewardSystemRepository;
     private final UserPointsRepository userPointsRepository;
     private final UserRepository userRepository;
+    private final ShopRepository shopRepository;
+    private final ShopAuthorizationService shopAuthorizationService;
 
     @Override
+    public RewardSystemDTO getActiveRewardSystem(UUID shopId) {
+        Optional<RewardSystem> activeSystem = rewardSystemRepository.findByShopShopIdAndIsActiveTrue(shopId);
+        if (activeSystem.isPresent()) {
+            return convertToDTO(activeSystem.get());
+        }
+        return null;
+    }
+
+    @Override
+    @Deprecated
     public RewardSystemDTO getActiveRewardSystem() {
+        // For backward compatibility - returns first active system found
+        // This should be replaced with shop-scoped calls
         Optional<RewardSystem> activeSystem = rewardSystemRepository.findByIsActiveTrue();
         if (activeSystem.isPresent()) {
             return convertToDTO(activeSystem.get());
@@ -50,7 +67,7 @@ public class RewardServiceImpl implements RewardService {
     }
 
     @Override
-    public Map<String, Object> getAllRewardSystems(int page, int size, String sortBy, String sortDir) {
+    public Map<String, Object> getAllRewardSystems(UUID shopId, int page, int size, String sortBy, String sortDir) {
         try {
             // Create sort object
             Sort sort = Sort.by(Sort.Direction.fromString(sortDir.toUpperCase()), sortBy);
@@ -58,8 +75,8 @@ public class RewardServiceImpl implements RewardService {
             // Create pageable object
             PageRequest pageRequest = PageRequest.of(page, size, sort);
 
-            // Fetch paginated data
-            Page<RewardSystem> rewardSystemPage = rewardSystemRepository.findAll(pageRequest);
+            // Fetch paginated data for the shop
+            Page<RewardSystem> rewardSystemPage = rewardSystemRepository.findByShopShopId(shopId, pageRequest);
 
             // Convert to DTOs
             List<RewardSystemDTO> content = rewardSystemPage.getContent().stream()
@@ -85,17 +102,20 @@ public class RewardServiceImpl implements RewardService {
     }
 
     @Override
-    public RewardSystemDTO getRewardSystemById(Long id) {
-        RewardSystem system = rewardSystemRepository.findById(id)
+    public RewardSystemDTO getRewardSystemById(Long id, UUID shopId) {
+        RewardSystem system = rewardSystemRepository.findByIdAndShopShopId(id, shopId)
                 .orElseThrow(() -> new RuntimeException("Reward system not found"));
         return convertToDTO(system);
     }
 
     @Override
-    public RewardSystemDTO saveRewardSystem(RewardSystemDTO rewardSystemDTO) {
-        log.info("Saving reward system: {}", rewardSystemDTO.getDescription());
+    public RewardSystemDTO saveRewardSystem(RewardSystemDTO rewardSystemDTO, UUID shopId) {
+        log.info("Saving reward system: {} for shop: {}", rewardSystemDTO.getDescription(), shopId);
         log.info("Received reward ranges count: {}",
                 rewardSystemDTO.getRewardRanges() != null ? rewardSystemDTO.getRewardRanges().size() : 0);
+
+        Shop shop = shopRepository.findById(shopId)
+                .orElseThrow(() -> new RuntimeException("Shop not found"));
 
         if (rewardSystemDTO.getRewardRanges() != null) {
             for (int i = 0; i < rewardSystemDTO.getRewardRanges().size(); i++) {
@@ -122,15 +142,15 @@ public class RewardServiceImpl implements RewardService {
         }
 
         if (rewardSystemDTO.getId() != null) {
-            RewardSystem existing = rewardSystemRepository.findById(rewardSystemDTO.getId())
+            RewardSystem existing = rewardSystemRepository.findByIdAndShopShopId(rewardSystemDTO.getId(), shopId)
                     .orElseThrow(() -> new RuntimeException("Reward system not found"));
             updateRewardSystem(existing, rewardSystemDTO);
             return convertToDTO(rewardSystemRepository.save(existing));
         } else {
             if (rewardSystemDTO.getIsActive()) {
-                deactivateCurrentSystem();
+                deactivateCurrentSystem(shopId);
             }
-            RewardSystem newSystem = convertToEntity(rewardSystemDTO);
+            RewardSystem newSystem = convertToEntity(rewardSystemDTO, shop);
 
             // Ensure reward ranges are properly set for new systems
             if (rewardSystemDTO.getRewardRanges() != null && !rewardSystemDTO.getRewardRanges().isEmpty()) {
@@ -145,11 +165,12 @@ public class RewardServiceImpl implements RewardService {
     }
 
     @Override
-    public RewardSystemDTO activateRewardSystem(Long rewardSystemId) {
-        RewardSystem system = rewardSystemRepository.findById(rewardSystemId)
+    public RewardSystemDTO activateRewardSystem(Long rewardSystemId, UUID shopId) {
+        RewardSystem system = rewardSystemRepository.findByIdAndShopShopId(rewardSystemId, shopId)
                 .orElseThrow(() -> new RuntimeException("Reward system not found"));
 
-        deactivateCurrentSystem();
+        // Deactivate only the active system for this shop
+        deactivateCurrentSystem(shopId);
         system.setIsActive(true);
         system.setUpdatedAt(LocalDateTime.now());
 
@@ -157,8 +178,8 @@ public class RewardServiceImpl implements RewardService {
     }
 
     @Override
-    public RewardSystemDTO toggleSystemEnabled(Long rewardSystemId, Boolean enabled) {
-        RewardSystem system = rewardSystemRepository.findById(rewardSystemId)
+    public RewardSystemDTO toggleSystemEnabled(Long rewardSystemId, UUID shopId, Boolean enabled) {
+        RewardSystem system = rewardSystemRepository.findByIdAndShopShopId(rewardSystemId, shopId)
                 .orElseThrow(() -> new RuntimeException("Reward system not found"));
 
         system.setIsSystemEnabled(enabled);
@@ -168,8 +189,8 @@ public class RewardServiceImpl implements RewardService {
     }
 
     @Override
-    public RewardSystemDTO toggleReviewPoints(Long rewardSystemId, Boolean enabled, Integer pointsAmount) {
-        RewardSystem system = rewardSystemRepository.findById(rewardSystemId)
+    public RewardSystemDTO toggleReviewPoints(Long rewardSystemId, UUID shopId, Boolean enabled, Integer pointsAmount) {
+        RewardSystem system = rewardSystemRepository.findByIdAndShopShopId(rewardSystemId, shopId)
                 .orElseThrow(() -> new RuntimeException("Reward system not found"));
 
         system.setIsReviewPointsEnabled(enabled);
@@ -182,22 +203,8 @@ public class RewardServiceImpl implements RewardService {
     }
 
     @Override
-    public RewardSystemDTO toggleSignupPoints(Long rewardSystemId, Boolean enabled, Integer pointsAmount) {
-        RewardSystem system = rewardSystemRepository.findById(rewardSystemId)
-                .orElseThrow(() -> new RuntimeException("Reward system not found"));
-
-        system.setIsSignupPointsEnabled(enabled);
-        if (enabled && pointsAmount != null) {
-            system.setSignupPointsAmount(pointsAmount);
-        }
-        system.setUpdatedAt(LocalDateTime.now());
-
-        return convertToDTO(rewardSystemRepository.save(system));
-    }
-
-    @Override
-    public RewardSystemDTO togglePurchasePoints(Long rewardSystemId, Boolean enabled) {
-        RewardSystem system = rewardSystemRepository.findById(rewardSystemId)
+    public RewardSystemDTO togglePurchasePoints(Long rewardSystemId, UUID shopId, Boolean enabled) {
+        RewardSystem system = rewardSystemRepository.findByIdAndShopShopId(rewardSystemId, shopId)
                 .orElseThrow(() -> new RuntimeException("Reward system not found"));
 
         system.setIsPurchasePointsEnabled(enabled);
@@ -207,8 +214,8 @@ public class RewardServiceImpl implements RewardService {
     }
 
     @Override
-    public RewardSystemDTO toggleQuantityBased(Long rewardSystemId, Boolean enabled) {
-        RewardSystem system = rewardSystemRepository.findById(rewardSystemId)
+    public RewardSystemDTO toggleQuantityBased(Long rewardSystemId, UUID shopId, Boolean enabled) {
+        RewardSystem system = rewardSystemRepository.findByIdAndShopShopId(rewardSystemId, shopId)
                 .orElseThrow(() -> new RuntimeException("Reward system not found"));
 
         system.setIsQuantityBasedEnabled(enabled);
@@ -218,8 +225,8 @@ public class RewardServiceImpl implements RewardService {
     }
 
     @Override
-    public RewardSystemDTO toggleAmountBased(Long rewardSystemId, Boolean enabled) {
-        RewardSystem system = rewardSystemRepository.findById(rewardSystemId)
+    public RewardSystemDTO toggleAmountBased(Long rewardSystemId, UUID shopId, Boolean enabled) {
+        RewardSystem system = rewardSystemRepository.findByIdAndShopShopId(rewardSystemId, shopId)
                 .orElseThrow(() -> new RuntimeException("Reward system not found"));
 
         system.setIsAmountBasedEnabled(enabled);
@@ -229,8 +236,8 @@ public class RewardServiceImpl implements RewardService {
     }
 
     @Override
-    public RewardSystemDTO togglePercentageBased(Long rewardSystemId, Boolean enabled, BigDecimal percentageRate) {
-        RewardSystem system = rewardSystemRepository.findById(rewardSystemId)
+    public RewardSystemDTO togglePercentageBased(Long rewardSystemId, UUID shopId, Boolean enabled, BigDecimal percentageRate) {
+        RewardSystem system = rewardSystemRepository.findByIdAndShopShopId(rewardSystemId, shopId)
                 .orElseThrow(() -> new RuntimeException("Reward system not found"));
 
         system.setIsPercentageBasedEnabled(enabled);
@@ -317,46 +324,6 @@ public class RewardServiceImpl implements RewardService {
 
         log.info("Awarded {} points to user {} for order {}. New balance: {}",
                 pointsEarned, userId, orderId, newBalance);
-
-        return convertToDTO(saved);
-    }
-
-    @Override
-    public UserPointsDTO awardPointsForSignup(UUID userId) {
-        RewardSystem activeSystem = getActiveRewardSystemEntity();
-        if (activeSystem == null || !activeSystem.getIsSystemEnabled() || !activeSystem.getIsSignupPointsEnabled()) {
-            return null;
-        }
-
-        Integer signupPoints = activeSystem.calculateSignupPoints();
-        if (signupPoints <= 0) {
-            return null;
-        }
-
-        User user = userRepository.findById(userId)
-                .orElseThrow(() -> new RuntimeException("User not found"));
-
-        // Use User.points as single source of truth
-        Integer currentBalance = user.getPoints();
-        Integer newBalance = currentBalance + signupPoints;
-
-        // Create audit trail record
-        UserPoints userPoints = new UserPoints();
-        userPoints.setUser(user);
-        userPoints.setPoints(signupPoints); // Positive for earning
-        userPoints.setPointsType(UserPoints.PointsType.EARNED_SIGNUP);
-        userPoints.setDescription("Points earned from user registration");
-        userPoints.setBalanceAfter(newBalance);
-        userPoints.setCreatedAt(LocalDateTime.now());
-        userPoints.setPointsValue(activeSystem.calculatePointsValue(signupPoints));
-
-        UserPoints saved = userPointsRepository.save(userPoints);
-
-        // Update User.points (single source of truth)
-        user.setPoints(newBalance);
-        userRepository.save(user);
-
-        log.info("Awarded {} signup points to user {}. New balance: {}", signupPoints, userId, newBalance);
 
         return convertToDTO(saved);
     }
@@ -567,8 +534,8 @@ public class RewardServiceImpl implements RewardService {
         return rewardSystemRepository.findByIsActiveTrue().orElse(null);
     }
 
-    private void deactivateCurrentSystem() {
-        Optional<RewardSystem> currentActive = rewardSystemRepository.findByIsActiveTrue();
+    private void deactivateCurrentSystem(UUID shopId) {
+        Optional<RewardSystem> currentActive = rewardSystemRepository.findByShopShopIdAndIsActiveTrue(shopId);
         if (currentActive.isPresent()) {
             RewardSystem active = currentActive.get();
             active.setIsActive(false);
@@ -582,8 +549,6 @@ public class RewardServiceImpl implements RewardService {
         existing.setIsSystemEnabled(dto.getIsSystemEnabled());
         existing.setIsReviewPointsEnabled(dto.getIsReviewPointsEnabled());
         existing.setReviewPointsAmount(dto.getReviewPointsAmount());
-        existing.setIsSignupPointsEnabled(dto.getIsSignupPointsEnabled());
-        existing.setSignupPointsAmount(dto.getSignupPointsAmount());
         existing.setIsPurchasePointsEnabled(dto.getIsPurchasePointsEnabled());
         existing.setIsQuantityBasedEnabled(dto.getIsQuantityBasedEnabled());
         existing.setIsAmountBasedEnabled(dto.getIsAmountBasedEnabled());
@@ -607,14 +572,13 @@ public class RewardServiceImpl implements RewardService {
         }
     }
 
-    private RewardSystem convertToEntity(RewardSystemDTO dto) {
+    private RewardSystem convertToEntity(RewardSystemDTO dto, Shop shop) {
         RewardSystem entity = new RewardSystem();
+        entity.setShop(shop);
         entity.setPointValue(dto.getPointValue());
         entity.setIsSystemEnabled(dto.getIsSystemEnabled());
         entity.setIsReviewPointsEnabled(dto.getIsReviewPointsEnabled());
         entity.setReviewPointsAmount(dto.getReviewPointsAmount());
-        entity.setIsSignupPointsEnabled(dto.getIsSignupPointsEnabled());
-        entity.setSignupPointsAmount(dto.getSignupPointsAmount());
         entity.setIsPurchasePointsEnabled(dto.getIsPurchasePointsEnabled());
         entity.setIsQuantityBasedEnabled(dto.getIsQuantityBasedEnabled());
         entity.setIsAmountBasedEnabled(dto.getIsAmountBasedEnabled());
@@ -629,13 +593,15 @@ public class RewardServiceImpl implements RewardService {
     private RewardSystemDTO convertToDTO(RewardSystem entity) {
         RewardSystemDTO dto = new RewardSystemDTO();
         dto.setId(entity.getId());
+        if (entity.getShop() != null) {
+            dto.setShopId(entity.getShop().getShopId());
+            dto.setShopName(entity.getShop().getName());
+        }
         dto.setPointValue(entity.getPointValue());
         dto.setIsActive(entity.getIsActive());
         dto.setIsSystemEnabled(entity.getIsSystemEnabled());
         dto.setIsReviewPointsEnabled(entity.getIsReviewPointsEnabled());
         dto.setReviewPointsAmount(entity.getReviewPointsAmount());
-        dto.setIsSignupPointsEnabled(entity.getIsSignupPointsEnabled());
-        dto.setSignupPointsAmount(entity.getSignupPointsAmount());
         dto.setIsPurchasePointsEnabled(entity.getIsPurchasePointsEnabled());
         dto.setIsQuantityBasedEnabled(entity.getIsQuantityBasedEnabled());
         dto.setIsAmountBasedEnabled(entity.getIsAmountBasedEnabled());

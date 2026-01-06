@@ -56,7 +56,6 @@ public class UserPoints {
     public enum PointsType {
         EARNED_PURCHASE,
         EARNED_REVIEW,
-        EARNED_SIGNUP,
         EARNED_REFUND,
         SPENT_PURCHASE,
         ADJUSTMENT
