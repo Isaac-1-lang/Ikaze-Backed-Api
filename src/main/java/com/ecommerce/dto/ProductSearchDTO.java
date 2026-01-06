@@ -102,6 +102,9 @@ public class ProductSearchDTO {
     // Text search
     private String searchKeyword; // For full-text search across name, description, SKU, etc.
 
+    // Internal flags
+    private Boolean displayOnly; // When true, only return active/published products
+
     /**
      * Validate that at least one filter criterion is provided
      */

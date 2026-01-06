@@ -64,5 +64,12 @@ public class ShopDetailsDTO {
         private Integer reviewCount;
         private String categoryName;
         private Boolean isInStock;
+        private String brandName;
+        private String shortDescription;
+        private Boolean isNew;
+        private Boolean isBestseller;
+        private Boolean isFeatured;
+        private Boolean hasActiveDiscount;
+        private Integer discountPercentage;
     }
 }

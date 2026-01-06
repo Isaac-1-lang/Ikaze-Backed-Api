@@ -1,4 +1,5 @@
 package com.ecommerce.controller;
+
 import com.ecommerce.dto.CreateDiscountDTO;
 import com.ecommerce.dto.DiscountDTO;
 import com.ecommerce.dto.UpdateDiscountDTO;
@@ -58,63 +59,32 @@ public class DiscountController {
     private final ShopAuthorizationService shopAuthorizationService;
     private final UserRepository userRepository;
 
-    @Operation(
-        summary = "Create a new discount",
-        description = "Creates a new discount with the specified parameters. Requires ADMIN or EMPLOYEE role.",
-        security = @SecurityRequirement(name = "bearerAuth")
-    )
+    @Operation(summary = "Create a new discount", description = "Creates a new discount with the specified parameters. Requires ADMIN or EMPLOYEE role.", security = @SecurityRequirement(name = "bearerAuth"))
     @ApiResponses(value = {
-        @ApiResponse(
-            responseCode = "201",
-            description = "Discount created successfully",
-            content = @Content(
-                mediaType = "application/json",
-                schema = @Schema(implementation = DiscountDTO.class),
-                examples = @ExampleObject(
-                    name = "Created Discount",
-                    value = """
-                        {
-                            "discountId": "550e8400-e29b-41d4-a716-446655440000",
-                            "name": "Summer Sale 2024",
-                            "description": "20% off on all summer items",
-                            "percentage": 20.0,
-                            "discountCode": "SUMMER20",
-                            "startDate": "2024-06-01T00:00:00",
-                            "endDate": "2024-08-31T23:59:59",
-                            "usageLimit": 1000,
-                            "usedCount": 0,
-                            "isActive": true,
-                            "isValid": true
-                        }
-                        """
-                )
-            )
-        ),
-        @ApiResponse(
-            responseCode = "400",
-            description = "Invalid input data",
-            content = @Content(
-                mediaType = "application/json",
-                examples = @ExampleObject(
-                    name = "Validation Error",
-                    value = """
-                        {
-                            "error": "Bad Request",
-                            "message": "Validation failed",
-                            "details": ["Discount percentage must be between 0 and 100"]
-                        }
-                        """
-                )
-            )
-        ),
-        @ApiResponse(
-            responseCode = "401",
-            description = "Unauthorized - Authentication required"
-        ),
-        @ApiResponse(
-            responseCode = "403",
-            description = "Forbidden - Insufficient permissions"
-        )
+            @ApiResponse(responseCode = "201", description = "Discount created successfully", content = @Content(mediaType = "application/json", schema = @Schema(implementation = DiscountDTO.class), examples = @ExampleObject(name = "Created Discount", value = """
+                    {
+                        "discountId": "550e8400-e29b-41d4-a716-446655440000",
+                        "name": "Summer Sale 2024",
+                        "description": "20% off on all summer items",
+                        "percentage": 20.0,
+                        "discountCode": "SUMMER20",
+                        "startDate": "2024-06-01T00:00:00",
+                        "endDate": "2024-08-31T23:59:59",
+                        "usageLimit": 1000,
+                        "usedCount": 0,
+                        "isActive": true,
+                        "isValid": true
+                    }
+                    """))),
+            @ApiResponse(responseCode = "400", description = "Invalid input data", content = @Content(mediaType = "application/json", examples = @ExampleObject(name = "Validation Error", value = """
+                    {
+                        "error": "Bad Request",
+                        "message": "Validation failed",
+                        "details": ["Discount percentage must be between 0 and 100"]
+                    }
+                    """))),
+            @ApiResponse(responseCode = "401", description = "Unauthorized - Authentication required"),
+            @ApiResponse(responseCode = "403", description = "Forbidden - Insufficient permissions")
     })
     @PostMapping
     @PreAuthorize("hasAnyRole('VENDOR', 'EMPLOYEE')")
@@ -127,7 +97,7 @@ public class DiscountController {
                 throw new IllegalArgumentException("shopId is required");
             }
             shopAuthorizationService.assertCanManageShop(vendorId, createDiscountDTO.getShopId());
-            
+
             DiscountDTO createdDiscount = discountService.createDiscount(vendorId, createDiscountDTO);
             return ResponseEntity.status(HttpStatus.CREATED).body(createdDiscount);
         } catch (IllegalArgumentException e) {
@@ -139,42 +109,18 @@ public class DiscountController {
         }
     }
 
-    @Operation(
-        summary = "Update an existing discount",
-        description = "Updates an existing discount with the provided information. Requires ADMIN or EMPLOYEE role.",
-        security = @SecurityRequirement(name = "bearerAuth")
-    )
+    @Operation(summary = "Update an existing discount", description = "Updates an existing discount with the provided information. Requires ADMIN or EMPLOYEE role.", security = @SecurityRequirement(name = "bearerAuth"))
     @ApiResponses(value = {
-        @ApiResponse(
-            responseCode = "200",
-            description = "Discount updated successfully",
-            content = @Content(
-                mediaType = "application/json",
-                schema = @Schema(implementation = DiscountDTO.class)
-            )
-        ),
-        @ApiResponse(
-            responseCode = "400",
-            description = "Invalid input data"
-        ),
-        @ApiResponse(
-            responseCode = "401",
-            description = "Unauthorized - Authentication required"
-        ),
-        @ApiResponse(
-            responseCode = "403",
-            description = "Forbidden - Insufficient permissions"
-        ),
-        @ApiResponse(
-            responseCode = "404",
-            description = "Discount not found"
-        )
+            @ApiResponse(responseCode = "200", description = "Discount updated successfully", content = @Content(mediaType = "application/json", schema = @Schema(implementation = DiscountDTO.class))),
+            @ApiResponse(responseCode = "400", description = "Invalid input data"),
+            @ApiResponse(responseCode = "401", description = "Unauthorized - Authentication required"),
+            @ApiResponse(responseCode = "403", description = "Forbidden - Insufficient permissions"),
+            @ApiResponse(responseCode = "404", description = "Discount not found")
     })
     @PutMapping("/{discountId}")
     @PreAuthorize("hasAnyRole('VENDOR', 'EMPLOYEE')")
     public ResponseEntity<DiscountDTO> updateDiscount(
-            @Parameter(description = "UUID of the discount to update", required = true)
-            @PathVariable UUID discountId,
+            @Parameter(description = "UUID of the discount to update", required = true) @PathVariable UUID discountId,
             @RequestParam UUID shopId,
             @Valid @RequestBody UpdateDiscountDTO updateDiscountDTO) {
         log.info("Updating discount with ID: {} for shop: {}", discountId, shopId);
@@ -182,7 +128,7 @@ public class DiscountController {
         try {
             UUID vendorId = getCurrentUserId();
             shopAuthorizationService.assertCanManageShop(vendorId, shopId);
-            
+
             DiscountDTO updatedDiscount = discountService.updateDiscount(discountId, vendorId, updateDiscountDTO);
             return ResponseEntity.ok(updatedDiscount);
         } catch (EntityNotFoundException e) {
@@ -197,69 +143,46 @@ public class DiscountController {
         }
     }
 
-    @Operation(
-        summary = "Delete a discount",
-        description = "Permanently deletes a discount by its ID. Requires ADMIN or EMPLOYEE role.",
-        security = @SecurityRequirement(name = "bearerAuth")
-    )
+    @Operation(summary = "Delete a discount", description = "Permanently deletes a discount by its ID. Requires ADMIN or EMPLOYEE role.", security = @SecurityRequirement(name = "bearerAuth"))
     @ApiResponses(value = {
-        @ApiResponse(
-            responseCode = "200",
-            description = "Discount deleted successfully",
-            content = @Content(
-                mediaType = "application/json",
-                examples = @ExampleObject(
-                    name = "Delete Success",
-                    value = """
-                        {
-                            "message": "Discount deleted successfully",
-                            "discountId": "550e8400-e29b-41d4-a716-446655440000"
-                        }
-                        """
-                )
-            )
-        ),
-        @ApiResponse(
-            responseCode = "401",
-            description = "Unauthorized - Authentication required"
-        ),
-        @ApiResponse(
-            responseCode = "403",
-            description = "Forbidden - Insufficient permissions"
-        ),
-        @ApiResponse(
-            responseCode = "404",
-            description = "Discount not found"
-        )
+            @ApiResponse(responseCode = "200", description = "Discount deleted successfully", content = @Content(mediaType = "application/json", examples = @ExampleObject(name = "Delete Success", value = """
+                    {
+                        "message": "Discount deleted successfully",
+                        "discountId": "550e8400-e29b-41d4-a716-446655440000"
+                    }
+                    """))),
+            @ApiResponse(responseCode = "401", description = "Unauthorized - Authentication required"),
+            @ApiResponse(responseCode = "403", description = "Forbidden - Insufficient permissions"),
+            @ApiResponse(responseCode = "404", description = "Discount not found")
     })
     @DeleteMapping("/{discountId}")
     @PreAuthorize("hasAnyRole('VENDOR', 'EMPLOYEE')")
     public ResponseEntity<Map<String, Object>> deleteDiscount(
-            @Parameter(description = "UUID of the discount to delete", required = true)
-            @PathVariable UUID discountId,
+            @Parameter(description = "UUID of the discount to delete", required = true) @PathVariable UUID discountId,
             @RequestParam UUID shopId) {
         log.info("Deleting discount with ID: {} for shop: {}", discountId, shopId);
 
         try {
             UUID vendorId = getCurrentUserId();
             shopAuthorizationService.assertCanManageShop(vendorId, shopId);
-            
+
             // Get discount info before deletion for response
             Discount discount = discountRepository.findById(discountId)
                     .orElseThrow(() -> new EntityNotFoundException("Discount not found with ID: " + discountId));
-            
+
             // Verify discount belongs to the shop
             if (discount.getShop() == null || !discount.getShop().getShopId().equals(shopId)) {
                 throw new EntityNotFoundException("Discount not found with ID: " + discountId + " for shop: " + shopId);
             }
-            
+
             // Count affected products and variants
             long affectedProducts = productRepository.countByDiscount(discount);
             long affectedVariants = productVariantRepository.countByDiscount(discount);
-            
-            // Perform deletion (service will handle removing discount from products/variants)
+
+            // Perform deletion (service will handle removing discount from
+            // products/variants)
             discountService.deleteDiscount(discountId, vendorId);
-            
+
             Map<String, Object> response = new HashMap<>();
             response.put("success", true);
             response.put("message", "Discount deleted successfully and removed from all associated products");
@@ -268,7 +191,7 @@ public class DiscountController {
             response.put("affectedProducts", affectedProducts);
             response.put("affectedVariants", affectedVariants);
             response.put("totalAffected", affectedProducts + affectedVariants);
-            
+
             return ResponseEntity.ok(response);
         } catch (EntityNotFoundException e) {
             log.error("Discount not found with ID: {}", discountId);
@@ -279,29 +202,15 @@ public class DiscountController {
         }
     }
 
-    @Operation(
-        summary = "Get discount by ID",
-        description = "Retrieves a specific discount by its UUID. Accessible to all authenticated users."
-    )
+    @Operation(summary = "Get discount by ID", description = "Retrieves a specific discount by its UUID. Accessible to all authenticated users.")
     @ApiResponses(value = {
-        @ApiResponse(
-            responseCode = "200",
-            description = "Discount found successfully",
-            content = @Content(
-                mediaType = "application/json",
-                schema = @Schema(implementation = DiscountDTO.class)
-            )
-        ),
-        @ApiResponse(
-            responseCode = "404",
-            description = "Discount not found"
-        )
+            @ApiResponse(responseCode = "200", description = "Discount found successfully", content = @Content(mediaType = "application/json", schema = @Schema(implementation = DiscountDTO.class))),
+            @ApiResponse(responseCode = "404", description = "Discount not found")
     })
     @GetMapping("/{discountId}")
     public ResponseEntity<DiscountDTO> getDiscountById(
-            @Parameter(description = "UUID of the discount to retrieve", required = true)
-            @PathVariable UUID discountId,
-            @RequestParam UUID shopId) {
+            @Parameter(description = "UUID of the discount to retrieve", required = true) @PathVariable UUID discountId,
+            @RequestParam(required = false) UUID shopId) {
         log.info("Fetching discount with ID: {} for shop: {}", discountId, shopId);
 
         try {
@@ -316,68 +225,49 @@ public class DiscountController {
         }
     }
 
-    @Operation(
-        summary = "Get all discounts with pagination",
-        description = "Retrieves a paginated list of discounts with optional filtering by active status and sorting options."
-    )
+    @Operation(summary = "Get all discounts with pagination", description = "Retrieves a paginated list of discounts with optional filtering by active status and sorting options.")
     @ApiResponses(value = {
-        @ApiResponse(
-            responseCode = "200",
-            description = "Discounts retrieved successfully",
-            content = @Content(
-                mediaType = "application/json",
-                examples = @ExampleObject(
-                    name = "Paginated Discounts",
-                    value = """
-                        {
-                            "content": [
-                                {
-                                    "discountId": "550e8400-e29b-41d4-a716-446655440000",
-                                    "name": "Summer Sale 2024",
-                                    "description": "20% off on all summer items",
-                                    "percentage": 20.0,
-                                    "discountCode": "SUMMER20",
-                                    "startDate": "2024-06-01T00:00:00",
-                                    "endDate": "2024-08-31T23:59:59",
-                                    "usageLimit": 1000,
-                                    "usedCount": 150,
-                                    "isActive": true,
-                                    "isValid": true
-                                }
-                            ],
-                            "pageable": {
-                                "sort": {
-                                    "sorted": true,
-                                    "unsorted": false
-                                },
-                                "pageNumber": 0,
-                                "pageSize": 10
+            @ApiResponse(responseCode = "200", description = "Discounts retrieved successfully", content = @Content(mediaType = "application/json", examples = @ExampleObject(name = "Paginated Discounts", value = """
+                    {
+                        "content": [
+                            {
+                                "discountId": "550e8400-e29b-41d4-a716-446655440000",
+                                "name": "Summer Sale 2024",
+                                "description": "20% off on all summer items",
+                                "percentage": 20.0,
+                                "discountCode": "SUMMER20",
+                                "startDate": "2024-06-01T00:00:00",
+                                "endDate": "2024-08-31T23:59:59",
+                                "usageLimit": 1000,
+                                "usedCount": 150,
+                                "isActive": true,
+                                "isValid": true
+                            }
+                        ],
+                        "pageable": {
+                            "sort": {
+                                "sorted": true,
+                                "unsorted": false
                             },
-                            "totalElements": 25,
-                            "totalPages": 3,
-                            "last": false,
-                            "first": true,
-                            "numberOfElements": 10
-                        }
-                        """
-                )
-            )
-        )
+                            "pageNumber": 0,
+                            "pageSize": 10
+                        },
+                        "totalElements": 25,
+                        "totalPages": 3,
+                        "last": false,
+                        "first": true,
+                        "numberOfElements": 10
+                    }
+                    """)))
     })
     @GetMapping
     public ResponseEntity<Page<DiscountDTO>> getAllDiscounts(
-            @Parameter(description = "Shop ID to filter discounts", required = true)
-            @RequestParam UUID shopId,
-            @Parameter(description = "Page number (0-based)", example = "0")
-            @RequestParam(defaultValue = "0") int page,
-            @Parameter(description = "Number of items per page", example = "10")
-            @RequestParam(defaultValue = "10") int size,
-            @Parameter(description = "Field to sort by", example = "createdAt")
-            @RequestParam(defaultValue = "createdAt") String sortBy,
-            @Parameter(description = "Sort direction (asc/desc)", example = "desc")
-            @RequestParam(defaultValue = "desc") String sortDirection,
-            @Parameter(description = "Filter to show only active discounts", example = "false")
-            @RequestParam(defaultValue = "false") boolean activeOnly) {
+            @Parameter(description = "Shop ID to filter discounts", required = true) @RequestParam UUID shopId,
+            @Parameter(description = "Page number (0-based)", example = "0") @RequestParam(defaultValue = "0") int page,
+            @Parameter(description = "Number of items per page", example = "10") @RequestParam(defaultValue = "10") int size,
+            @Parameter(description = "Field to sort by", example = "createdAt") @RequestParam(defaultValue = "createdAt") String sortBy,
+            @Parameter(description = "Sort direction (asc/desc)", example = "desc") @RequestParam(defaultValue = "desc") String sortDirection,
+            @Parameter(description = "Filter to show only active discounts", example = "false") @RequestParam(defaultValue = "false") boolean activeOnly) {
 
         log.info("Fetching discounts for shop: {} - page: {}, size: {}, sortBy: {}, sortDirection: {}, activeOnly: {}",
                 shopId, page, size, sortBy, sortDirection, activeOnly);
@@ -400,29 +290,15 @@ public class DiscountController {
         }
     }
 
-    @Operation(
-        summary = "Get discount by code",
-        description = "Retrieves a discount by its unique discount code. Useful for applying discount codes during checkout."
-    )
+    @Operation(summary = "Get discount by code", description = "Retrieves a discount by its unique discount code. Useful for applying discount codes during checkout.")
     @ApiResponses(value = {
-        @ApiResponse(
-            responseCode = "200",
-            description = "Discount found successfully",
-            content = @Content(
-                mediaType = "application/json",
-                schema = @Schema(implementation = DiscountDTO.class)
-            )
-        ),
-        @ApiResponse(
-            responseCode = "404",
-            description = "Discount code not found"
-        )
+            @ApiResponse(responseCode = "200", description = "Discount found successfully", content = @Content(mediaType = "application/json", schema = @Schema(implementation = DiscountDTO.class))),
+            @ApiResponse(responseCode = "404", description = "Discount code not found")
     })
     @GetMapping("/code/{discountCode}")
     public ResponseEntity<DiscountDTO> getDiscountByCode(
-            @Parameter(description = "Discount code to search for", example = "SUMMER20", required = true)
-            @PathVariable String discountCode,
-            @RequestParam UUID shopId) {
+            @Parameter(description = "Discount code to search for", example = "SUMMER20", required = true) @PathVariable String discountCode,
+            @RequestParam(required = false) UUID shopId) {
         log.info("Fetching discount by code: {} for shop: {}", discountCode, shopId);
 
         try {
@@ -437,33 +313,19 @@ public class DiscountController {
         }
     }
 
-    @Operation(
-        summary = "Check if discount is valid by ID",
-        description = "Validates whether a discount is currently active and within its validity period."
-    )
+    @Operation(summary = "Check if discount is valid by ID", description = "Validates whether a discount is currently active and within its validity period.")
     @ApiResponses(value = {
-        @ApiResponse(
-            responseCode = "200",
-            description = "Validation result returned successfully",
-            content = @Content(
-                mediaType = "application/json",
-                examples = @ExampleObject(
-                    name = "Validation Result",
-                    value = """
-                        {
-                            "discountId": "550e8400-e29b-41d4-a716-446655440000",
-                            "isValid": true
-                        }
-                        """
-                )
-            )
-        )
+            @ApiResponse(responseCode = "200", description = "Validation result returned successfully", content = @Content(mediaType = "application/json", examples = @ExampleObject(name = "Validation Result", value = """
+                    {
+                        "discountId": "550e8400-e29b-41d4-a716-446655440000",
+                        "isValid": true
+                    }
+                    """)))
     })
     @GetMapping("/{discountId}/valid")
     public ResponseEntity<Map<String, Object>> isDiscountValid(
-            @Parameter(description = "UUID of the discount to validate", required = true)
-            @PathVariable UUID discountId,
-            @RequestParam UUID shopId) {
+            @Parameter(description = "UUID of the discount to validate", required = true) @PathVariable UUID discountId,
+            @RequestParam(required = false) UUID shopId) {
         log.info("Checking if discount is valid with ID: {} for shop: {}", discountId, shopId);
 
         try {
@@ -478,33 +340,19 @@ public class DiscountController {
         }
     }
 
-    @Operation(
-        summary = "Check if discount code is valid",
-        description = "Validates whether a discount code is currently active and can be applied. Useful for real-time validation during checkout."
-    )
+    @Operation(summary = "Check if discount code is valid", description = "Validates whether a discount code is currently active and can be applied. Useful for real-time validation during checkout.")
     @ApiResponses(value = {
-        @ApiResponse(
-            responseCode = "200",
-            description = "Validation result returned successfully",
-            content = @Content(
-                mediaType = "application/json",
-                examples = @ExampleObject(
-                    name = "Code Validation Result",
-                    value = """
-                        {
-                            "discountCode": "SUMMER20",
-                            "isValid": true
-                        }
-                        """
-                )
-            )
-        )
+            @ApiResponse(responseCode = "200", description = "Validation result returned successfully", content = @Content(mediaType = "application/json", examples = @ExampleObject(name = "Code Validation Result", value = """
+                    {
+                        "discountCode": "SUMMER20",
+                        "isValid": true
+                    }
+                    """)))
     })
     @GetMapping("/code/{discountCode}/valid")
     public ResponseEntity<Map<String, Object>> isDiscountCodeValid(
-            @Parameter(description = "Discount code to validate", example = "SUMMER20", required = true)
-            @PathVariable String discountCode,
-            @RequestParam UUID shopId) {
+            @Parameter(description = "Discount code to validate", example = "SUMMER20", required = true) @PathVariable String discountCode,
+            @RequestParam(required = false) UUID shopId) {
         log.info("Checking if discount code is valid: {} for shop: {}", discountCode, shopId);
 
         try {
@@ -519,36 +367,16 @@ public class DiscountController {
         }
     }
 
-    @Operation(
-        summary = "Fix discount dates (Admin utility)",
-        description = "Utility endpoint to fix discount dates from 2025 to 2024. This is an administrative function. Requires ADMIN or EMPLOYEE role.",
-        security = @SecurityRequirement(name = "bearerAuth")
-    )
+    @Operation(summary = "Fix discount dates (Admin utility)", description = "Utility endpoint to fix discount dates from 2025 to 2024. This is an administrative function. Requires ADMIN or EMPLOYEE role.", security = @SecurityRequirement(name = "bearerAuth"))
     @ApiResponses(value = {
-        @ApiResponse(
-            responseCode = "200",
-            description = "Discount dates updated successfully",
-            content = @Content(
-                mediaType = "application/json",
-                examples = @ExampleObject(
-                    name = "Fix Dates Result",
-                    value = """
-                        {
-                            "message": "Updated 15 discount dates to 2024",
-                            "updatedCount": "15"
-                        }
-                        """
-                )
-            )
-        ),
-        @ApiResponse(
-            responseCode = "401",
-            description = "Unauthorized - Authentication required"
-        ),
-        @ApiResponse(
-            responseCode = "403",
-            description = "Forbidden - Insufficient permissions"
-        )
+            @ApiResponse(responseCode = "200", description = "Discount dates updated successfully", content = @Content(mediaType = "application/json", examples = @ExampleObject(name = "Fix Dates Result", value = """
+                    {
+                        "message": "Updated 15 discount dates to 2024",
+                        "updatedCount": "15"
+                    }
+                    """))),
+            @ApiResponse(responseCode = "401", description = "Unauthorized - Authentication required"),
+            @ApiResponse(responseCode = "403", description = "Forbidden - Insufficient permissions")
     })
     @PostMapping("/fix-dates")
     @PreAuthorize("hasAnyRole('VENDOR', 'EMPLOYEE')")
@@ -558,7 +386,7 @@ public class DiscountController {
         try {
             UUID vendorId = getCurrentUserId();
             shopAuthorizationService.assertCanManageShop(vendorId, shopId);
-            
+
             // Get all discounts for the shop and update their dates to 2024
             List<Discount> discounts = discountRepository.findByShopShopId(shopId);
             int updatedCount = 0;
@@ -591,66 +419,48 @@ public class DiscountController {
         }
     }
 
-    @Operation(
-        summary = "Get all active discounts",
-        description = "Retrieves all currently active and valid discounts with product count information. Useful for displaying available promotions."
-    )
+    @Operation(summary = "Get all active discounts", description = "Retrieves all currently active and valid discounts with product count information. Useful for displaying available promotions.")
     @ApiResponses(value = {
-        @ApiResponse(
-            responseCode = "200",
-            description = "Active discounts retrieved successfully",
-            content = @Content(
-                mediaType = "application/json",
-                examples = @ExampleObject(
-                    name = "Active Discounts Response",
-                    value = """
-                        {
-                            "success": true,
-                            "data": [
-                                {
-                                    "discountId": "550e8400-e29b-41d4-a716-446655440000",
-                                    "name": "Summer Sale 2024",
-                                    "description": "20% off on all summer items",
-                                    "percentage": 20.0,
-                                    "discountCode": "SUMMER20",
-                                    "startDate": "2024-06-01T00:00:00",
-                                    "endDate": "2024-08-31T23:59:59",
-                                    "usageLimit": 1000,
-                                    "usedCount": 150,
-                                    "isActive": true,
-                                    "isValid": true,
-                                    "productCount": 45
-                                }
-                            ],
-                            "total": 5
-                        }
-                        """
-                )
-            )
-        ),
-        @ApiResponse(
-            responseCode = "500",
-            description = "Internal server error",
-            content = @Content(
-                mediaType = "application/json",
-                examples = @ExampleObject(
-                    name = "Error Response",
-                    value = """
-                        {
-                            "success": false,
-                            "message": "Failed to fetch active discounts"
-                        }
-                        """
-                )
-            )
-        )
+            @ApiResponse(responseCode = "200", description = "Active discounts retrieved successfully", content = @Content(mediaType = "application/json", examples = @ExampleObject(name = "Active Discounts Response", value = """
+                    {
+                        "success": true,
+                        "data": [
+                            {
+                                "discountId": "550e8400-e29b-41d4-a716-446655440000",
+                                "name": "Summer Sale 2024",
+                                "description": "20% off on all summer items",
+                                "percentage": 20.0,
+                                "discountCode": "SUMMER20",
+                                "startDate": "2024-06-01T00:00:00",
+                                "endDate": "2024-08-31T23:59:59",
+                                "usageLimit": 1000,
+                                "usedCount": 150,
+                                "isActive": true,
+                                "isValid": true,
+                                "productCount": 45
+                            }
+                        ],
+                        "total": 5
+                    }
+                    """))),
+            @ApiResponse(responseCode = "500", description = "Internal server error", content = @Content(mediaType = "application/json", examples = @ExampleObject(name = "Error Response", value = """
+                    {
+                        "success": false,
+                        "message": "Failed to fetch active discounts"
+                    }
+                    """)))
     })
     @GetMapping("/active")
-    public ResponseEntity<Map<String, Object>> getActiveDiscounts(@RequestParam UUID shopId) {
+    public ResponseEntity<Map<String, Object>> getActiveDiscounts(@RequestParam(required = false) UUID shopId) {
         try {
-            log.info("Fetching active discounts for shop: {}", shopId);
+            log.info("Fetching active discounts, shopId: {}", shopId);
 
-            List<Discount> activeDiscounts = discountRepository.findActiveAndValidDiscountsByShop(shopId, LocalDateTime.now());
+            List<Discount> activeDiscounts;
+            if (shopId != null) {
+                activeDiscounts = discountRepository.findActiveAndValidDiscountsByShop(shopId, LocalDateTime.now());
+            } else {
+                activeDiscounts = discountRepository.findActiveAndValidDiscounts(LocalDateTime.now());
+            }
 
             List<Map<String, Object>> discountData = activeDiscounts.stream()
                     .map(discount -> {
@@ -691,78 +501,54 @@ public class DiscountController {
         }
     }
 
-    @Operation(
-        summary = "Get products associated with a discount",
-        description = "Retrieves all products and variants that have the specified discount applied. Admin-only endpoint for discount management.",
-        security = @SecurityRequirement(name = "bearerAuth")
-    )
+    @Operation(summary = "Get products associated with a discount", description = "Retrieves all products and variants that have the specified discount applied. Admin-only endpoint for discount management.", security = @SecurityRequirement(name = "bearerAuth"))
     @ApiResponses(value = {
-        @ApiResponse(
-            responseCode = "200",
-            description = "Products retrieved successfully",
-            content = @Content(
-                mediaType = "application/json",
-                examples = @ExampleObject(
-                    name = "Discount Products Response",
-                    value = """
-                        {
-                            "products": [
-                                {
-                                    "productId": "123e4567-e89b-12d3-a456-426614174000",
-                                    "name": "Summer T-Shirt",
-                                    "price": 25.99,
-                                    "discountedPrice": 20.79,
-                                    "hasVariants": true,
-                                    "sku": "TSHIRT-001",
-                                    "isActive": true,
-                                    "imageUrl": "https://example.com/image.jpg"
-                                }
-                            ],
-                            "variants": [
-                                {
-                                    "variantId": "456e7890-e89b-12d3-a456-426614174001",
-                                    "variantName": "Red - Large",
-                                    "variantSku": "TSHIRT-001-RED-L",
-                                    "price": 25.99,
-                                    "discountedPrice": 20.79,
-                                    "productId": "123e4567-e89b-12d3-a456-426614174000",
-                                    "productName": "Summer T-Shirt",
-                                    "isActive": true,
-                                    "imageUrl": "https://example.com/variant-image.jpg"
-                                }
-                            ],
-                            "totalProducts": 15,
-                            "totalVariants": 8
-                        }
-                        """
-                )
-            )
-        ),
-        @ApiResponse(
-            responseCode = "401",
-            description = "Unauthorized - Authentication required"
-        ),
-        @ApiResponse(
-            responseCode = "403",
-            description = "Forbidden - Admin role required"
-        ),
-        @ApiResponse(
-            responseCode = "404",
-            description = "Discount not found"
-        )
+            @ApiResponse(responseCode = "200", description = "Products retrieved successfully", content = @Content(mediaType = "application/json", examples = @ExampleObject(name = "Discount Products Response", value = """
+                    {
+                        "products": [
+                            {
+                                "productId": "123e4567-e89b-12d3-a456-426614174000",
+                                "name": "Summer T-Shirt",
+                                "price": 25.99,
+                                "discountedPrice": 20.79,
+                                "hasVariants": true,
+                                "sku": "TSHIRT-001",
+                                "isActive": true,
+                                "imageUrl": "https://example.com/image.jpg"
+                            }
+                        ],
+                        "variants": [
+                            {
+                                "variantId": "456e7890-e89b-12d3-a456-426614174001",
+                                "variantName": "Red - Large",
+                                "variantSku": "TSHIRT-001-RED-L",
+                                "price": 25.99,
+                                "discountedPrice": 20.79,
+                                "productId": "123e4567-e89b-12d3-a456-426614174000",
+                                "productName": "Summer T-Shirt",
+                                "isActive": true,
+                                "imageUrl": "https://example.com/variant-image.jpg"
+                            }
+                        ],
+                        "totalProducts": 15,
+                        "totalVariants": 8
+                    }
+                    """))),
+            @ApiResponse(responseCode = "401", description = "Unauthorized - Authentication required"),
+            @ApiResponse(responseCode = "403", description = "Forbidden - Admin role required"),
+            @ApiResponse(responseCode = "404", description = "Discount not found")
     })
     @GetMapping("/{discountId}/products")
     @PreAuthorize("hasAnyRole('VENDOR', 'EMPLOYEE')")
     public ResponseEntity<Map<String, Object>> getProductsByDiscount(
-            @Parameter(description = "UUID of the discount to get products for", required = true)
-            @PathVariable String discountId,
+            @Parameter(description = "UUID of the discount to get products for", required = true) @PathVariable String discountId,
             @RequestParam UUID shopId) {
         try {
             log.info("Fetching products for discount: {} in shop: {}", discountId, shopId);
 
             UUID vendorId = getCurrentUserId();
             shopAuthorizationService.assertCanManageShop(vendorId, shopId);
-            
+
             UUID discountUuid = UUID.fromString(discountId);
             Discount discount = discountRepository.findById(discountUuid)
                     .orElseThrow(() -> new EntityNotFoundException("Discount not found with ID: " + discountId));

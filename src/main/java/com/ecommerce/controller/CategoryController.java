@@ -41,10 +41,10 @@ public class CategoryController {
     private final UserRepository userRepository;
 
     @Autowired
-    public CategoryController(CategoryService categoryService, 
-                              ShopAuthorizationService shopAuthorizationService,
-                              CategoryRepository categoryRepository,
-                              UserRepository userRepository) {
+    public CategoryController(CategoryService categoryService,
+            ShopAuthorizationService shopAuthorizationService,
+            CategoryRepository categoryRepository,
+            UserRepository userRepository) {
         this.categoryService = categoryService;
         this.shopAuthorizationService = shopAuthorizationService;
         this.categoryRepository = categoryRepository;
@@ -56,13 +56,14 @@ public class CategoryController {
     @Operation(summary = "Create a new category", description = "Create a new product category (Admin/Employee/Vendor only)")
     public ResponseEntity<CategoryDTO> createCategory(@Valid @RequestBody CategoryDTO categoryDTO) {
         log.info("Creating new category: {}", categoryDTO.getName());
-        log.info("Category creation request - shopId: {}, categoryName: {}", categoryDTO.getShopId(), categoryDTO.getName());
-        
+        log.info("Category creation request - shopId: {}, categoryName: {}", categoryDTO.getShopId(),
+                categoryDTO.getName());
+
         UUID currentUserId = getCurrentUserId();
         UserRole userRole = getCurrentUserRole();
-        
+
         log.info("Current user - userId: {}, role: {}", currentUserId, userRole);
-        
+
         // For VENDOR and EMPLOYEE, shopId is required and must validate access
         if (userRole == UserRole.VENDOR || userRole == UserRole.EMPLOYEE) {
             if (categoryDTO.getShopId() == null) {
@@ -73,7 +74,7 @@ public class CategoryController {
             shopAuthorizationService.assertCanManageShop(currentUserId, categoryDTO.getShopId());
             log.info("Shop access validated successfully");
         }
-        
+
         CategoryDTO createdCategory = categoryService.createCategory(categoryDTO);
         log.info("Category created successfully - categoryId: {}", createdCategory.getId());
         return new ResponseEntity<>(createdCategory, HttpStatus.CREATED);
@@ -87,7 +88,7 @@ public class CategoryController {
             @Valid @RequestBody CategoryDTO categoryDTO) {
         UUID currentUserId = getCurrentUserId();
         UserRole userRole = getCurrentUserRole();
-        
+
         // Validate shop access for VENDOR and EMPLOYEE
         if (userRole == UserRole.VENDOR || userRole == UserRole.EMPLOYEE) {
             com.ecommerce.entity.Category category = categoryRepository.findById(id)
@@ -96,7 +97,7 @@ public class CategoryController {
                 shopAuthorizationService.assertCanManageShop(currentUserId, category.getShop().getShopId());
             }
         }
-        
+
         CategoryDTO updatedCategory = categoryService.updateCategory(id, categoryDTO);
         return ResponseEntity.ok(updatedCategory);
     }
@@ -107,7 +108,7 @@ public class CategoryController {
     public ResponseEntity<Void> deleteCategory(@PathVariable Long id) {
         UUID currentUserId = getCurrentUserId();
         UserRole userRole = getCurrentUserRole();
-        
+
         // Validate shop access for VENDOR and EMPLOYEE
         if (userRole == UserRole.VENDOR || userRole == UserRole.EMPLOYEE) {
             com.ecommerce.entity.Category category = categoryRepository.findById(id)
@@ -116,7 +117,7 @@ public class CategoryController {
                 shopAuthorizationService.assertCanManageShop(currentUserId, category.getShop().getShopId());
             }
         }
-        
+
         categoryService.deleteCategory(id);
         return ResponseEntity.noContent().build();
     }
@@ -141,16 +142,17 @@ public class CategoryController {
                 : Sort.by(sortBy).descending();
 
         Pageable pageable = PageRequest.of(page, size, sort);
-        
-        // Validate shop access for VENDOR and EMPLOYEE if shopId is provided
+
+        // Validate shop access only for VENDOR and EMPLOYEE if they are authenticated
         if (shopId != null) {
             UUID currentUserId = getCurrentUserId();
             UserRole userRole = getCurrentUserRole();
-            if (userRole == UserRole.VENDOR || userRole == UserRole.EMPLOYEE) {
+            if (currentUserId != null && userRole != null
+                    && (userRole == UserRole.VENDOR || userRole == UserRole.EMPLOYEE)) {
                 shopAuthorizationService.assertCanManageShop(currentUserId, shopId);
             }
         }
-        
+
         Page<CategoryDTO> categories = categoryService.getAllCategories(pageable, shopId);
 
         return ResponseEntity.ok(categories);
@@ -158,8 +160,8 @@ public class CategoryController {
 
     @GetMapping("/top-level")
     @Operation(summary = "Get top-level categories", description = "Retrieve all top-level categories (categories without a parent)")
-    public ResponseEntity<List<CategoryDTO>> getTopLevelCategories() {
-        List<CategoryDTO> topLevelCategories = categoryService.getTopLevelCategories();
+    public ResponseEntity<List<CategoryDTO>> getTopLevelCategories(@RequestParam(required = false) UUID shopId) {
+        List<CategoryDTO> topLevelCategories = categoryService.getTopLevelCategories(shopId);
         return ResponseEntity.ok(topLevelCategories);
     }
 
@@ -190,11 +192,12 @@ public class CategoryController {
             searchDTO = new CategorySearchDTO();
         }
 
-        // Validate shop access for VENDOR and EMPLOYEE if shopId is provided
+        // Validate shop access only for VENDOR and EMPLOYEE if they are authenticated
         if (searchDTO.getShopId() != null) {
             UUID currentUserId = getCurrentUserId();
             UserRole userRole = getCurrentUserRole();
-            if (userRole == UserRole.VENDOR || userRole == UserRole.EMPLOYEE) {
+            if (currentUserId != null && userRole != null
+                    && (userRole == UserRole.VENDOR || userRole == UserRole.EMPLOYEE)) {
                 shopAuthorizationService.assertCanManageShop(currentUserId, searchDTO.getShopId());
             }
         }
@@ -202,46 +205,48 @@ public class CategoryController {
         Page<CategoryDTO> categories = categoryService.searchCategories(searchDTO);
         return ResponseEntity.ok(categories);
     }
-    
+
     private UUID getCurrentUserId() {
         try {
             Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-            if (auth == null || !auth.isAuthenticated()) {
-                throw new RuntimeException("User not authenticated");
+            if (auth == null || !auth.isAuthenticated() || "anonymousUser".equals(auth.getPrincipal())) {
+                return null;
             }
 
             Object principal = auth.getPrincipal();
             if (principal instanceof CustomUserDetails customUserDetails) {
                 String email = customUserDetails.getUsername();
                 return userRepository.findByUserEmail(email)
-                    .map(com.ecommerce.entity.User::getId)
-                    .orElseThrow(() -> new RuntimeException("User not found with email: " + email));
+                        .map(com.ecommerce.entity.User::getId)
+                        .orElse(null);
             }
 
-            throw new RuntimeException("Unable to extract user ID from authentication");
+            return null;
         } catch (Exception e) {
-            throw new RuntimeException("Error getting current user ID: " + e.getMessage(), e);
+            log.warn("Error getting current user ID: {}", e.getMessage());
+            return null;
         }
     }
-    
+
     private UserRole getCurrentUserRole() {
         try {
             Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-            if (auth == null || !auth.isAuthenticated()) {
-                throw new RuntimeException("User not authenticated");
+            if (auth == null || !auth.isAuthenticated() || "anonymousUser".equals(auth.getPrincipal())) {
+                return null;
             }
 
             Object principal = auth.getPrincipal();
             if (principal instanceof CustomUserDetails customUserDetails) {
                 String email = customUserDetails.getUsername();
                 return userRepository.findByUserEmail(email)
-                    .map(com.ecommerce.entity.User::getRole)
-                    .orElseThrow(() -> new RuntimeException("User not found with email: " + email));
+                        .map(com.ecommerce.entity.User::getRole)
+                        .orElse(null);
             }
 
-            throw new RuntimeException("Unable to extract user role from authentication");
+            return null;
         } catch (Exception e) {
-            throw new RuntimeException("Error getting current user role: " + e.getMessage(), e);
+            log.warn("Error getting current user role: {}", e.getMessage());
+            return null;
         }
     }
 }

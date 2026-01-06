@@ -347,17 +347,28 @@ public class ShopServiceImpl implements ShopService {
                         .productId(product.getProductId())
                         .name(product.getProductName())
                         .slug(product.getSlug())
-                        .price(product.getVariants().isEmpty() ? 0.0
-                                : product.getVariants().get(0).getPrice().doubleValue())
-                        .compareAtPrice(product.getVariants().isEmpty() ? 0.0
-                                : (product.getVariants().get(0).getCompareAtPrice() != null
-                                        ? product.getVariants().get(0).getCompareAtPrice().doubleValue()
+                        .price(product.getDiscountedPrice().doubleValue())
+                        .compareAtPrice(product.hasActiveDiscount() ? product.getPrice().doubleValue()
+                                : (product.getCompareAtPrice() != null ? product.getCompareAtPrice().doubleValue()
                                         : null))
                         .primaryImage(product.getMainImageUrl())
                         .rating(product.getAverageRating())
                         .reviewCount(product.getReviewCount())
                         .categoryName(product.getCategory() != null ? product.getCategory().getName() : null)
                         .isInStock(product.isInStock())
+                        .brandName(product.getBrand() != null ? product.getBrand().getBrandName() : null)
+                        .shortDescription(product.getShortDescription())
+                        .isNew(product.isNewArrival())
+                        .isBestseller(product.isBestseller())
+                        .isFeatured(product.isFeatured())
+                        .hasActiveDiscount(product.hasActiveDiscount())
+                        .discountPercentage(
+                                product.hasActiveDiscount()
+                                        ? (product.getDiscount() != null
+                                                ? product.getDiscount().getPercentage().intValue()
+                                                : (product.getSalePercentage() != null ? product.getSalePercentage()
+                                                        : 0))
+                                        : 0)
                         .build())
                 .collect(Collectors.toList());
 
@@ -383,7 +394,7 @@ public class ShopServiceImpl implements ShopService {
                 .status(shop.getStatus().name())
                 .rating(shop.getRating())
                 .totalReviews(shop.getTotalReviews())
-                .productCount(shop.getProductCount())
+                .productCount((int) productRepository.countByShopId(shopId))
                 .createdAt(shop.getCreatedAt())
                 .updatedAt(shop.getUpdatedAt())
                 .owner(ownerInfo)

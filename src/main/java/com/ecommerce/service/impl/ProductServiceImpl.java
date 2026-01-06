@@ -131,10 +131,6 @@ public class ProductServiceImpl implements ProductService {
 
     private final DiscountRepository discountRepository;
 
-    private final ProductAttributeTypeRepository attributeTypeRepository;
-
-    private final ProductAttributeValueRepository attributeValueRepository;
-
     private final ProductAttributeTypeRepository productAttributeTypeRepository;
 
     private final ProductAttributeValueRepository productAttributeValueRepository;
@@ -1294,6 +1290,7 @@ public class ProductServiceImpl implements ProductService {
 
     @Override
     public Page<ManyProductsDto> searchProducts(ProductSearchDTO searchDTO) {
+        log.info("searchProducts called with DTO: {}", searchDTO);
         try {
             int page = searchDTO.getPage() != null ? searchDTO.getPage() : 0;
             int size = searchDTO.getSize() != null ? searchDTO.getSize() : 10;
@@ -1321,8 +1318,14 @@ public class ProductServiceImpl implements ProductService {
                             searchDTO.getAverageRatingMax());
                 }
 
-                Page<ManyProductsDto> result = productPage.map(this::mapProductToManyProductsDto);
-                log.info("Search completed. Found {} products matching criteria", result.getTotalElements());
+                // If rating filter was applied, content might have changed
+                List<ManyProductsDto> dtoList = filteredProducts.stream()
+                        .map(this::mapProductToManyProductsDto)
+                        .collect(Collectors.toList());
+
+                Page<ManyProductsDto> result = new PageImpl<>(dtoList, pageable, productPage.getTotalElements());
+                log.info("Search completed. Found {} products matching criteria on this page, total elements: {}",
+                        dtoList.size(), result.getTotalElements());
                 return result;
             }
 
@@ -1403,6 +1406,58 @@ public class ProductServiceImpl implements ProductService {
             log.warn("Elasticsearch search failed, falling back to JPA search: {}", e.getMessage());
             // Fallback to JPA search with improved text search
             return searchProductsWithJPA(searchDTO, page, size, sortBy, sortDirection);
+        }
+    }
+
+    @Override
+    public Page<ManyProductsDto> searchProductsForCustomers(ProductSearchDTO searchDTO) {
+        try {
+            log.info("searchProductsForCustomers called with DTO: {}", searchDTO);
+            searchDTO.setDisplayOnly(true); // Enforce customer-facing filters in Specification
+            Page<ManyProductsDto> searchResults = searchProducts(searchDTO);
+            log.info("Initial search found {} products", searchResults.getTotalElements());
+
+            List<ManyProductsDto> availableProducts = searchResults.getContent().stream()
+                    .filter(product -> {
+                        try {
+                            UUID productUuid = product.getProductId();
+                            Product productEntity = productRepository.findById(productUuid).orElse(null);
+                            if (productEntity == null) {
+                                return false;
+                            }
+                            return productAvailabilityService.isProductAvailableForCustomers(productEntity);
+                        } catch (Exception e) {
+                            log.warn("Error checking availability for product {}: {}", product.getProductId(),
+                                    e.getMessage());
+                            return false;
+                        }
+                    })
+                    .collect(Collectors.toList());
+
+            long actualTotalElements = searchResults.getTotalElements()
+                    - (searchResults.getContent().size() - availableProducts.size());
+
+            Page<ManyProductsDto> filteredResults = new PageImpl<>(
+                    availableProducts,
+                    searchResults.getPageable(),
+                    actualTotalElements);
+
+            log.info("After availability filtering, {} products remain on this page", availableProducts.size());
+            return filteredResults;
+        } catch (Exception e) {
+            log.error("Error searching products for customers: {}", e.getMessage(), e);
+            throw new RuntimeException("Failed to search products for customers: " + e.getMessage(), e);
+        }
+    }
+
+    @Override
+    public Page<ManyProductsDto> searchProductsForAdmins(ProductSearchDTO searchDTO) {
+        try {
+            log.info("Searching products for admins with criteria: {}", searchDTO);
+            return searchProducts(searchDTO);
+        } catch (Exception e) {
+            log.error("Error searching products for admins: {}", e.getMessage(), e);
+            throw new RuntimeException("Failed to search products for admins: " + e.getMessage(), e);
         }
     }
 
@@ -2010,6 +2065,7 @@ public class ProductServiceImpl implements ProductService {
             if (searchDTO.getSearchKeyword() != null && !searchDTO.getSearchKeyword().trim().isEmpty()) {
 
                 String keyword = searchDTO.getSearchKeyword().toLowerCase();
+                Join<Product, ProductDetail> detailJoin = root.join("productDetail", JoinType.LEFT);
 
                 Predicate namePredicate = criteriaBuilder.like(criteriaBuilder.lower(root.get("productName")),
 
@@ -2017,7 +2073,7 @@ public class ProductServiceImpl implements ProductService {
 
                 Predicate descPredicate = criteriaBuilder
 
-                        .like(criteriaBuilder.lower(root.get("productDetail").get("description")), "%" + keyword + "%");
+                        .like(criteriaBuilder.lower(detailJoin.get("description")), "%" + keyword + "%");
 
                 Predicate skuPredicate = criteriaBuilder.like(criteriaBuilder.lower(root.get("sku")),
 
@@ -2029,6 +2085,15 @@ public class ProductServiceImpl implements ProductService {
 
                 predicates.add(criteriaBuilder.or(namePredicate, descPredicate, skuPredicate, barcodePredicate));
 
+            }
+
+            // Enforce customer availability if requested
+            if (Boolean.TRUE.equals(searchDTO.getDisplayOnly())) {
+                predicates.add(criteriaBuilder.equal(root.get("isActive"), true));
+                predicates.add(criteriaBuilder.equal(root.get("displayToCustomers"), true));
+                // Removed strict status == PUBLISHED check to be consistent with other
+                // customer-facing queries
+                // and ensure products marked for display by vendors are visible.
             }
 
             // Combine all predicates with AND
@@ -2269,28 +2334,28 @@ public class ProductServiceImpl implements ProductService {
                         variant.getId());
 
                 // Find or create the attribute type by name (case-insensitive)
-                ProductAttributeType attributeType = attributeTypeRepository.findByNameIgnoreCase(attributeName)
+                ProductAttributeType attributeType = productAttributeTypeRepository.findByNameIgnoreCase(attributeName)
                         .orElseGet(() -> {
                             log.info("Creating new attribute type: {}", attributeName);
                             // Create new attribute type if it doesn't exist
                             ProductAttributeType newType = new ProductAttributeType();
                             newType.setName(attributeName);
                             newType.setRequired(false);
-                            return attributeTypeRepository.save(newType);
+                            return productAttributeTypeRepository.save(newType);
                         });
 
                 log.debug("Found/created attribute type: {} with ID: {}", attributeType.getName(),
                         attributeType.getAttributeTypeId());
 
                 // Find or create the attribute value (case-insensitive)
-                ProductAttributeValue productAttributeValue = attributeValueRepository
+                ProductAttributeValue productAttributeValue = productAttributeValueRepository
                         .findByValueIgnoreCaseAndAttributeType(attributeValue, attributeType)
                         .orElseGet(() -> {
                             log.info("Creating new attribute value: {} for type: {}", attributeValue, attributeName);
                             ProductAttributeValue newValue = new ProductAttributeValue();
                             newValue.setAttributeType(attributeType);
                             newValue.setValue(attributeValue);
-                            return attributeValueRepository.save(newValue);
+                            return productAttributeValueRepository.save(newValue);
                         });
 
                 log.debug("Found/created attribute value: {} with ID: {}", productAttributeValue.getValue(),
@@ -5599,52 +5664,6 @@ public class ProductServiceImpl implements ProductService {
         } catch (Exception e) {
             log.error("Error getting products for shop {}: {}", shopId, e.getMessage(), e);
             throw new RuntimeException("Failed to get products for shop: " + e.getMessage(), e);
-        }
-    }
-
-    @Override
-    public Page<ManyProductsDto> searchProductsForCustomers(ProductSearchDTO searchDTO) {
-        try {
-
-            Page<ManyProductsDto> searchResults = searchProducts(searchDTO);
-
-            List<ManyProductsDto> availableProducts = searchResults.getContent().stream()
-                    .filter(product -> {
-                        try {
-                            UUID productUuid = product.getProductId();
-                            Product productEntity = productRepository.findById(productUuid).orElse(null);
-                            if (productEntity == null) {
-                                return false;
-                            }
-                            return productAvailabilityService.isProductAvailableForCustomers(productEntity);
-                        } catch (Exception e) {
-                            log.warn("Error checking availability for product {}: {}", product.getProductId(),
-                                    e.getMessage());
-                            return false;
-                        }
-                    })
-                    .collect(Collectors.toList());
-
-            Page<ManyProductsDto> filteredResults = new PageImpl<>(
-                    availableProducts,
-                    searchResults.getPageable(),
-                    availableProducts.size());
-
-            return filteredResults;
-        } catch (Exception e) {
-            log.error("Error searching products for customers: {}", e.getMessage(), e);
-            throw new RuntimeException("Failed to search products for customers: " + e.getMessage(), e);
-        }
-    }
-
-    @Override
-    public Page<ManyProductsDto> searchProductsForAdmins(ProductSearchDTO searchDTO) {
-        try {
-            log.info("Searching products for admins with criteria: {}", searchDTO);
-            return searchProducts(searchDTO);
-        } catch (Exception e) {
-            log.error("Error searching products for admins: {}", e.getMessage(), e);
-            throw new RuntimeException("Failed to search products for admins: " + e.getMessage(), e);
         }
     }
 

@@ -42,107 +42,107 @@ public class OrderRepositoryImpl implements OrderRepositoryCustom {
         Join<Object, Object> variantProduct = productVariant.join("product", JoinType.LEFT);
 
         List<Predicate> predicates = new ArrayList<>();
-        
-        // Shop filter - filter orders that have at least one item from the specified shop
-        // An OrderItem can have either a product (direct) or a productVariant (which has a product)
+
+        // Shop filter - filter orders that have at least one item from the specified
+        // shop
+        // An OrderItem can have either a product (direct) or a productVariant (which
+        // has a product)
         if (searchRequest.getShopId() != null) {
             Predicate productShopFilter = cb.and(
-                cb.isNotNull(product),
-                cb.equal(product.get("shop").get("shopId"), searchRequest.getShopId())
-            );
+                    cb.isNotNull(product),
+                    cb.equal(product.get("shop").get("shopId"), searchRequest.getShopId()));
             Predicate variantProductShopFilter = cb.and(
-                cb.isNotNull(productVariant),
-                cb.isNotNull(variantProduct),
-                cb.equal(variantProduct.get("shop").get("shopId"), searchRequest.getShopId())
-            );
+                    cb.isNotNull(productVariant),
+                    cb.isNotNull(variantProduct),
+                    cb.equal(variantProduct.get("shop").get("shopId"), searchRequest.getShopId()));
             predicates.add(cb.or(productShopFilter, variantProductShopFilter));
         }
 
         // Order number filter
         if (searchRequest.getOrderNumber() != null && !searchRequest.getOrderNumber().trim().isEmpty()) {
-            predicates.add(cb.like(cb.lower(order.get("orderCode")), 
-                "%" + searchRequest.getOrderNumber().toLowerCase() + "%"));
+            predicates.add(cb.like(cb.lower(order.get("orderCode")),
+                    "%" + searchRequest.getOrderNumber().toLowerCase() + "%"));
         }
 
         // User ID filter
         if (searchRequest.getUserId() != null && !searchRequest.getUserId().trim().isEmpty()) {
-            predicates.add(cb.like(cb.lower(user.get("id").as(String.class)), 
-                "%" + searchRequest.getUserId().toLowerCase() + "%"));
+            predicates.add(cb.like(cb.lower(user.get("id").as(String.class)),
+                    "%" + searchRequest.getUserId().toLowerCase() + "%"));
         }
 
         // Customer name filter (both guest and registered users)
         if (searchRequest.getCustomerName() != null && !searchRequest.getCustomerName().trim().isEmpty()) {
-            Predicate guestFirstName = cb.like(cb.lower(orderCustomerInfo.get("firstName")), 
-                "%" + searchRequest.getCustomerName().toLowerCase() + "%");
-            Predicate guestLastName = cb.like(cb.lower(orderCustomerInfo.get("lastName")), 
-                "%" + searchRequest.getCustomerName().toLowerCase() + "%");
-            Predicate registeredFirstName = cb.like(cb.lower(user.get("firstName")), 
-                "%" + searchRequest.getCustomerName().toLowerCase() + "%");
-            Predicate registeredLastName = cb.like(cb.lower(user.get("lastName")), 
-                "%" + searchRequest.getCustomerName().toLowerCase() + "%");
+            Predicate guestFirstName = cb.like(cb.lower(orderCustomerInfo.get("firstName")),
+                    "%" + searchRequest.getCustomerName().toLowerCase() + "%");
+            Predicate guestLastName = cb.like(cb.lower(orderCustomerInfo.get("lastName")),
+                    "%" + searchRequest.getCustomerName().toLowerCase() + "%");
+            Predicate registeredFirstName = cb.like(cb.lower(user.get("firstName")),
+                    "%" + searchRequest.getCustomerName().toLowerCase() + "%");
+            Predicate registeredLastName = cb.like(cb.lower(user.get("lastName")),
+                    "%" + searchRequest.getCustomerName().toLowerCase() + "%");
             predicates.add(cb.or(guestFirstName, guestLastName, registeredFirstName, registeredLastName));
         }
 
         // Customer email filter
         if (searchRequest.getCustomerEmail() != null && !searchRequest.getCustomerEmail().trim().isEmpty()) {
-            Predicate guestEmail = cb.like(cb.lower(orderCustomerInfo.get("email")), 
-                "%" + searchRequest.getCustomerEmail().toLowerCase() + "%");
-            Predicate registeredEmail = cb.like(cb.lower(user.get("userEmail")), 
-                "%" + searchRequest.getCustomerEmail().toLowerCase() + "%");
-            
+            Predicate guestEmail = cb.like(cb.lower(orderCustomerInfo.get("email")),
+                    "%" + searchRequest.getCustomerEmail().toLowerCase() + "%");
+            Predicate registeredEmail = cb.like(cb.lower(user.get("userEmail")),
+                    "%" + searchRequest.getCustomerEmail().toLowerCase() + "%");
+
             predicates.add(cb.or(guestEmail, registeredEmail));
         }
 
         // Customer phone filter
         if (searchRequest.getCustomerPhone() != null && !searchRequest.getCustomerPhone().trim().isEmpty()) {
-            Predicate guestPhone = cb.like(orderCustomerInfo.get("phone"), 
-                "%" + searchRequest.getCustomerPhone() + "%");
-            Predicate registeredPhone = cb.like(user.get("phone"), 
-                "%" + searchRequest.getCustomerPhone() + "%");
-            
+            Predicate guestPhone = cb.like(orderCustomerInfo.get("phone"),
+                    "%" + searchRequest.getCustomerPhone() + "%");
+            Predicate registeredPhone = cb.like(user.get("phone"),
+                    "%" + searchRequest.getCustomerPhone() + "%");
+
             predicates.add(cb.or(guestPhone, registeredPhone));
         }
 
         // Order status filter
-        if (searchRequest.getOrderStatus() != null && !searchRequest.getOrderStatus().trim().isEmpty() 
-            && !searchRequest.getOrderStatus().equals("all")) {
-            predicates.add(cb.equal(order.get("orderStatus"), 
-                Order.OrderStatus.valueOf(searchRequest.getOrderStatus().toUpperCase())));
+        if (searchRequest.getOrderStatus() != null && !searchRequest.getOrderStatus().trim().isEmpty()
+                && !searchRequest.getOrderStatus().equals("all")) {
+            predicates.add(cb.equal(order.get("orderStatus"),
+                    Order.OrderStatus.valueOf(searchRequest.getOrderStatus().toUpperCase())));
         }
 
         // Payment status filter
-        if (searchRequest.getPaymentStatus() != null && !searchRequest.getPaymentStatus().trim().isEmpty() 
-            && !searchRequest.getPaymentStatus().equals("all")) {
+        if (searchRequest.getPaymentStatus() != null && !searchRequest.getPaymentStatus().trim().isEmpty()
+                && !searchRequest.getPaymentStatus().equals("all")) {
             predicates.add(cb.equal(orderTransaction.get("status"), searchRequest.getPaymentStatus().toUpperCase()));
         }
 
         // City filter
         if (searchRequest.getCity() != null && !searchRequest.getCity().trim().isEmpty()) {
-            Predicate addressCity = cb.like(cb.lower(orderAddress.get("city")), 
-                "%" + searchRequest.getCity().toLowerCase() + "%");
-            Predicate customerCity = cb.like(cb.lower(orderCustomerInfo.get("city")), 
-                "%" + searchRequest.getCity().toLowerCase() + "%");
-            
+            Predicate addressCity = cb.like(cb.lower(orderAddress.get("city")),
+                    "%" + searchRequest.getCity().toLowerCase() + "%");
+            Predicate customerCity = cb.like(cb.lower(orderCustomerInfo.get("city")),
+                    "%" + searchRequest.getCity().toLowerCase() + "%");
+
             predicates.add(cb.or(addressCity, customerCity));
         }
 
         // State filter
         if (searchRequest.getState() != null && !searchRequest.getState().trim().isEmpty()) {
-            Predicate addressState = cb.like(cb.lower(orderAddress.get("state")), 
-                "%" + searchRequest.getState().toLowerCase() + "%");
-            Predicate customerState = cb.like(cb.lower(orderCustomerInfo.get("state")), 
-                "%" + searchRequest.getState().toLowerCase() + "%");
-            
+            Predicate addressState = cb.like(cb.lower(orderAddress.get("state")),
+                    "%" + searchRequest.getState().toLowerCase() + "%");
+            Predicate customerState = cb.like(cb.lower(orderCustomerInfo.get("state")),
+                    "%" + searchRequest.getState().toLowerCase() + "%");
+
             predicates.add(cb.or(addressState, customerState));
         }
 
         // Country filter
         if (searchRequest.getCountry() != null && !searchRequest.getCountry().trim().isEmpty()) {
-            Predicate addressCountry = cb.like(cb.lower(orderAddress.get("country")), 
-                "%" + searchRequest.getCountry().toLowerCase() + "%");
-            Predicate customerCountry = cb.like(cb.lower(orderCustomerInfo.get("country")), 
-                "%" + searchRequest.getCountry().toLowerCase() + "%");
-            
+            Predicate addressCountry = cb.like(cb.lower(orderAddress.get("country")),
+                    "%" + searchRequest.getCountry().toLowerCase() + "%");
+            Predicate customerCountry = cb.like(cb.lower(orderCustomerInfo.get("country")),
+                    "%" + searchRequest.getCountry().toLowerCase() + "%");
+
             predicates.add(cb.or(addressCountry, customerCountry));
         }
 
@@ -164,28 +164,29 @@ public class OrderRepositoryImpl implements OrderRepositoryCustom {
 
         // Payment method filter
         if (searchRequest.getPaymentMethod() != null && !searchRequest.getPaymentMethod().trim().isEmpty()) {
-            predicates.add(cb.like(cb.lower(orderTransaction.get("paymentMethod")), 
-                "%" + searchRequest.getPaymentMethod().toLowerCase() + "%"));
+            predicates.add(cb.like(cb.lower(orderTransaction.get("paymentMethod")),
+                    "%" + searchRequest.getPaymentMethod().toLowerCase() + "%"));
         }
 
         // Tracking number filter
         if (searchRequest.getTrackingNumber() != null && !searchRequest.getTrackingNumber().trim().isEmpty()) {
-            predicates.add(cb.like(cb.lower(orderInfo.get("trackingNumber")), 
-                "%" + searchRequest.getTrackingNumber().toLowerCase() + "%"));
+            predicates.add(cb.like(cb.lower(orderInfo.get("trackingNumber")),
+                    "%" + searchRequest.getTrackingNumber().toLowerCase() + "%"));
         }
 
         // General search keyword (searches across multiple fields)
         if (searchRequest.getSearchKeyword() != null && !searchRequest.getSearchKeyword().trim().isEmpty()) {
             String keyword = "%" + searchRequest.getSearchKeyword().toLowerCase() + "%";
-            
+
             Predicate orderNumberMatch = cb.like(cb.lower(order.get("orderCode")), keyword);
             Predicate userIdMatch = cb.like(cb.lower(user.get("id").as(String.class)), keyword);
             Predicate guestFirstNameMatch = cb.like(cb.lower(orderCustomerInfo.get("firstName")), keyword);
             Predicate guestLastNameMatch = cb.like(cb.lower(orderCustomerInfo.get("lastName")), keyword);
             Predicate guestEmailMatch = cb.like(cb.lower(orderCustomerInfo.get("email")), keyword);
             Predicate registeredEmailMatch = cb.like(cb.lower(user.get("userEmail")), keyword);
-            
-            predicates.add(cb.or(orderNumberMatch, userIdMatch, guestFirstNameMatch, guestLastNameMatch, guestEmailMatch, registeredEmailMatch));
+
+            predicates.add(cb.or(orderNumberMatch, userIdMatch, guestFirstNameMatch, guestLastNameMatch,
+                    guestEmailMatch, registeredEmailMatch));
         }
 
         // Apply all predicates
@@ -202,63 +203,81 @@ public class OrderRepositoryImpl implements OrderRepositoryCustom {
         // Get total count for pagination
         CriteriaQuery<Long> countQuery = cb.createQuery(Long.class);
         Root<Order> countRoot = countQuery.from(Order.class);
-        
+
         // Apply the same joins and predicates for count query
         Join<Object, Object> countUser = countRoot.join("user", JoinType.LEFT);
         Join<Object, Object> countOrderAddress = countRoot.join("orderAddress", JoinType.LEFT);
         Join<Object, Object> countOrderCustomerInfo = countRoot.join("orderCustomerInfo", JoinType.LEFT);
         Join<Object, Object> countOrderTransaction = countRoot.join("orderTransaction", JoinType.LEFT);
+        // Add joins for shop filter in count query
+        Join<Object, Object> countOrderItems = countRoot.join("orderItems", JoinType.LEFT);
+        Join<Object, Object> countProduct = countOrderItems.join("product", JoinType.LEFT);
+        Join<Object, Object> countProductVariant = countOrderItems.join("productVariant", JoinType.LEFT);
+        Join<Object, Object> countVariantProduct = countProductVariant.join("product", JoinType.LEFT);
 
         // Rebuild predicates for count query (same logic as above)
         List<Predicate> countPredicates = new ArrayList<>();
-        
+
+        // Shop filter for count query
+        if (searchRequest.getShopId() != null) {
+            Predicate productShopFilter = cb.and(
+                    cb.isNotNull(countProduct),
+                    cb.equal(countProduct.get("shop").get("shopId"), searchRequest.getShopId()));
+            Predicate variantProductShopFilter = cb.and(
+                    cb.isNotNull(countProductVariant),
+                    cb.isNotNull(countVariantProduct),
+                    cb.equal(countVariantProduct.get("shop").get("shopId"), searchRequest.getShopId()));
+            countPredicates.add(cb.or(productShopFilter, variantProductShopFilter));
+        }
+
         if (searchRequest.getOrderNumber() != null && !searchRequest.getOrderNumber().trim().isEmpty()) {
-            countPredicates.add(cb.like(cb.lower(countRoot.get("orderCode")), 
-                "%" + searchRequest.getOrderNumber().toLowerCase() + "%"));
+            countPredicates.add(cb.like(cb.lower(countRoot.get("orderCode")),
+                    "%" + searchRequest.getOrderNumber().toLowerCase() + "%"));
         }
         if (searchRequest.getUserId() != null && !searchRequest.getUserId().trim().isEmpty()) {
-            countPredicates.add(cb.like(cb.lower(countUser.get("id").as(String.class)), 
-                "%" + searchRequest.getUserId().toLowerCase() + "%"));
+            countPredicates.add(cb.like(cb.lower(countUser.get("id").as(String.class)),
+                    "%" + searchRequest.getUserId().toLowerCase() + "%"));
         }
         if (searchRequest.getCustomerName() != null && !searchRequest.getCustomerName().trim().isEmpty()) {
-            Predicate guestFirstName = cb.like(cb.lower(countOrderCustomerInfo.get("firstName")), 
-                "%" + searchRequest.getCustomerName().toLowerCase() + "%");
-            Predicate guestLastName = cb.like(cb.lower(countOrderCustomerInfo.get("lastName")), 
-                "%" + searchRequest.getCustomerName().toLowerCase() + "%");
-            Predicate registeredFirstName = cb.like(cb.lower(countUser.get("firstName")), 
-                "%" + searchRequest.getCustomerName().toLowerCase() + "%");
-            Predicate registeredLastName = cb.like(cb.lower(countUser.get("lastName")), 
-                "%" + searchRequest.getCustomerName().toLowerCase() + "%");
+            Predicate guestFirstName = cb.like(cb.lower(countOrderCustomerInfo.get("firstName")),
+                    "%" + searchRequest.getCustomerName().toLowerCase() + "%");
+            Predicate guestLastName = cb.like(cb.lower(countOrderCustomerInfo.get("lastName")),
+                    "%" + searchRequest.getCustomerName().toLowerCase() + "%");
+            Predicate registeredFirstName = cb.like(cb.lower(countUser.get("firstName")),
+                    "%" + searchRequest.getCustomerName().toLowerCase() + "%");
+            Predicate registeredLastName = cb.like(cb.lower(countUser.get("lastName")),
+                    "%" + searchRequest.getCustomerName().toLowerCase() + "%");
             countPredicates.add(cb.or(guestFirstName, guestLastName, registeredFirstName, registeredLastName));
         }
         if (searchRequest.getCustomerEmail() != null && !searchRequest.getCustomerEmail().trim().isEmpty()) {
-            Predicate guestEmail = cb.like(cb.lower(countOrderCustomerInfo.get("email")), 
-                "%" + searchRequest.getCustomerEmail().toLowerCase() + "%");
-            Predicate registeredEmail = cb.like(cb.lower(countUser.get("userEmail")), 
-                "%" + searchRequest.getCustomerEmail().toLowerCase() + "%");
+            Predicate guestEmail = cb.like(cb.lower(countOrderCustomerInfo.get("email")),
+                    "%" + searchRequest.getCustomerEmail().toLowerCase() + "%");
+            Predicate registeredEmail = cb.like(cb.lower(countUser.get("userEmail")),
+                    "%" + searchRequest.getCustomerEmail().toLowerCase() + "%");
             countPredicates.add(cb.or(guestEmail, registeredEmail));
         }
         if (searchRequest.getCustomerPhone() != null && !searchRequest.getCustomerPhone().trim().isEmpty()) {
-            Predicate guestPhone = cb.like(countOrderCustomerInfo.get("phone"), 
-                "%" + searchRequest.getCustomerPhone() + "%");
-            Predicate registeredPhone = cb.like(countUser.get("phone"), 
-                "%" + searchRequest.getCustomerPhone() + "%");
+            Predicate guestPhone = cb.like(countOrderCustomerInfo.get("phone"),
+                    "%" + searchRequest.getCustomerPhone() + "%");
+            Predicate registeredPhone = cb.like(countUser.get("phone"),
+                    "%" + searchRequest.getCustomerPhone() + "%");
             countPredicates.add(cb.or(guestPhone, registeredPhone));
         }
-        if (searchRequest.getOrderStatus() != null && !searchRequest.getOrderStatus().trim().isEmpty() 
-            && !searchRequest.getOrderStatus().equals("all")) {
-            countPredicates.add(cb.equal(countRoot.get("orderStatus"), 
-                Order.OrderStatus.valueOf(searchRequest.getOrderStatus().toUpperCase())));
+        if (searchRequest.getOrderStatus() != null && !searchRequest.getOrderStatus().trim().isEmpty()
+                && !searchRequest.getOrderStatus().equals("all")) {
+            countPredicates.add(cb.equal(countRoot.get("orderStatus"),
+                    Order.OrderStatus.valueOf(searchRequest.getOrderStatus().toUpperCase())));
         }
-        if (searchRequest.getPaymentStatus() != null && !searchRequest.getPaymentStatus().trim().isEmpty() 
-            && !searchRequest.getPaymentStatus().equals("all")) {
-            countPredicates.add(cb.equal(countOrderTransaction.get("status"), searchRequest.getPaymentStatus().toUpperCase()));
+        if (searchRequest.getPaymentStatus() != null && !searchRequest.getPaymentStatus().trim().isEmpty()
+                && !searchRequest.getPaymentStatus().equals("all")) {
+            countPredicates
+                    .add(cb.equal(countOrderTransaction.get("status"), searchRequest.getPaymentStatus().toUpperCase()));
         }
         if (searchRequest.getCity() != null && !searchRequest.getCity().trim().isEmpty()) {
-            Predicate addressCity = cb.like(cb.lower(countOrderAddress.get("city")), 
-                "%" + searchRequest.getCity().toLowerCase() + "%");
-            Predicate customerCity = cb.like(cb.lower(countOrderCustomerInfo.get("city")), 
-                "%" + searchRequest.getCity().toLowerCase() + "%");
+            Predicate addressCity = cb.like(cb.lower(countOrderAddress.get("city")),
+                    "%" + searchRequest.getCity().toLowerCase() + "%");
+            Predicate customerCity = cb.like(cb.lower(countOrderCustomerInfo.get("city")),
+                    "%" + searchRequest.getCity().toLowerCase() + "%");
             countPredicates.add(cb.or(addressCity, customerCity));
         }
         if (searchRequest.getStartDate() != null) {
@@ -275,7 +294,8 @@ public class OrderRepositoryImpl implements OrderRepositoryCustom {
             Predicate guestLastNameMatch = cb.like(cb.lower(countOrderCustomerInfo.get("lastName")), keyword);
             Predicate guestEmailMatch = cb.like(cb.lower(countOrderCustomerInfo.get("email")), keyword);
             Predicate registeredEmailMatch = cb.like(cb.lower(countUser.get("userEmail")), keyword);
-            countPredicates.add(cb.or(orderNumberMatch, userIdMatch, guestFirstNameMatch, guestLastNameMatch, guestEmailMatch, registeredEmailMatch));
+            countPredicates.add(cb.or(orderNumberMatch, userIdMatch, guestFirstNameMatch, guestLastNameMatch,
+                    guestEmailMatch, registeredEmailMatch));
         }
 
         countQuery.select(cb.countDistinct(countRoot));

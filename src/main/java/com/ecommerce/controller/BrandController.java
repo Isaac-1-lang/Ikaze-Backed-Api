@@ -49,9 +49,9 @@ public class BrandController {
 
     @Autowired
     public BrandController(BrandService brandService,
-                          ShopAuthorizationService shopAuthorizationService,
-                          BrandRepository brandRepository,
-                          UserRepository userRepository) {
+            ShopAuthorizationService shopAuthorizationService,
+            BrandRepository brandRepository,
+            UserRepository userRepository) {
         this.brandService = brandService;
         this.shopAuthorizationService = shopAuthorizationService;
         this.brandRepository = brandRepository;
@@ -69,13 +69,14 @@ public class BrandController {
     })
     public ResponseEntity<BrandDTO> createBrand(@Valid @RequestBody CreateBrandDTO createBrandDTO) {
         log.info("Creating new brand: {}", createBrandDTO.getBrandName());
-        log.info("Brand creation request - shopId: {}, brandName: {}", createBrandDTO.getShopId(), createBrandDTO.getBrandName());
-        
+        log.info("Brand creation request - shopId: {}, brandName: {}", createBrandDTO.getShopId(),
+                createBrandDTO.getBrandName());
+
         UUID currentUserId = getCurrentUserId();
         UserRole userRole = getCurrentUserRole();
-        
+
         log.info("Current user - userId: {}, role: {}", currentUserId, userRole);
-        
+
         // For VENDOR and EMPLOYEE, shopId is required and must validate access
         if (userRole == UserRole.VENDOR || userRole == UserRole.EMPLOYEE) {
             if (createBrandDTO.getShopId() == null) {
@@ -86,7 +87,7 @@ public class BrandController {
             shopAuthorizationService.assertCanManageShop(currentUserId, createBrandDTO.getShopId());
             log.info("Shop access validated successfully");
         }
-        
+
         BrandDTO createdBrand = brandService.createBrand(createBrandDTO);
         log.info("Brand created successfully - brandId: {}", createdBrand.getBrandId());
         return new ResponseEntity<>(createdBrand, HttpStatus.CREATED);
@@ -108,7 +109,7 @@ public class BrandController {
         log.info("Updating brand with ID: {}", id);
         UUID currentUserId = getCurrentUserId();
         UserRole userRole = getCurrentUserRole();
-        
+
         // Validate shop access for VENDOR and EMPLOYEE
         if (userRole == UserRole.VENDOR || userRole == UserRole.EMPLOYEE) {
             com.ecommerce.entity.Brand brand = brandRepository.findById(id)
@@ -117,7 +118,7 @@ public class BrandController {
                 shopAuthorizationService.assertCanManageShop(currentUserId, brand.getShop().getShopId());
             }
         }
-        
+
         BrandDTO updatedBrand = brandService.updateBrand(id, updateBrandDTO);
         return ResponseEntity.ok(updatedBrand);
     }
@@ -135,7 +136,7 @@ public class BrandController {
         log.info("Deleting brand with ID: {}", id);
         UUID currentUserId = getCurrentUserId();
         UserRole userRole = getCurrentUserRole();
-        
+
         // Validate shop access for VENDOR and EMPLOYEE
         if (userRole == UserRole.VENDOR || userRole == UserRole.EMPLOYEE) {
             com.ecommerce.entity.Brand brand = brandRepository.findById(id)
@@ -144,7 +145,7 @@ public class BrandController {
                 shopAuthorizationService.assertCanManageShop(currentUserId, brand.getShop().getShopId());
             }
         }
-        
+
         brandService.deleteBrand(id);
         return ResponseEntity.noContent().build();
     }
@@ -185,23 +186,24 @@ public class BrandController {
             @Parameter(description = "Sort direction (asc/desc)") @RequestParam(defaultValue = "asc") String sortDir,
             @Parameter(description = "Shop ID to filter by") @RequestParam(required = false) UUID shopId) {
 
-        log.debug("Fetching all brands with pagination: page={}, size={}, sortBy={}, sortDir={}, shopId={}", 
+        log.debug("Fetching all brands with pagination: page={}, size={}, sortBy={}, sortDir={}, shopId={}",
                 page, size, sortBy, sortDir, shopId);
 
         Sort sort = sortDir.equalsIgnoreCase(Sort.Direction.ASC.name()) ? Sort.by(sortBy).ascending()
                 : Sort.by(sortBy).descending();
 
         Pageable pageable = PageRequest.of(page, size, sort);
-        
-        // Validate shop access for VENDOR and EMPLOYEE if shopId is provided
+
+        // Validate shop access only for VENDOR and EMPLOYEE if they are authenticated
         if (shopId != null) {
             UUID currentUserId = getCurrentUserId();
             UserRole userRole = getCurrentUserRole();
-            if (userRole == UserRole.VENDOR || userRole == UserRole.EMPLOYEE) {
+            if (currentUserId != null && userRole != null
+                    && (userRole == UserRole.VENDOR || userRole == UserRole.EMPLOYEE)) {
                 shopAuthorizationService.assertCanManageShop(currentUserId, shopId);
             }
         }
-        
+
         Page<BrandDTO> brands = brandService.getAllBrands(pageable, shopId);
 
         return ResponseEntity.ok(brands);
@@ -212,9 +214,9 @@ public class BrandController {
     @ApiResponses(value = {
             @ApiResponse(responseCode = "200", description = "Active brands retrieved successfully", content = @Content(schema = @Schema(implementation = List.class)))
     })
-    public ResponseEntity<List<BrandDTO>> getActiveBrands() {
-        log.debug("Fetching all active brands");
-        List<BrandDTO> activeBrands = brandService.getActiveBrands();
+    public ResponseEntity<List<BrandDTO>> getActiveBrands(@RequestParam(required = false) UUID shopId) {
+        log.debug("Fetching all active brands, shopId: {}", shopId);
+        List<BrandDTO> activeBrands = brandService.getActiveBrands(shopId);
         return ResponseEntity.ok(activeBrands);
     }
 
@@ -223,9 +225,9 @@ public class BrandController {
     @ApiResponses(value = {
             @ApiResponse(responseCode = "200", description = "Featured brands retrieved successfully", content = @Content(schema = @Schema(implementation = List.class)))
     })
-    public ResponseEntity<List<BrandDTO>> getFeaturedBrands() {
-        log.debug("Fetching all featured brands");
-        List<BrandDTO> featuredBrands = brandService.getFeaturedBrands();
+    public ResponseEntity<List<BrandDTO>> getFeaturedBrands(@RequestParam(required = false) UUID shopId) {
+        log.debug("Fetching all featured brands, shopId: {}", shopId);
+        List<BrandDTO> featuredBrands = brandService.getFeaturedBrands(shopId);
         return ResponseEntity.ok(featuredBrands);
     }
 
@@ -239,11 +241,12 @@ public class BrandController {
             searchDTO = new BrandSearchDTO();
         }
 
-        // Validate shop access for VENDOR and EMPLOYEE if shopId is provided
+        // Validate shop access only for VENDOR and EMPLOYEE if they are authenticated
         if (searchDTO.getShopId() != null) {
             UUID currentUserId = getCurrentUserId();
             UserRole userRole = getCurrentUserRole();
-            if (userRole == UserRole.VENDOR || userRole == UserRole.EMPLOYEE) {
+            if (currentUserId != null && userRole != null
+                    && (userRole == UserRole.VENDOR || userRole == UserRole.EMPLOYEE)) {
                 shopAuthorizationService.assertCanManageShop(currentUserId, searchDTO.getShopId());
             }
         }
@@ -280,46 +283,48 @@ public class BrandController {
         boolean isAvailable = !brandService.existsBySlug(slug, excludeId);
         return ResponseEntity.ok(isAvailable);
     }
-    
+
     private UUID getCurrentUserId() {
         try {
             Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-            if (auth == null || !auth.isAuthenticated()) {
-                throw new RuntimeException("User not authenticated");
+            if (auth == null || !auth.isAuthenticated() || "anonymousUser".equals(auth.getPrincipal())) {
+                return null;
             }
 
             Object principal = auth.getPrincipal();
             if (principal instanceof CustomUserDetails customUserDetails) {
                 String email = customUserDetails.getUsername();
                 return userRepository.findByUserEmail(email)
-                    .map(com.ecommerce.entity.User::getId)
-                    .orElseThrow(() -> new RuntimeException("User not found with email: " + email));
+                        .map(com.ecommerce.entity.User::getId)
+                        .orElse(null);
             }
 
-            throw new RuntimeException("Unable to extract user ID from authentication");
+            return null;
         } catch (Exception e) {
-            throw new RuntimeException("Error getting current user ID: " + e.getMessage(), e);
+            log.warn("Error getting current user ID: {}", e.getMessage());
+            return null;
         }
     }
-    
+
     private UserRole getCurrentUserRole() {
         try {
             Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-            if (auth == null || !auth.isAuthenticated()) {
-                throw new RuntimeException("User not authenticated");
+            if (auth == null || !auth.isAuthenticated() || "anonymousUser".equals(auth.getPrincipal())) {
+                return null;
             }
 
             Object principal = auth.getPrincipal();
             if (principal instanceof CustomUserDetails customUserDetails) {
                 String email = customUserDetails.getUsername();
                 return userRepository.findByUserEmail(email)
-                    .map(com.ecommerce.entity.User::getRole)
-                    .orElseThrow(() -> new RuntimeException("User not found with email: " + email));
+                        .map(com.ecommerce.entity.User::getRole)
+                        .orElse(null);
             }
 
-            throw new RuntimeException("Unable to extract user role from authentication");
+            return null;
         } catch (Exception e) {
-            throw new RuntimeException("Error getting current user role: " + e.getMessage(), e);
+            log.warn("Error getting current user role: {}", e.getMessage());
+            return null;
         }
     }
 }

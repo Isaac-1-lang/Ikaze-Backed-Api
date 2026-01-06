@@ -47,13 +47,16 @@ public class DiscountServiceImpl implements DiscountService {
 
         // Verify shop exists and user has access
         Shop shop = shopRepository.findById(createDiscountDTO.getShopId())
-                .orElseThrow(() -> new EntityNotFoundException("Shop not found with ID: " + createDiscountDTO.getShopId()));
+                .orElseThrow(
+                        () -> new EntityNotFoundException("Shop not found with ID: " + createDiscountDTO.getShopId()));
 
         shopAuthorizationService.assertCanManageShop(vendorId, createDiscountDTO.getShopId());
 
         // Validate discount code uniqueness within the shop if provided
         if (createDiscountDTO.getDiscountCode() != null && !createDiscountDTO.getDiscountCode().trim().isEmpty()) {
-            if (discountRepository.findByDiscountCodeAndShopShopId(createDiscountDTO.getDiscountCode(), createDiscountDTO.getShopId()).isPresent()) {
+            if (discountRepository
+                    .findByDiscountCodeAndShopShopId(createDiscountDTO.getDiscountCode(), createDiscountDTO.getShopId())
+                    .isPresent()) {
                 throw new IllegalArgumentException(
                         "Discount code already exists in this shop: " + createDiscountDTO.getDiscountCode());
             }
@@ -106,7 +109,9 @@ public class DiscountServiceImpl implements DiscountService {
 
         // Validate discount code uniqueness within the shop if being updated
         if (updateDiscountDTO.getDiscountCode() != null && !updateDiscountDTO.getDiscountCode().trim().isEmpty()) {
-            discountRepository.findByDiscountCodeAndShopShopId(updateDiscountDTO.getDiscountCode(), discount.getShop().getShopId())
+            discountRepository
+                    .findByDiscountCodeAndShopShopId(updateDiscountDTO.getDiscountCode(),
+                            discount.getShop().getShopId())
                     .filter(existing -> !existing.getDiscountId().equals(discountId))
                     .ifPresent(existing -> {
                         throw new IllegalArgumentException(
@@ -171,7 +176,8 @@ public class DiscountServiceImpl implements DiscountService {
         }
         shopAuthorizationService.assertCanManageShop(vendorId, discount.getShop().getShopId());
 
-        List<Product> productsWithDiscount = productRepository.findByDiscount(discount, Pageable.unpaged()).getContent();
+        List<Product> productsWithDiscount = productRepository.findByDiscount(discount, Pageable.unpaged())
+                .getContent();
         if (!productsWithDiscount.isEmpty()) {
             log.info("Removing discount from {} products", productsWithDiscount.size());
             for (Product product : productsWithDiscount) {
@@ -181,7 +187,8 @@ public class DiscountServiceImpl implements DiscountService {
             log.info("Successfully removed discount from {} products", productsWithDiscount.size());
         }
 
-        List<ProductVariant> variantsWithDiscount = productVariantRepository.findByDiscount(discount, Pageable.unpaged()).getContent();
+        List<ProductVariant> variantsWithDiscount = productVariantRepository
+                .findByDiscount(discount, Pageable.unpaged()).getContent();
         if (!variantsWithDiscount.isEmpty()) {
             log.info("Removing discount from {} product variants", variantsWithDiscount.size());
             for (ProductVariant variant : variantsWithDiscount) {
@@ -192,7 +199,7 @@ public class DiscountServiceImpl implements DiscountService {
         }
 
         discountRepository.deleteById(discountId);
-        log.info("Discount deleted successfully with ID: {} (removed from {} products and {} variants)", 
+        log.info("Discount deleted successfully with ID: {} (removed from {} products and {} variants)",
                 discountId, productsWithDiscount.size(), variantsWithDiscount.size());
 
         return true;
@@ -204,8 +211,8 @@ public class DiscountServiceImpl implements DiscountService {
         Discount discount = discountRepository.findById(discountId)
                 .orElseThrow(() -> new EntityNotFoundException("Discount not found with ID: " + discountId));
 
-        // Verify discount belongs to the shop
-        if (discount.getShop() == null || !discount.getShop().getShopId().equals(shopId)) {
+        // If shopId is provided, verify discount belongs to the shop
+        if (shopId != null && (discount.getShop() == null || !discount.getShop().getShopId().equals(shopId))) {
             throw new EntityNotFoundException("Discount not found with ID: " + discountId + " for shop: " + shopId);
         }
 
@@ -224,9 +231,14 @@ public class DiscountServiceImpl implements DiscountService {
     @Override
     @Transactional(readOnly = true)
     public Page<DiscountDTO> getActiveDiscounts(UUID shopId, Pageable pageable) {
-        log.info("Fetching active discounts for shop: {} with pagination", shopId);
+        log.info("Fetching active discounts, shopId: {} with pagination", shopId);
 
-        Page<Discount> discounts = discountRepository.findByShopShopIdAndIsActiveTrue(shopId, pageable);
+        Page<Discount> discounts;
+        if (shopId != null) {
+            discounts = discountRepository.findByShopShopIdAndIsActiveTrue(shopId, pageable);
+        } else {
+            discounts = discountRepository.findByIsActiveTrue(pageable);
+        }
         return discounts.map(this::mapToDTO);
     }
 
@@ -235,8 +247,15 @@ public class DiscountServiceImpl implements DiscountService {
     public DiscountDTO getDiscountByCode(String discountCode, UUID shopId) {
         log.info("Fetching discount by code: {} for shop: {}", discountCode, shopId);
 
-        Discount discount = discountRepository.findByDiscountCodeAndShopShopId(discountCode, shopId)
-                .orElseThrow(() -> new EntityNotFoundException("Discount not found with code: " + discountCode + " for shop: " + shopId));
+        java.util.Optional<Discount> discountOpt;
+        if (shopId != null) {
+            discountOpt = discountRepository.findByDiscountCodeAndShopShopId(discountCode, shopId);
+        } else {
+            discountOpt = discountRepository.findByDiscountCode(discountCode);
+        }
+
+        Discount discount = discountOpt.orElseThrow(() -> new EntityNotFoundException(
+                "Discount not found with code: " + discountCode + (shopId != null ? " for shop: " + shopId : "")));
 
         return mapToDTO(discount);
     }
@@ -247,7 +266,7 @@ public class DiscountServiceImpl implements DiscountService {
         log.info("Checking if discount is valid with ID: {} for shop: {}", discountId, shopId);
 
         return discountRepository.findById(discountId)
-                .filter(d -> d.getShop() != null && d.getShop().getShopId().equals(shopId))
+                .filter(d -> shopId == null || (d.getShop() != null && d.getShop().getShopId().equals(shopId)))
                 .map(Discount::isValid)
                 .orElse(false);
     }
@@ -257,8 +276,13 @@ public class DiscountServiceImpl implements DiscountService {
     public boolean isDiscountCodeValid(String discountCode, UUID shopId) {
         log.info("Checking if discount code is valid: {} for shop: {}", discountCode, shopId);
 
-        return discountRepository.findValidDiscountByCodeAndShop(discountCode, shopId, LocalDateTime.now())
-                .isPresent();
+        if (shopId != null) {
+            return discountRepository.findValidDiscountByCodeAndShop(discountCode, shopId, LocalDateTime.now())
+                    .isPresent();
+        } else {
+            return discountRepository.findValidDiscountByCode(discountCode, LocalDateTime.now())
+                    .isPresent();
+        }
     }
 
     private DiscountDTO mapToDTO(Discount discount) {
