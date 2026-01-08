@@ -122,15 +122,15 @@ public class User implements UserDetails {
     @OneToMany(mappedBy = "user", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
     private Set<Wishlist> wishlists;
 
-    // Shop association for employees and delivery agents (nullable - vendors own shops via Shop.owner)
+    // Shop association for employees and delivery agents (nullable - vendors own
+    // shops via Shop.owner)
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "shop_id")
     @JsonBackReference
     private Shop shop;
 
-    @Column(name = "points", nullable = false)
-    @Builder.Default
-    private Integer points = 0;
+    // Points are now handled by UserPoints entity per shop
+    // private Integer points;
 
     @PrePersist
     protected void onCreate() {

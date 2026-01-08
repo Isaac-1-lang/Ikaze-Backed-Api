@@ -11,8 +11,9 @@ import java.util.UUID;
 @NoArgsConstructor
 @AllArgsConstructor
 public class PointsPaymentRequest {
-    
+
     private UUID userId;
+    private UUID shopId;
     private List<CartItemDTO> items;
     private AddressDto shippingAddress;
     private boolean useAllAvailablePoints;

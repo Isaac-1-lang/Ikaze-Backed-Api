@@ -6,6 +6,7 @@ import com.ecommerce.dto.UpdateDeliveryNoteRequest;
 import com.ecommerce.entity.Order;
 import com.ecommerce.entity.OrderDeliveryNote;
 import com.ecommerce.entity.ReadyForDeliveryGroup;
+import com.ecommerce.entity.ShopOrder;
 import com.ecommerce.entity.User;
 import com.ecommerce.Exception.ResourceNotFoundException;
 import com.ecommerce.Exception.UnauthorizedException;
@@ -70,21 +71,28 @@ public class OrderDeliveryNoteServiceImpl implements OrderDeliveryNoteService {
             Order order = orderRepository.findById(request.getOrderId())
                     .orElseThrow(() -> new ResourceNotFoundException("Order not found with ID: " + request.getOrderId()));
 
-            // Verify order status is PROCESSING
-            if (order.getOrderStatus() != Order.OrderStatus.PROCESSING) {
-                throw new IllegalStateException("Notes can only be created for orders with PROCESSING status. Current status: " + order.getOrderStatus());
+            // Find the ShopOrder that has a delivery group assigned
+            ShopOrder shopOrder = order.getShopOrders().stream()
+                    .filter(so -> so.getReadyForDeliveryGroup() != null)
+                    .findFirst()
+                    .orElseThrow(() -> new IllegalStateException("No shop order found with a delivery group assigned"));
+
+            // Verify shop order status is PROCESSING
+            if (shopOrder.getStatus() != ShopOrder.ShopOrderStatus.PROCESSING) {
+                throw new IllegalStateException("Notes can only be created for shop orders with PROCESSING status. Current status: " + shopOrder.getStatus());
             }
 
-            if (order.getReadyForDeliveryGroup() == null) {
-                throw new IllegalStateException("Order is not assigned to any delivery group");
+            ReadyForDeliveryGroup deliveryGroup = shopOrder.getReadyForDeliveryGroup();
+            if (deliveryGroup == null) {
+                throw new IllegalStateException("Shop order is not assigned to any delivery group");
             }
 
-            if (order.getReadyForDeliveryGroup().getDeliverer() == null ||
-                !order.getReadyForDeliveryGroup().getDeliverer().getId().equals(agent.getId())) {
-                throw new UnauthorizedException("You are not assigned to deliver this order");
+            if (deliveryGroup.getDeliverer() == null ||
+                !deliveryGroup.getDeliverer().getId().equals(agent.getId())) {
+                throw new UnauthorizedException("You are not assigned to deliver this shop order");
             }
 
-            note.setOrder(order);
+            note.setShopOrder(shopOrder);
         }
         else if (noteType == OrderDeliveryNote.NoteType.GROUP_GENERAL) {
             if (request.getDeliveryGroupId() == null) {
@@ -117,9 +125,9 @@ public class OrderDeliveryNoteServiceImpl implements OrderDeliveryNoteService {
         String categoryStr = noteCategory != null ? noteCategory.toString() : null;
         
         if (noteType == OrderDeliveryNote.NoteType.ORDER_SPECIFIC) {
-            // Log for specific order
+            // Log for specific shop order
             activityLogService.logDeliveryNoteAdded(
-                savedNote.getOrder().getOrderId(),
+                savedNote.getShopOrder().getOrder().getOrderId(),
                 savedNote.getNoteText(),
                 agentName,
                 agent.getId().toString(),
@@ -127,8 +135,8 @@ public class OrderDeliveryNoteServiceImpl implements OrderDeliveryNoteService {
                 categoryStr
             );
         } else if (noteType == OrderDeliveryNote.NoteType.GROUP_GENERAL) {
-            List<Long> orderIds = savedNote.getDeliveryGroup().getOrders().stream()
-                .map(Order::getOrderId)
+            List<Long> orderIds = savedNote.getDeliveryGroup().getShopOrders().stream()
+                .map(so -> so.getOrder().getOrderId())
                 .collect(java.util.stream.Collectors.toList());
             
             activityLogService.logGroupDeliveryNoteAdded(
@@ -158,11 +166,11 @@ public class OrderDeliveryNoteServiceImpl implements OrderDeliveryNoteService {
             throw new UnauthorizedException("You can only update notes that you created");
         }
 
-        if (note.getOrder() != null) {
-            ReadyForDeliveryGroup group = note.getOrder().getReadyForDeliveryGroup();
+        if (note.getShopOrder() != null) {
+            ReadyForDeliveryGroup group = note.getShopOrder().getReadyForDeliveryGroup();
             if (group == null || group.getDeliverer() == null ||
                 !group.getDeliverer().getId().equals(agent.getId())) {
-                throw new UnauthorizedException("You are no longer assigned to this order's delivery");
+                throw new UnauthorizedException("You are no longer assigned to this shop order's delivery");
             }
         } else if (note.getDeliveryGroup() != null) {
             if (note.getDeliveryGroup().getDeliverer() == null ||
@@ -203,11 +211,11 @@ public class OrderDeliveryNoteServiceImpl implements OrderDeliveryNoteService {
             throw new UnauthorizedException("You can only delete notes that you created");
         }
 
-        if (note.getOrder() != null) {
-            ReadyForDeliveryGroup group = note.getOrder().getReadyForDeliveryGroup();
+        if (note.getShopOrder() != null) {
+            ReadyForDeliveryGroup group = note.getShopOrder().getReadyForDeliveryGroup();
             if (group == null || group.getDeliverer() == null ||
                 !group.getDeliverer().getId().equals(agent.getId())) {
-                throw new UnauthorizedException("You are no longer assigned to this order's delivery");
+                throw new UnauthorizedException("You are no longer assigned to this shop order's delivery");
             }
         } else if (note.getDeliveryGroup() != null) {
             if (note.getDeliveryGroup().getDeliverer() == null ||

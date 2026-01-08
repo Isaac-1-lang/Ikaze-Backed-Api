@@ -110,13 +110,17 @@ public class StripeWebhookController {
         tx.setReceiptUrl(getReceiptUrlFromSession(session)); // optional
         txRepository.save(tx);
 
-        // 2. update order status
+        // 2. update order status - update all shop orders to PROCESSING
         Order order = tx.getOrder();
-        order.setOrderStatus(Order.OrderStatus.PROCESSING);
+        if (order.getShopOrders() != null) {
+            for (com.ecommerce.entity.ShopOrder shopOrder : order.getShopOrders()) {
+                shopOrder.setStatus(com.ecommerce.entity.ShopOrder.ShopOrderStatus.PROCESSING);
+            }
+        }
         orderRepository.save(order);
 
         // 3. reduce inventory for each OrderItem (pessimistic lock)
-        for (OrderItem item : order.getOrderItems()) {
+        for (OrderItem item : order.getAllItems()) {
             ProductVariant variant = variantRepository.findByIdForUpdate(item.getProductVariant().getId())
                     .orElseThrow(() -> new EntityNotFoundException("Variant not found"));
 

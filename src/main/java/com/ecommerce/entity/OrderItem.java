@@ -27,8 +27,8 @@ public class OrderItem {
     private Long orderItemId;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "order_id", nullable = false)
-    private Order order;
+    @JoinColumn(name = "shop_order_id", nullable = false)
+    private ShopOrder shopOrder;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "product_id")
@@ -117,12 +117,12 @@ public class OrderItem {
     }
 
     /**
-     * Sets the order for this item
+     * Sets the shop order for this item
      * 
-     * @param order The order to set
+     * @param shopOrder The shop order to set
      */
-    public void setOrder(Order order) {
-        this.order = order;
+    public void setShopOrder(ShopOrder shopOrder) {
+        this.shopOrder = shopOrder;
     }
 
     /**
@@ -170,6 +170,7 @@ public class OrderItem {
                 product != null ? product.getProductId() : "null",
                 productVariant != null ? productVariant.getId() : "null");
     }
+
     /**
      * Gets the effective product (either the direct product or the product from
      * variant)
@@ -239,13 +240,13 @@ public class OrderItem {
         return 0;
     }
 
-public void addOrderItemBatch(OrderItemBatch orderItemBatch) {
-    orderItemBatches.add(orderItemBatch);
-    orderItemBatch.setOrderItem(this);
-}
+    public void addOrderItemBatch(OrderItemBatch orderItemBatch) {
+        orderItemBatches.add(orderItemBatch);
+        orderItemBatch.setOrderItem(this);
+    }
 
-public void removeOrderItemBatch(OrderItemBatch orderItemBatch) {
-    orderItemBatches.remove(orderItemBatch);
-    orderItemBatch.setOrderItem(null);
-}
+    public void removeOrderItemBatch(OrderItemBatch orderItemBatch) {
+        orderItemBatches.remove(orderItemBatch);
+        orderItemBatch.setOrderItem(null);
+    }
 }

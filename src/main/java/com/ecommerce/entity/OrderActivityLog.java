@@ -13,9 +13,9 @@ import java.time.LocalDateTime;
 
 @Entity
 @Table(name = "order_activity_logs", indexes = {
-    @Index(name = "idx_order_id", columnList = "order_id"),
-    @Index(name = "idx_activity_type", columnList = "activity_type"),
-    @Index(name = "idx_timestamp", columnList = "timestamp")
+        @Index(name = "idx_order_id", columnList = "order_id"),
+        @Index(name = "idx_activity_type", columnList = "activity_type"),
+        @Index(name = "idx_timestamp", columnList = "timestamp")
 })
 @EntityListeners(AuditingEntityListener.class)
 @Data
@@ -27,8 +27,16 @@ public class OrderActivityLog {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(name = "order_id", nullable = false)
-    private Long orderId;
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "order_id")
+    private Order order;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "shop_order_id")
+    private ShopOrder shopOrder;
+
+    @Column(name = "order_id_value")
+    private Long orderIdValue; // Keep original ID for quick lookup/auditing
 
     @Enumerated(EnumType.STRING)
     @Column(name = "activity_type", nullable = false, length = 50)
@@ -44,10 +52,10 @@ public class OrderActivityLog {
     private LocalDateTime timestamp;
 
     @Column(name = "actor_type", length = 50)
-    private String actorType; 
+    private String actorType;
 
     @Column(name = "actor_id", length = 100)
-    private String actorId; 
+    private String actorId;
 
     @Column(name = "actor_name", length = 200)
     private String actorName;
@@ -59,7 +67,7 @@ public class OrderActivityLog {
     private String referenceId;
 
     @Column(name = "reference_type", length = 50)
-    private String referenceType; 
+    private String referenceType;
 
     @CreatedDate
     @Column(name = "created_at", nullable = false, updatable = false)
@@ -73,6 +81,9 @@ public class OrderActivityLog {
         if (timestamp == null) {
             timestamp = LocalDateTime.now();
         }
+        if (order != null) {
+            this.orderIdValue = order.getId();
+        }
     }
 
     public enum ActivityType {
@@ -83,13 +94,13 @@ public class OrderActivityLog {
         ORDER_CONFIRMED,
         ORDER_PROCESSING,
         READY_FOR_DELIVERY,
-        
+
         // Delivery Group & Assignment
         ADDED_TO_DELIVERY_GROUP,
         REMOVED_FROM_DELIVERY_GROUP,
         DELIVERY_AGENT_ASSIGNED,
         DELIVERY_AGENT_CHANGED,
-        
+
         // Delivery Process
         DELIVERY_STARTED,
         OUT_FOR_DELIVERY,
@@ -97,12 +108,12 @@ public class OrderActivityLog {
         DELIVERY_ATTEMPTED,
         DELIVERY_FAILED,
         DELIVERY_COMPLETED,
-        
+
         // Order Status Changes
         ORDER_CANCELLED,
         ORDER_ON_HOLD,
         ORDER_RESUMED,
-        
+
         RETURN_REQUESTED,
         RETURN_APPROVED,
         RETURN_DENIED,
@@ -110,17 +121,17 @@ public class OrderActivityLog {
         RETURN_INSPECTED,
         REFUND_INITIATED,
         REFUND_COMPLETED,
-        
+
         // Appeals
         APPEAL_SUBMITTED,
         APPEAL_APPROVED,
         APPEAL_DENIED,
         APPEAL_ESCALATED,
-        
+
         ADMIN_NOTE_ADDED,
         CUSTOMER_NOTE_ADDED,
         SYSTEM_NOTE_ADDED,
-        
+
         // Other Events
         ORDER_UPDATED,
         TRACKING_INFO_UPDATED,
@@ -135,7 +146,8 @@ public class OrderActivityLog {
     }
 
     public static class OrderActivityLogBuilder {
-        private Long orderId;
+        private Order order;
+        private ShopOrder shopOrder;
         private ActivityType activityType;
         private String title;
         private String description;
@@ -147,8 +159,13 @@ public class OrderActivityLog {
         private String referenceId;
         private String referenceType;
 
-        public OrderActivityLogBuilder orderId(Long orderId) {
-            this.orderId = orderId;
+        public OrderActivityLogBuilder order(Order order) {
+            this.order = order;
+            return this;
+        }
+
+        public OrderActivityLogBuilder shopOrder(ShopOrder shopOrder) {
+            this.shopOrder = shopOrder;
             return this;
         }
 
@@ -204,7 +221,10 @@ public class OrderActivityLog {
 
         public OrderActivityLog build() {
             OrderActivityLog log = new OrderActivityLog();
-            log.orderId = this.orderId;
+            log.order = this.order;
+            log.shopOrder = this.shopOrder;
+            if (this.order != null)
+                log.orderIdValue = this.order.getId();
             log.activityType = this.activityType;
             log.title = this.title;
             log.description = this.description;

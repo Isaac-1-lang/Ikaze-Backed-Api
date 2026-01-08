@@ -39,11 +39,17 @@ public class PointsPaymentServiceImpl implements PointsPaymentService {
     private final EnhancedStockLockService enhancedStockLockService;
     private final OrderEmailService orderEmailService;
     private final MoneyFlowService moneyFlowService;
+    private final UserPointsRepository userPointsRepository;
+    private final ShopRepository shopRepository;
 
     @Override
     public PointsPaymentPreviewDTO previewPointsPayment(PointsPaymentRequest request) {
         User user = userRepository.findById(request.getUserId())
                 .orElseThrow(() -> new RuntimeException("User not found"));
+
+        if (request.getShopId() == null) {
+            throw new IllegalArgumentException("shopId is required for points payments");
+        }
 
         validateDeliveryCountry(request.getShippingAddress().getCountry());
 
@@ -59,7 +65,8 @@ public class PointsPaymentServiceImpl implements PointsPaymentService {
             if (item.getVariantId() != null) {
                 try {
                     ProductVariant variant = productVariantRepository.findById(item.getVariantId())
-                            .orElseThrow(() -> new RuntimeException("Variant not found with ID: " + item.getVariantId()));
+                            .orElseThrow(
+                                    () -> new RuntimeException("Variant not found with ID: " + item.getVariantId()));
                     originalPrice = variant.getPrice();
 
                     if (variant.getDiscount() != null) {
@@ -73,7 +80,8 @@ public class PointsPaymentServiceImpl implements PointsPaymentService {
             } else if (item.getProductId() != null) {
                 try {
                     Product product = productRepository.findById(item.getProductId())
-                            .orElseThrow(() -> new RuntimeException("Product not found with ID: " + item.getProductId()));
+                            .orElseThrow(
+                                    () -> new RuntimeException("Product not found with ID: " + item.getProductId()));
                     originalPrice = product.getPrice();
 
                     if (product.getDiscount() != null) {
@@ -99,7 +107,8 @@ public class PointsPaymentServiceImpl implements PointsPaymentService {
         // Calculate shipping cost with proper error handling (same as CheckoutService)
         BigDecimal shippingCost;
         try {
-            shippingCost = shippingCostService.calculateOrderShippingCost(request.getShippingAddress(), request.getItems(), subtotal);
+            shippingCost = shippingCostService.calculateOrderShippingCost(request.getShippingAddress(),
+                    request.getItems(), subtotal);
         } catch (Exception e) {
             log.error("Error calculating shipping cost for points payment preview: {}", e.getMessage(), e);
             shippingCost = BigDecimal.valueOf(10.00); // Default fallback
@@ -108,15 +117,14 @@ public class PointsPaymentServiceImpl implements PointsPaymentService {
         BigDecimal taxAmount = BigDecimal.ZERO;
         BigDecimal totalAmount = subtotal.add(shippingCost).add(taxAmount);
 
-        Integer availablePoints = user.getPoints();
-        BigDecimal pointsValue = rewardService.calculatePointsValue(availablePoints);
+        Integer availablePoints = getAvailablePointsForShop(user.getId(), request.getShopId());
+        BigDecimal pointValue = getPointValueForShop(request.getShopId());
+        BigDecimal pointsValue = pointValue.multiply(BigDecimal.valueOf(availablePoints));
         BigDecimal remainingToPay = totalAmount.subtract(pointsValue).max(BigDecimal.ZERO);
         boolean canPayWithPointsOnly = pointsValue.compareTo(totalAmount) >= 0;
 
-        RewardSystemDTO activeSystem = rewardService.getActiveRewardSystem();
-        BigDecimal pointValue = activeSystem != null ? activeSystem.getPointValue() : BigDecimal.ZERO;
-
-        log.info("Points payment preview - Subtotal: {}, Shipping: {}, Total: {}, Available Points: {}, Points Value: {}, Remaining: {}", 
+        log.info(
+                "Points payment preview - Subtotal: {}, Shipping: {}, Total: {}, Available Points: {}, Points Value: {}, Remaining: {}",
                 subtotal, shippingCost, totalAmount, availablePoints, pointsValue, remainingToPay);
 
         return new PointsPaymentPreviewDTO(
@@ -125,8 +133,7 @@ public class PointsPaymentServiceImpl implements PointsPaymentService {
                 pointsValue,
                 remainingToPay,
                 canPayWithPointsOnly,
-                pointValue
-        );
+                pointValue);
     }
 
     @Override
@@ -149,144 +156,150 @@ public class PointsPaymentServiceImpl implements PointsPaymentService {
     }
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
-    private PointsPaymentResult processFullPointsPayment(User user, PointsPaymentRequest request, 
-                                                        PointsPaymentPreviewDTO preview) throws Exception {
-        
+    private PointsPaymentResult processFullPointsPayment(User user, PointsPaymentRequest request,
+            PointsPaymentPreviewDTO preview) throws Exception {
+
         log.info("Starting full points payment for user: {}", user.getId());
-            Map<CartItemDTO, List<FEFOStockAllocationService.BatchAllocation>> allocations = 
-                    warehouseAllocator.allocateStockWithFEFO(request.getItems(), request.getShippingAddress());
-            log.info("Stock allocation completed successfully");
+        Map<CartItemDTO, List<FEFOStockAllocationService.BatchAllocation>> allocations = warehouseAllocator
+                .allocateStockWithFEFO(request.getItems(), request.getShippingAddress());
+        log.info("Stock allocation completed successfully");
 
-            Order order = createOrderFromRequest(request, user, allocations, preview.getTotalAmount(), true);
-            log.info("Order created successfully");
-            
-            Order savedOrder = orderRepository.save(order);
-            log.info("Order saved with ID: {}", savedOrder.getOrderId());
+        Order order = createOrderFromRequest(request, user, allocations, preview.getTotalAmount(), true);
+        log.info("Order created successfully");
 
-            for (Map.Entry<CartItemDTO, List<FEFOStockAllocationService.BatchAllocation>> entry : allocations.entrySet()) {
-                log.info("Committing allocation for cart item: {}", entry.getKey().getProductId());
-                fefoService.commitAllocation(entry.getValue());
-                log.info("FEFO allocation committed successfully");
-                
-                createOrderItemBatches(savedOrder, entry.getKey(), entry.getValue());
-                log.info("Order item batches created successfully");
-            }
-            log.info("All batch allocations committed successfully");
+        Order savedOrder = orderRepository.save(order);
+        log.info("Order saved with ID: {}", savedOrder.getOrderId());
 
-            Integer pointsToUse = calculatePointsNeeded(preview.getTotalAmount(), preview.getPointValue());
-            log.info("Points to deduct: {}", pointsToUse);
-            
-            rewardService.deductPointsForPurchase(user.getId(), pointsToUse, 
-                    "Points used for order #" + savedOrder.getOrderId());
-            log.info("Points deducted successfully");
+        for (Map.Entry<CartItemDTO, List<FEFOStockAllocationService.BatchAllocation>> entry : allocations.entrySet()) {
+            log.info("Committing allocation for cart item: {}", entry.getKey().getProductId());
+            fefoService.commitAllocation(entry.getValue());
+            log.info("FEFO allocation committed successfully");
 
-            OrderTransaction transaction = savedOrder.getOrderTransaction();
-            transaction.setStatus(OrderTransaction.TransactionStatus.COMPLETED);
-            transaction.setPointsUsed(pointsToUse);
-            transaction.setPointsValue(preview.getTotalAmount());
-            transaction.setPaymentDate(LocalDateTime.now());
-            transactionRepository.save(transaction);
-            log.info("Transaction updated successfully");
+            createOrderItemBatches(savedOrder, entry.getKey(), entry.getValue());
+            log.info("Order item batches created successfully");
+        }
+        log.info("All batch allocations committed successfully");
 
-            // Send order confirmation email
-            try {
-                orderEmailService.sendOrderConfirmationEmail(savedOrder);
-                log.info("Order confirmation email sent successfully for points payment order: {}", savedOrder.getOrderId());
-            } catch (Exception e) {
-                log.error("Failed to send order confirmation email for points payment order {}: {}", savedOrder.getOrderId(), e.getMessage());
-            }
+        Integer pointsToUse = calculatePointsNeeded(preview.getTotalAmount(), preview.getPointValue());
+        log.info("Points to deduct: {}", pointsToUse);
 
-            return new PointsPaymentResult(true, "Payment completed successfully", 
-                    savedOrder.getOrderId(), savedOrder.getOrderCode(), pointsToUse, preview.getPointsValue(), 
-                    BigDecimal.ZERO, null, false);
+        // Record shop-scoped points deduction
+        createPointsRecord(user, request.getShopId(), savedOrder.getOrderId(), -pointsToUse,
+                preview.getTotalAmount(), "Points used for order #" + savedOrder.getOrderCode());
+        log.info("Points deduction recorded successfully");
+
+        OrderTransaction transaction = savedOrder.getOrderTransaction();
+        transaction.setStatus(OrderTransaction.TransactionStatus.COMPLETED);
+        transaction.setPointsUsed(pointsToUse);
+        transaction.setPointsValue(preview.getTotalAmount());
+        transaction.setPaymentDate(LocalDateTime.now());
+        transactionRepository.save(transaction);
+        log.info("Transaction updated successfully");
+
+        // Send order confirmation email
+        try {
+            orderEmailService.sendOrderConfirmationEmail(savedOrder);
+            log.info("Order confirmation email sent successfully for points payment order: {}",
+                    savedOrder.getOrderId());
+        } catch (Exception e) {
+            log.error("Failed to send order confirmation email for points payment order {}: {}",
+                    savedOrder.getOrderId(), e.getMessage());
+        }
+
+        return new PointsPaymentResult(true, "Payment completed successfully",
+                savedOrder.getOrderId(), savedOrder.getOrderCode(), pointsToUse, preview.getPointsValue(),
+                BigDecimal.ZERO, null, false);
     }
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
-    private PointsPaymentResult processHybridPayment(User user, PointsPaymentRequest request, 
-                                                    PointsPaymentPreviewDTO preview) throws Exception {
-        
+    private PointsPaymentResult processHybridPayment(User user, PointsPaymentRequest request,
+            PointsPaymentPreviewDTO preview) throws Exception {
+
         log.info("Starting hybrid payment for user: {}", user.getId());
-            Map<CartItemDTO, List<FEFOStockAllocationService.BatchAllocation>> allocations = 
-                    warehouseAllocator.allocateStockWithFEFO(request.getItems(), request.getShippingAddress());
-            log.info("Stock allocation completed successfully");
+        Map<CartItemDTO, List<FEFOStockAllocationService.BatchAllocation>> allocations = warehouseAllocator
+                .allocateStockWithFEFO(request.getItems(), request.getShippingAddress());
+        log.info("Stock allocation completed successfully");
 
-            Order order = createOrderFromRequest(request, user, allocations, preview.getTotalAmount(), false);
-            log.info("Order created successfully");
-            
-            Order savedOrder = orderRepository.save(order);
-            log.info("Order saved with ID: {}", savedOrder.getOrderId());
+        Order order = createOrderFromRequest(request, user, allocations, preview.getTotalAmount(), false);
+        log.info("Order created successfully");
 
-            for (Map.Entry<CartItemDTO, List<FEFOStockAllocationService.BatchAllocation>> entry : allocations.entrySet()) {
-                createOrderItemBatches(savedOrder, entry.getKey(), entry.getValue());
-            }
+        Order savedOrder = orderRepository.save(order);
+        log.info("Order saved with ID: {}", savedOrder.getOrderId());
 
-            // Step 4: Lock stock at batch level using session ID
-            String sessionId = savedOrder.getOrderTransaction().getStripeSessionId();
-            if (sessionId == null) {
-                // Generate temporary session ID for locking
-                sessionId = "temp_hybrid_" + savedOrder.getOrderId().toString();
-            }
+        for (Map.Entry<CartItemDTO, List<FEFOStockAllocationService.BatchAllocation>> entry : allocations.entrySet()) {
+            createOrderItemBatches(savedOrder, entry.getKey(), entry.getValue());
+        }
 
-            if (!lockStockWithFEFOAllocation(sessionId, request.getItems(), request.getShippingAddress())) {
-                log.error("Failed to lock stock for hybrid payment: {}", savedOrder.getOrderId());
-                orderRepository.delete(savedOrder);
-                throw new IllegalStateException("Unable to secure stock for your order. Please try again.");
-            }
-            log.info("Stock batches locked successfully for session: {}", sessionId);
+        // Step 4: Lock stock at batch level using session ID
+        String sessionId = savedOrder.getOrderTransaction().getStripeSessionId();
+        if (sessionId == null) {
+            // Generate temporary session ID for locking
+            sessionId = "temp_hybrid_" + savedOrder.getOrderId().toString();
+        }
 
-            // For hybrid payment, use all available points (up to order total)
-            Integer availablePoints = user.getPoints(); // Use User.points directly for performance
-            BigDecimal availablePointsValue = rewardService.calculatePointsValue(availablePoints);
-            BigDecimal orderTotal = preview.getTotalAmount();
-            
-            // Use all points if their value is less than order total, otherwise use points worth the order total
-            Integer pointsToUse;
-            BigDecimal pointsValue;
-            if (availablePointsValue.compareTo(orderTotal) <= 0) {
-                // Use all available points
-                pointsToUse = availablePoints;
-                pointsValue = availablePointsValue;
-            } else {
-                pointsToUse = calculatePointsNeeded(orderTotal, preview.getPointValue());
-                pointsValue = rewardService.calculatePointsValue(pointsToUse);
-            }
-            log.info("Points to deduct: {}, Points value: {}", pointsToUse, pointsValue);
-            
-            rewardService.deductPointsForPurchase(user.getId(), pointsToUse, 
-                    "Partial points payment for order #" + savedOrder.getOrderId());
-            log.info("Points deducted successfully");
+        if (!lockStockWithFEFOAllocation(sessionId, request.getItems(), request.getShippingAddress())) {
+            log.error("Failed to lock stock for hybrid payment: {}", savedOrder.getOrderId());
+            orderRepository.delete(savedOrder);
+            throw new IllegalStateException("Unable to secure stock for your order. Please try again.");
+        }
+        log.info("Stock batches locked successfully for session: {}", sessionId);
 
-            // Calculate the reduced amount to charge via Stripe (after points deduction)
-            BigDecimal remainingAmount = orderTotal.subtract(pointsValue);
-            log.info("Order total: {}, Points value: {}, Remaining to charge: {}", 
-                    orderTotal, pointsValue, remainingAmount);
+        // For hybrid payment, use all available points (up to order total)
+        Integer availablePoints = getAvailablePointsForShop(user.getId(), request.getShopId());
+        BigDecimal pointValue = getPointValueForShop(request.getShopId());
+        BigDecimal availablePointsValue = pointValue.multiply(BigDecimal.valueOf(availablePoints));
+        BigDecimal orderTotal = preview.getTotalAmount();
 
-            String stripeSessionId = stripeService.createCheckoutSessionForHybridPayment(
-                    savedOrder, 
-                    "usd", 
-                    "web",
-                    remainingAmount
-            );
-            log.info("Stripe session created: {}", stripeSessionId);
+        // Use all points if their value is less than order total, otherwise use points
+        // worth the order total
+        Integer pointsToUse;
+        BigDecimal pointsValue;
+        if (availablePointsValue.compareTo(orderTotal) <= 0) {
+            // Use all available points
+            pointsToUse = availablePoints;
+            pointsValue = availablePointsValue;
+        } else {
+            pointsToUse = calculatePointsNeeded(orderTotal, pointValue);
+            pointsValue = pointValue.multiply(BigDecimal.valueOf(pointsToUse));
+        }
+        log.info("Points to deduct: {}, Points value: {}", pointsToUse, pointsValue);
 
-            OrderTransaction transaction = transactionRepository.findById(savedOrder.getOrderTransaction().getOrderTransactionId())
-                    .orElseThrow(() -> new RuntimeException("Transaction not found"));
-            
-            log.info("Transaction reloaded - Session ID: {}, Payment Intent ID: {}", 
-                    transaction.getStripeSessionId(), transaction.getStripePaymentIntentId());
+        // Record shop-scoped points deduction
+        createPointsRecord(user, request.getShopId(), savedOrder.getOrderId(), -pointsToUse,
+                pointsValue, "Partial points payment for order #" + savedOrder.getOrderCode());
+        log.info("Points deduction recorded successfully");
 
-            if (transaction.getStripeSessionId() != null && !transaction.getStripeSessionId().equals(sessionId)) {
-                transferBatchLocks(sessionId, transaction.getStripeSessionId());
-            }
+        // Calculate the reduced amount to charge via Stripe (after points deduction)
+        BigDecimal remainingAmount = orderTotal.subtract(pointsValue);
+        log.info("Order total: {}, Points value: {}, Remaining to charge: {}",
+                orderTotal, pointsValue, remainingAmount);
 
-            transaction.setPointsUsed(pointsToUse);
-            transaction.setPointsValue(pointsValue);
-            transactionRepository.save(transaction);
-            log.info("Transaction updated with points information successfully");
+        String stripeSessionId = stripeService.createCheckoutSessionForHybridPayment(
+                savedOrder,
+                "usd",
+                "web",
+                remainingAmount);
+        log.info("Stripe session created: {}", stripeSessionId);
 
-            return new PointsPaymentResult(true, "Hybrid payment initiated", 
-                    savedOrder.getOrderId(), savedOrder.getOrderCode(), pointsToUse, pointsValue, 
-                    preview.getRemainingToPay(), stripeSessionId, true);
+        OrderTransaction transaction = transactionRepository
+                .findById(savedOrder.getOrderTransaction().getOrderTransactionId())
+                .orElseThrow(() -> new RuntimeException("Transaction not found"));
+
+        log.info("Transaction reloaded - Session ID: {}, Payment Intent ID: {}",
+                transaction.getStripeSessionId(), transaction.getStripePaymentIntentId());
+
+        if (transaction.getStripeSessionId() != null && !transaction.getStripeSessionId().equals(sessionId)) {
+            transferBatchLocks(sessionId, transaction.getStripeSessionId());
+        }
+
+        transaction.setPointsUsed(pointsToUse);
+        transaction.setPointsValue(pointsValue);
+        transactionRepository.save(transaction);
+        log.info("Transaction updated with points information successfully");
+
+        return new PointsPaymentResult(true, "Hybrid payment initiated",
+                savedOrder.getOrderId(), savedOrder.getOrderCode(), pointsToUse, pointsValue,
+                preview.getRemainingToPay(), stripeSessionId, true);
     }
 
     @Override
@@ -306,31 +319,33 @@ public class PointsPaymentServiceImpl implements PointsPaymentService {
             // Get order to retrieve orderNumber
             Order order = orderRepository.findById(orderId)
                     .orElseThrow(() -> new RuntimeException("Order not found"));
-            
+
             // Record money flow for hybrid payment (only the financial part)
             recordHybridPaymentInMoneyFlow(order, transaction);
-            
+
             // Send order confirmation email for completed hybrid payment
             try {
                 orderEmailService.sendOrderConfirmationEmail(order);
                 log.info("Order confirmation email sent successfully for hybrid payment order: {}", order.getOrderId());
             } catch (Exception e) {
-                log.error("Failed to send order confirmation email for hybrid payment order {}: {}", order.getOrderId(), e.getMessage());
+                log.error("Failed to send order confirmation email for hybrid payment order {}: {}", order.getOrderId(),
+                        e.getMessage());
             }
-            
-            return new PointsPaymentResult(true, "Hybrid payment completed", 
-                    orderId, order.getOrderCode(), transaction.getPointsUsed(), transaction.getPointsValue(), 
+
+            return new PointsPaymentResult(true, "Hybrid payment completed",
+                    orderId, order.getOrderCode(), transaction.getPointsUsed(), transaction.getPointsValue(),
                     BigDecimal.ZERO, null, false);
         } catch (Exception e) {
             log.error("Error completing hybrid payment: {}", e.getMessage(), e);
-            return new PointsPaymentResult(false, "Failed to complete payment: " + e.getMessage(), 
+            return new PointsPaymentResult(false, "Failed to complete payment: " + e.getMessage(),
                     null, null, 0, BigDecimal.ZERO, BigDecimal.ZERO, null, false);
         }
     }
 
     /**
      * Simple subtotal calculation (legacy method - kept for backward compatibility)
-     * Note: This method doesn't handle discounts properly. Use previewPointsPayment for accurate calculations.
+     * Note: This method doesn't handle discounts properly. Use previewPointsPayment
+     * for accurate calculations.
      */
     private BigDecimal calculateSimpleSubtotal(List<CartItemDTO> items) {
         return items.stream()
@@ -345,18 +360,20 @@ public class PointsPaymentServiceImpl implements PointsPaymentService {
         return amount.divide(pointValue, 0, RoundingMode.HALF_UP).intValue();
     }
 
-    private Order createOrderFromRequest(PointsPaymentRequest request, User user, 
-                                       Map<CartItemDTO, List<FEFOStockAllocationService.BatchAllocation>> allocations,
-                                       BigDecimal totalAmount, boolean isFullPointsPayment) {
+    private Order createOrderFromRequest(PointsPaymentRequest request, User user,
+            Map<CartItemDTO, List<FEFOStockAllocationService.BatchAllocation>> allocations,
+            BigDecimal totalAmount, boolean isFullPointsPayment) {
         Order order = new Order();
         order.setUser(user);
         order.setOrderCode(generateOrderNumber());
-        order.setOrderStatus(Order.OrderStatus.PROCESSING);
+        // Note: Order status is calculated from shopOrders, not set directly
 
+        // Create OrderInfo to store order totals
         BigDecimal subtotal = calculateSimpleSubtotal(request.getItems());
         OrderInfo orderInfo = new OrderInfo();
-        orderInfo.setSubtotal(subtotal); // Products total before discounts, taxes, shipping
-        orderInfo.setShippingCost(shippingCostService.calculateOrderShippingCost(request.getShippingAddress(), request.getItems(), subtotal));
+        orderInfo.setSubtotal(subtotal);
+        orderInfo.setShippingCost(shippingCostService.calculateOrderShippingCost(request.getShippingAddress(),
+                request.getItems(), subtotal));
         orderInfo.setTotalAmount(totalAmount);
         orderInfo.setOrder(order);
         order.setOrderInfo(orderInfo);
@@ -380,51 +397,79 @@ public class PointsPaymentServiceImpl implements PointsPaymentService {
 
         OrderTransaction tx = new OrderTransaction();
         tx.setOrderAmount(totalAmount);
-        tx.setPaymentMethod(isFullPointsPayment ? OrderTransaction.PaymentMethod.POINTS : OrderTransaction.PaymentMethod.HYBRID);
+        tx.setPaymentMethod(
+                isFullPointsPayment ? OrderTransaction.PaymentMethod.POINTS : OrderTransaction.PaymentMethod.HYBRID);
         tx.setStatus(OrderTransaction.TransactionStatus.PENDING);
         order.setOrderTransaction(tx);
         tx.setOrder(order);
 
+        // For multivendor system, we need to create ShopOrders and OrderItems
+        // This is a simplified implementation - in a real multivendor system,
+        // items would be grouped by shop and separate ShopOrders created
+        List<ShopOrder> shopOrders = new ArrayList<>();
+        ShopOrder shopOrder = new ShopOrder();
+        shopOrder.setOrder(order);
+        shopOrder.setTotalAmount(totalAmount);
+        shopOrder.setStatus(ShopOrder.ShopOrderStatus.PENDING);
+
+        // Set shop from first item (simplified - should group by shop)
+        if (!request.getItems().isEmpty()) {
+            CartItemDTO firstItem = request.getItems().get(0);
+            if (firstItem.getVariantId() != null) {
+                ProductVariant variant = productVariantRepository.findById(firstItem.getVariantId())
+                        .orElseThrow(
+                                () -> new RuntimeException("Product variant not found: " + firstItem.getVariantId()));
+                shopOrder.setShop(variant.getProduct().getShop());
+            } else {
+                Product product = productRepository.findById(firstItem.getProductId())
+                        .orElseThrow(() -> new RuntimeException("Product not found: " + firstItem.getProductId()));
+                shopOrder.setShop(product.getShop());
+            }
+        }
+
         List<OrderItem> orderItems = new ArrayList<>();
         for (CartItemDTO cartItem : request.getItems()) {
             OrderItem orderItem = new OrderItem();
-            orderItem.setOrder(order);
+            orderItem.setShopOrder(shopOrder);
             orderItem.setQuantity(cartItem.getQuantity());
             orderItem.setPrice(cartItem.getPrice());
-            
+
             if (cartItem.getVariantId() != null) {
                 ProductVariant variant = productVariantRepository.findById(cartItem.getVariantId())
-                        .orElseThrow(() -> new RuntimeException("Product variant not found: " + cartItem.getVariantId()));
+                        .orElseThrow(
+                                () -> new RuntimeException("Product variant not found: " + cartItem.getVariantId()));
                 orderItem.setProductVariant(variant);
             } else {
                 Product product = productRepository.findById(cartItem.getProductId())
                         .orElseThrow(() -> new RuntimeException("Product not found: " + cartItem.getProductId()));
                 orderItem.setProduct(product);
             }
-            
+
             orderItems.add(orderItem);
         }
-        order.setOrderItems(orderItems);
+        shopOrder.setItems(orderItems);
+        shopOrders.add(shopOrder);
+        order.setShopOrders(shopOrders);
 
         return order;
     }
 
-    private void createOrderItemBatches(Order order, CartItemDTO cartItem, 
-                                      List<FEFOStockAllocationService.BatchAllocation> allocations) {
+    private void createOrderItemBatches(Order order, CartItemDTO cartItem,
+            List<FEFOStockAllocationService.BatchAllocation> allocations) {
         log.info("Creating order item batches for cart item: {}", cartItem.getProductId());
         OrderItem orderItem = findOrderItemByCartItem(order, cartItem);
         log.info("Found order item for product: {}", cartItem.getProductId());
-        
+
         for (FEFOStockAllocationService.BatchAllocation allocation : allocations) {
-            log.info("Creating batch allocation: batch={}, quantity={}", 
+            log.info("Creating batch allocation: batch={}, quantity={}",
                     allocation.getStockBatch().getBatchNumber(), allocation.getQuantityAllocated());
-                    
+
             OrderItemBatch orderItemBatch = new OrderItemBatch();
             orderItemBatch.setOrderItem(orderItem);
             orderItemBatch.setStockBatch(allocation.getStockBatch());
             orderItemBatch.setWarehouse(allocation.getWarehouse());
             orderItemBatch.setQuantityUsed(allocation.getQuantityAllocated());
-            
+
             orderItemBatchRepository.save(orderItemBatch);
             log.info("Order item batch saved successfully");
         }
@@ -432,21 +477,22 @@ public class PointsPaymentServiceImpl implements PointsPaymentService {
     }
 
     private OrderItem findOrderItemByCartItem(Order order, CartItemDTO cartItem) {
-        return order.getOrderItems().stream()
+        return order.getShopOrders().stream()
+                .flatMap(shopOrder -> shopOrder.getItems().stream())
                 .filter(item -> {
                     // If cart item has variant, match by variant
                     if (cartItem.getVariantId() != null) {
-                        return item.getProductVariant() != null && 
-                               item.getProductVariant().getId().equals(cartItem.getVariantId());
+                        return item.getProductVariant() != null &&
+                                item.getProductVariant().getId().equals(cartItem.getVariantId());
                     } else {
                         // If no variant, match by product ID
-                        return item.getProduct() != null && 
-                               item.getProduct().getProductId().equals(cartItem.getProductId());
+                        return item.getProduct() != null &&
+                                item.getProduct().getProductId().equals(cartItem.getProductId());
                     }
                 })
                 .findFirst()
-                .orElseThrow(() -> new RuntimeException("Order item not found for product: " + cartItem.getProductId() + 
-                                                      (cartItem.getVariantId() != null ? ", variant: " + cartItem.getVariantId() : "")));
+                .orElseThrow(() -> new RuntimeException("Order item not found for product: " + cartItem.getProductId() +
+                        (cartItem.getVariantId() != null ? ", variant: " + cartItem.getVariantId() : "")));
     }
 
     private String generateOrderNumber() {
@@ -497,7 +543,8 @@ public class PointsPaymentServiceImpl implements PointsPaymentService {
             boolean lockSuccess = enhancedStockLockService.lockStockBatches(sessionId, lockRequests);
 
             if (lockSuccess) {
-                log.info("Successfully locked {} batches for hybrid payment session: {}", lockRequests.size(), sessionId);
+                log.info("Successfully locked {} batches for hybrid payment session: {}", lockRequests.size(),
+                        sessionId);
             } else {
                 log.error("Failed to lock batches for hybrid payment session: {}", sessionId);
             }
@@ -505,7 +552,8 @@ public class PointsPaymentServiceImpl implements PointsPaymentService {
             return lockSuccess;
 
         } catch (Exception e) {
-            log.error("Error during FEFO allocation and batch locking for hybrid payment session {}: {}", sessionId, e.getMessage(), e);
+            log.error("Error during FEFO allocation and batch locking for hybrid payment session {}: {}", sessionId,
+                    e.getMessage(), e);
             return false;
         }
     }
@@ -554,6 +602,55 @@ public class PointsPaymentServiceImpl implements PointsPaymentService {
         } catch (Exception e) {
             log.error("Failed to transfer batch locks from {} to {}: {}", fromSessionId, toSessionId, e.getMessage());
             throw new RuntimeException("Failed to transfer batch locks: " + e.getMessage(), e);
+        }
+    }
+
+    private Integer getAvailablePointsForShop(UUID userId, UUID shopId) {
+        try {
+            Integer balance = userPointsRepository.calculateCurrentBalanceByShop(userId, shopId);
+            return balance != null ? balance : 0;
+        } catch (Exception e) {
+            log.warn("Failed to get available points for user {} and shop {}: {}", userId, shopId, e.getMessage());
+            return 0;
+        }
+    }
+
+    private BigDecimal getPointValueForShop(UUID shopId) {
+        try {
+            RewardSystemDTO system = rewardService.getActiveRewardSystem(shopId);
+            return system != null && system.getPointValue() != null ? system.getPointValue() : BigDecimal.ZERO;
+        } catch (Exception e) {
+            log.warn("Failed to get active reward system for shop {}: {}", shopId, e.getMessage());
+            return BigDecimal.ZERO;
+        }
+    }
+
+    private void createPointsRecord(User user, UUID shopId, Long orderId, Integer pointsChange,
+            BigDecimal pointsValue, String description) {
+        try {
+            // Compute balance after change
+            Integer current = getAvailablePointsForShop(user.getId(), shopId);
+            Integer balanceAfter = (current != null ? current : 0) + pointsChange;
+
+            UserPoints record = new UserPoints();
+            record.setUser(user);
+            if (shopId != null) {
+                shopRepository.findById(shopId).ifPresent(record::setShop);
+            }
+            record.setPoints(pointsChange);
+            record.setPointsType(pointsChange != null && pointsChange < 0
+                    ? UserPoints.PointsType.SPENT_PURCHASE
+                    : UserPoints.PointsType.ADJUSTMENT);
+            record.setDescription(description);
+            record.setOrderId(orderId);
+            record.setPointsValue(pointsValue);
+            record.setBalanceAfter(balanceAfter);
+            record.setCreatedAt(LocalDateTime.now());
+
+            userPointsRepository.save(record);
+        } catch (Exception e) {
+            log.error("Failed to create points record for user {} shop {}: {}", user.getId(), shopId, e.getMessage());
+            throw new RuntimeException("Failed to record points transaction: " + e.getMessage(), e);
         }
     }
 
@@ -663,40 +760,43 @@ public class PointsPaymentServiceImpl implements PointsPaymentService {
         }
 
         boolean hasWarehouseInCountry = warehouseRepository.existsByCountryIgnoreCase(country.trim());
-        
+
         if (!hasWarehouseInCountry) {
             log.warn("No warehouse found in country: {}", country);
-            throw new IllegalArgumentException("Sorry, we don't deliver to " + country + " as we don't have any warehouses there.");
+            throw new IllegalArgumentException(
+                    "Sorry, we don't deliver to " + country + " as we don't have any warehouses there.");
         }
-        
+
     }
 
     /**
-     * Record hybrid payment in money flow system (only the financial part, not points)
+     * Record hybrid payment in money flow system (only the financial part, not
+     * points)
      */
     private void recordHybridPaymentInMoneyFlow(Order order, OrderTransaction transaction) {
         try {
-            BigDecimal pointsValue = transaction.getPointsValue() != null ? 
-                    transaction.getPointsValue() : BigDecimal.ZERO;
+            BigDecimal pointsValue = transaction.getPointsValue() != null ? transaction.getPointsValue()
+                    : BigDecimal.ZERO;
             BigDecimal financialAmount = transaction.getOrderAmount().subtract(pointsValue);
-            
+
             // Only record if there's actual money involved
             if (financialAmount.compareTo(BigDecimal.ZERO) > 0) {
-                String description = String.format("Hybrid payment received for Order #%s (Points: %d, Cash: $%.2f)", 
+                String description = String.format("Hybrid payment received for Order #%s (Points: %d, Cash: $%.2f)",
                         order.getOrderCode() != null ? order.getOrderCode() : order.getOrderId().toString(),
                         transaction.getPointsUsed(),
                         financialAmount);
-                
+
                 com.ecommerce.dto.CreateMoneyFlowDTO moneyFlowDTO = new com.ecommerce.dto.CreateMoneyFlowDTO();
                 moneyFlowDTO.setDescription(description);
                 moneyFlowDTO.setType(com.ecommerce.enums.MoneyFlowType.IN);
                 moneyFlowDTO.setAmount(financialAmount);
-                
+
                 moneyFlowService.save(moneyFlowDTO);
                 log.info("Recorded money flow IN: {} for hybrid payment order {}", financialAmount, order.getOrderId());
             }
         } catch (Exception e) {
-            log.error("Failed to record money flow for hybrid payment order {}: {}", order.getOrderId(), e.getMessage(), e);
+            log.error("Failed to record money flow for hybrid payment order {}: {}", order.getOrderId(), e.getMessage(),
+                    e);
             // Don't throw exception - payment already succeeded, this is just tracking
         }
     }

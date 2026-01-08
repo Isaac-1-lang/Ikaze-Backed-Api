@@ -17,7 +17,7 @@ public interface OrderDeliveryNoteRepository extends JpaRepository<OrderDelivery
     /**
      * Find all notes for a specific order (not deleted)
      */
-    @Query("SELECT n FROM OrderDeliveryNote n WHERE n.order.orderId = :orderId AND n.isDeleted = false ORDER BY n.createdAt DESC")
+    @Query("SELECT n FROM OrderDeliveryNote n WHERE n.shopOrder.order.orderId = :orderId AND n.isDeleted = false ORDER BY n.createdAt DESC")
     Page<OrderDeliveryNote> findByOrderId(@Param("orderId") Long orderId, Pageable pageable);
 
     /**
@@ -41,13 +41,13 @@ public interface OrderDeliveryNoteRepository extends JpaRepository<OrderDelivery
     /**
      * Find all notes for orders in a delivery group (not deleted)
      */
-    @Query("SELECT n FROM OrderDeliveryNote n WHERE n.order.readyForDeliveryGroup.deliveryGroupId = :groupId AND n.isDeleted = false ORDER BY n.createdAt DESC")
+    @Query("SELECT n FROM OrderDeliveryNote n WHERE n.shopOrder.readyForDeliveryGroup.deliveryGroupId = :groupId AND n.isDeleted = false ORDER BY n.createdAt DESC")
     Page<OrderDeliveryNote> findAllNotesForDeliveryGroup(@Param("groupId") Long groupId, Pageable pageable);
 
     /**
      * Count notes for an order
      */
-    @Query("SELECT COUNT(n) FROM OrderDeliveryNote n WHERE n.order.orderId = :orderId AND n.isDeleted = false")
+    @Query("SELECT COUNT(n) FROM OrderDeliveryNote n WHERE n.shopOrder.order.orderId = :orderId AND n.isDeleted = false")
     long countByOrderId(@Param("orderId") Long orderId);
 
     /**

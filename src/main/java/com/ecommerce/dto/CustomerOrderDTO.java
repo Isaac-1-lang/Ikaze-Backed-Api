@@ -16,23 +16,20 @@ import java.util.List;
 public class CustomerOrderDTO {
     private String id;
     private String orderNumber;
-    private String status;
-    private List<CustomerOrderItemDTO> items;
+    // private String status; // Removed as status is now per shop
+    private List<ShopOrderDTO> shopOrders; // Grouped by shop
     private BigDecimal subtotal;
     private BigDecimal tax;
-    private BigDecimal shipping;
-    private BigDecimal discount;
     private BigDecimal total;
     private CustomerOrderAddressDTO shippingAddress;
     private CustomerOrderAddressDTO billingAddress;
-    private String paymentMethod; // Only method name, no sensitive data
+    private String paymentMethod;
     private String paymentStatus;
     private String notes;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
-    private String estimatedDelivery;
-    private String trackingNumber;
 
+    // Helper nested classes remain the same...
     @Data
     @Builder
     @NoArgsConstructor
@@ -43,7 +40,7 @@ public class CustomerOrderDTO {
         private SimpleProductDTO product;
         private Integer quantity;
         private BigDecimal price;
-        private BigDecimal originalPrice; // Price before discount
+        private BigDecimal originalPrice;
         private BigDecimal totalPrice;
         private BigDecimal discountPercentage;
         private String discountName;

@@ -31,8 +31,8 @@ public class OrderDeliveryNote {
     private NoteCategory noteCategory;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "order_id")
-    private Order order;
+    @JoinColumn(name = "shop_order_id")
+    private ShopOrder shopOrder;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "delivery_group_id")
@@ -68,8 +68,8 @@ public class OrderDeliveryNote {
      * Validates that the note has either an order or delivery group
      */
     private void validateNote() {
-        if (noteType == NoteType.ORDER_SPECIFIC && order == null) {
-            throw new IllegalStateException("Order-specific note must have an associated order");
+        if (noteType == NoteType.ORDER_SPECIFIC && shopOrder == null) {
+            throw new IllegalStateException("Order-specific note must have an associated shop order");
         }
         if (noteType == NoteType.GROUP_GENERAL && deliveryGroup == null) {
             throw new IllegalStateException("Group-general note must have an associated delivery group");
@@ -80,23 +80,23 @@ public class OrderDeliveryNote {
      * Enum for note type - determines if note is for order or group
      */
     public enum NoteType {
-        ORDER_SPECIFIC,    // Note specific to a single order
-        GROUP_GENERAL      // Note for the entire delivery group
+        ORDER_SPECIFIC, // Note specific to a single order
+        GROUP_GENERAL // Note for the entire delivery group
     }
 
     /**
      * Enum for note category - helps categorize the type of note
      */
     public enum NoteCategory {
-        TRAFFIC_DELAY,  
-        CUSTOMER_UNAVAILABLE, 
-        ADDRESS_ISSUE, 
-        DELIVERY_INSTRUCTION,    
-        WEATHER_CONDITION,       
-        VEHICLE_ISSUE,           
-        SUCCESSFUL_DELIVERY,     
-        FAILED_DELIVERY,         
-        GENERAL,                 
-        OTHER                    
+        TRAFFIC_DELAY,
+        CUSTOMER_UNAVAILABLE,
+        ADDRESS_ISSUE,
+        DELIVERY_INSTRUCTION,
+        WEATHER_CONDITION,
+        VEHICLE_ISSUE,
+        SUCCESSFUL_DELIVERY,
+        FAILED_DELIVERY,
+        GENERAL,
+        OTHER
     }
 }

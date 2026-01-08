@@ -56,7 +56,7 @@ public class StripeService {
                         .orElseThrow(() -> new RuntimeException("Order not found: " + order.getOrderId()));
 
                 List<SessionCreateParams.LineItem> lineItems = new ArrayList<>();
-                for (OrderItem item : reloadedOrder.getOrderItems()) {
+                for (OrderItem item : reloadedOrder.getAllItems()) {
                         long unitAmount = item.getPrice().multiply(BigDecimal.valueOf(100)).longValue();
                         Product product = item.getEffectiveProduct();
                         SessionCreateParams.LineItem.PriceData.ProductData productData = SessionCreateParams.LineItem.PriceData.ProductData

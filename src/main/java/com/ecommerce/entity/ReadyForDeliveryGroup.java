@@ -32,7 +32,7 @@ public class ReadyForDeliveryGroup {
     private User deliverer;
 
     @OneToMany(mappedBy = "readyForDeliveryGroup", fetch = FetchType.LAZY)
-    private List<Order> orders = new ArrayList<>();
+    private List<ShopOrder> shopOrders = new ArrayList<>();
 
     @OneToOne(mappedBy = "readyForDeliveryGroup", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
     private DeliveryAgentLocation deliveryAgentLocation;
@@ -63,30 +63,30 @@ public class ReadyForDeliveryGroup {
     /**
      * Sets the ready for delivery group for an order
      * 
-     * @param order The order to set
+     * @param shopOrder The shop order to set
      */
-    public void setReadyForDeliveryGroup(Order order) {
+    public void setReadyForDeliveryGroup(ShopOrder shopOrder) {
         // This method is needed for the relationship
     }
 
     /**
      * Adds an order to this delivery group
      * 
-     * @param order The order to add
+     * @param shopOrder The shop order to add
      */
-    public void addOrder(Order order) {
-        orders.add(order);
-        order.setReadyForDeliveryGroup(this);
+    public void addShopOrder(ShopOrder shopOrder) {
+        shopOrders.add(shopOrder);
+        shopOrder.setReadyForDeliveryGroup(this);
     }
 
     /**
      * Removes an order from this delivery group
      * 
-     * @param order The order to remove
+     * @param shopOrder The shop order to remove
      */
-    public void removeOrder(Order order) {
-        orders.remove(order);
-        order.setReadyForDeliveryGroup(null);
+    public void removeShopOrder(ShopOrder shopOrder) {
+        shopOrders.remove(shopOrder);
+        shopOrder.setReadyForDeliveryGroup(null);
     }
 
     /**

@@ -57,6 +57,24 @@ public interface UserPointsRepository extends JpaRepository<UserPoints, Long> {
     Integer calculateCurrentBalance(@Param("userId") UUID userId);
 
     /**
+     * Calculate current point balance for a user scoped to a specific shop
+     */
+    @Query("SELECT COALESCE(SUM(up.points), 0) FROM UserPoints up WHERE up.user.id = :userId AND up.shop.shopId = :shopId")
+    Integer calculateCurrentBalanceByShop(@Param("userId") UUID userId, @Param("shopId") UUID shopId);
+
+    /**
+     * Calculate total points earned by a user for a specific shop
+     */
+    @Query("SELECT COALESCE(SUM(up.points), 0) FROM UserPoints up WHERE up.user.id = :userId AND up.shop.shopId = :shopId AND up.points > 0")
+    Integer calculateTotalPointsEarnedByShop(@Param("userId") UUID userId, @Param("shopId") UUID shopId);
+
+    /**
+     * Calculate total points spent by a user for a specific shop
+     */
+    @Query("SELECT COALESCE(ABS(SUM(up.points)), 0) FROM UserPoints up WHERE up.user.id = :userId AND up.shop.shopId = :shopId AND up.points < 0")
+    Integer calculateTotalPointsSpentByShop(@Param("userId") UUID userId, @Param("shopId") UUID shopId);
+
+    /**
      * Find points transactions within a date range
      */
     List<UserPoints> findByUserIdAndCreatedAtBetweenOrderByCreatedAtDesc(

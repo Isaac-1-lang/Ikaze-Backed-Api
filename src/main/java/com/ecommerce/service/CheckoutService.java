@@ -39,6 +39,14 @@ import com.ecommerce.repository.StockBatchRepository;
 import com.ecommerce.repository.UserRepository;
 import com.ecommerce.repository.DiscountRepository;
 import com.ecommerce.repository.WarehouseRepository;
+import com.ecommerce.repository.ShopRepository;
+import com.ecommerce.repository.RewardSystemRepository;
+import com.ecommerce.repository.ShopOrderRepository;
+import com.ecommerce.entity.Shop;
+import com.ecommerce.entity.Warehouse;
+import com.ecommerce.entity.ShopOrder;
+import com.ecommerce.entity.ShopOrderTransaction;
+import com.ecommerce.service.FEFOStockAllocationService;
 import com.stripe.model.PaymentIntent;
 import com.stripe.model.checkout.Session;
 import org.springframework.security.core.Authentication;
@@ -62,6 +70,9 @@ public class CheckoutService {
     private final DiscountRepository discountRepository;
     private final OrderRepository orderRepository;
     private final WarehouseRepository warehouseRepository;
+    private final ShopRepository shopRepository;
+    private final RewardSystemRepository rewardSystemRepository;
+    private final ShopOrderRepository shopOrderRepository;
     private final StripeService stripeService;
     private final StockLockService stockLockService;
     private final MultiWarehouseStockAllocator multiWarehouseStockAllocator;
@@ -78,8 +89,11 @@ public class CheckoutService {
     private final RoadValidationService roadValidationService;
     private final OrderActivityLogService activityLogService;
 
+    @Transactional
     public String createCheckoutSession(CheckoutRequest req) throws Exception {
-        validateDeliveryCountry(req.getShippingAddress().getCountry());
+        if (req.getShippingAddress() == null || req.getShippingAddress().getCountry() == null) {
+            throw new IllegalArgumentException("Shipping address and country are required");
+        }
         
         if (req.getShippingAddress().getLatitude() != null && req.getShippingAddress().getLongitude() != null) {
             roadValidationService.validateRoadLocation(
@@ -104,12 +118,13 @@ public class CheckoutService {
             
         Map<CartItemDTO, List<FEFOStockAllocationService.BatchAllocation>> fefoAllocations = enhancedWarehouseAllocator
                 .allocateStockWithFEFO(req.getItems(), req.getShippingAddress());
-    
-        Map<Long, List<MultiWarehouseStockAllocator.StockAllocation>> stockAllocations = convertFEFOToStockAllocations(
-                fefoAllocations);
 
+        // Calculate payment summary (validates shops and warehouses)
+        com.ecommerce.dto.PaymentSummaryDTO paymentSummary = calculatePaymentSummary(req.getShippingAddress(),
+                req.getItems(), user.getId());
+
+        // Create main Order entity
         Order order = new Order();
-        order.setOrderStatus(Order.OrderStatus.PENDING);
         order.setUser(user);
 
         OrderCustomerInfo customerInfo = new OrderCustomerInfo();
@@ -124,44 +139,9 @@ public class CheckoutService {
             customerInfo.setCountry(req.getShippingAddress().getCountry());
         }
         order.setOrderCustomerInfo(customerInfo);
-        customerInfo.setOrder(order);
-
-        com.ecommerce.dto.PaymentSummaryDTO paymentSummary = calculatePaymentSummary(req.getShippingAddress(),
-                req.getItems(), user.getId());
-
-        BigDecimal total = BigDecimal.ZERO;
-        for (CartItemDTO ci : req.getItems()) {
-            OrderItem oi = new OrderItem();
-            BigDecimal itemPrice;
-
-            if (ci.getVariantId() != null) {
-                ProductVariant variant = variantRepository.findById(ci.getVariantId())
-                        .orElseThrow(
-                                () -> new EntityNotFoundException("Variant not found with ID: " + ci.getVariantId()));
-
-                oi.setProductVariant(variant);
-                itemPrice = calculateDiscountedPrice(variant);
-            } else if (ci.getProductId() != null) {
-                Product product = productRepository.findById(ci.getProductId())
-                        .orElseThrow(
-                                () -> new EntityNotFoundException("Product not found with ID: " + ci.getProductId()));
-
-                oi.setProduct(product);
-                itemPrice = calculateDiscountedPrice(product);
-            } else {
-                throw new IllegalArgumentException("Cart item must have either productId or variantId");
-            }
-
-            oi.setQuantity(ci.getQuantity());
-            oi.setPrice(itemPrice);
-            oi.setOrder(order);
-            order.getOrderItems().add(oi);
-            total = total.add(itemPrice.multiply(BigDecimal.valueOf(ci.getQuantity())));
-        }
 
         OrderInfo orderInfo = new OrderInfo();
-        orderInfo.setOrder(order);
-        orderInfo.setSubtotal(paymentSummary.getSubtotal()); // Products total before discounts
+        orderInfo.setSubtotal(paymentSummary.getSubtotal());
         orderInfo.setTotalAmount(paymentSummary.getTotalAmount());
         orderInfo.setTaxAmount(paymentSummary.getTaxAmount());
         orderInfo.setShippingCost(paymentSummary.getShippingCost());
@@ -170,7 +150,6 @@ public class CheckoutService {
 
         if (req.getShippingAddress() != null) {
             OrderAddress orderAddress = new OrderAddress();
-            orderAddress.setOrder(order);
             orderAddress.setStreet(req.getShippingAddress().getStreetAddress());
             orderAddress.setCountry(req.getShippingAddress().getCountry());
             orderAddress.setRegions(req.getShippingAddress().getCity() + "," + req.getShippingAddress().getState());
@@ -180,52 +159,176 @@ public class CheckoutService {
             order.setOrderAddress(orderAddress);
         }
 
+        // Create mock transaction (COMPLETED immediately)
+        String mockSessionId = "mock_session_" + System.currentTimeMillis() + "_" + UUID.randomUUID().toString().substring(0, 8);
+        String mockPaymentIntentId = "pi_mock_" + System.currentTimeMillis() + "_" + UUID.randomUUID().toString().substring(0, 8);
+        
         OrderTransaction tx = new OrderTransaction();
         tx.setOrderAmount(paymentSummary.getTotalAmount());
         tx.setPaymentMethod(OrderTransaction.PaymentMethod.CREDIT_CARD);
-        tx.setStatus(OrderTransaction.TransactionStatus.PENDING);
+        tx.setStatus(OrderTransaction.TransactionStatus.COMPLETED); // Mark as completed immediately
+        tx.setStripeSessionId(mockSessionId);
+        tx.setStripePaymentIntentId(mockPaymentIntentId);
+        tx.setPaymentDate(LocalDateTime.now());
+        tx.setReceiptUrl("/receipt/" + mockSessionId);
         order.setOrderTransaction(tx);
-        tx.setOrder(order);
 
+        // Save order first to get orderId
         Order saved = orderRepository.save(order);
         log.info("Order created with ID: {}", saved.getOrderId());
 
-        // LOG ACTIVITY: Order Placed
-        String customerName = user.getFirstName() + " " + user.getLastName();
-        activityLogService.logOrderPlaced(saved.getOrderId(), customerName);
-
-        for (Map.Entry<CartItemDTO, List<FEFOStockAllocationService.BatchAllocation>> entry : fefoAllocations
-                .entrySet()) {
-            createOrderItemBatches(saved, entry.getKey(), entry.getValue());
+        // Group items by shop and create ShopOrders
+        Map<Shop, List<CartItemDTO>> itemsByShop = new HashMap<>();
+        for (CartItemDTO item : req.getItems()) {
+            Shop shop = getShopForCartItem(item);
+            if (shop == null) {
+                throw new EntityNotFoundException("Product or variant not found or has no associated shop");
+            }
+            itemsByShop.computeIfAbsent(shop, k -> new ArrayList<>()).add(item);
         }
 
-        String sessionId = saved.getOrderTransaction().getStripeSessionId();
-        if (sessionId == null) {
-            sessionId = "temp_" + saved.getOrderId().toString();
+        // Create ShopOrder for each shop
+        for (Map.Entry<Shop, List<CartItemDTO>> entry : itemsByShop.entrySet()) {
+            Shop shop = entry.getKey();
+            List<CartItemDTO> shopItems = entry.getValue();
+            
+            // Calculate shop-specific totals first
+            BigDecimal shopSubtotal = BigDecimal.ZERO;
+            BigDecimal shopDiscountAmount = BigDecimal.ZERO;
+            
+            // Create ShopOrder
+            ShopOrder shopOrder = new ShopOrder();
+            shopOrder.setOrder(saved);
+            shopOrder.setShop(shop);
+            shopOrder.setStatus(ShopOrder.ShopOrderStatus.PROCESSING); // Mark as processing (payment completed)
+            
+            // Calculate shop totals and create OrderItems
+            for (CartItemDTO ci : shopItems) {
+                OrderItem oi = new OrderItem();
+                BigDecimal itemPrice;
+                BigDecimal originalPrice;
+
+                if (ci.getVariantId() != null) {
+                    ProductVariant variant = variantRepository.findById(ci.getVariantId())
+                            .orElseThrow(() -> new EntityNotFoundException("Variant not found with ID: " + ci.getVariantId()));
+                    oi.setProductVariant(variant);
+                    originalPrice = variant.getPrice();
+                    itemPrice = calculateDiscountedPrice(variant);
+                    shopSubtotal = shopSubtotal.add(itemPrice.multiply(BigDecimal.valueOf(ci.getQuantity())));
+                    shopDiscountAmount = shopDiscountAmount.add(
+                            originalPrice.subtract(itemPrice).multiply(BigDecimal.valueOf(ci.getQuantity())));
+                } else if (ci.getProductId() != null) {
+                    Product product = productRepository.findById(ci.getProductId())
+                            .orElseThrow(() -> new EntityNotFoundException("Product not found with ID: " + ci.getProductId()));
+                    oi.setProduct(product);
+                    originalPrice = product.getPrice();
+                    itemPrice = calculateDiscountedPrice(product);
+                    shopSubtotal = shopSubtotal.add(itemPrice.multiply(BigDecimal.valueOf(ci.getQuantity())));
+                    shopDiscountAmount = shopDiscountAmount.add(
+                            originalPrice.subtract(itemPrice).multiply(BigDecimal.valueOf(ci.getQuantity())));
+                } else {
+                    throw new IllegalArgumentException("Cart item must have either productId or variantId");
+                }
+
+                oi.setQuantity(ci.getQuantity());
+                oi.setPrice(itemPrice);
+                oi.setShopOrder(shopOrder); // Link to ShopOrder, not Order
+                shopOrder.getItems().add(oi);
+            }
+            
+            // Calculate shipping for this shop (after we have shopSubtotal)
+            BigDecimal shopShippingCost = BigDecimal.ZERO;
+            try {
+                com.ecommerce.dto.ShippingDetailsDTO shopShippingDetails = shippingCostService.calculateEnhancedShippingDetails(
+                        req.getShippingAddress(), shopItems, shopSubtotal, shop.getShopId());
+                shopShippingCost = shopShippingDetails.getShippingCost();
+            } catch (Exception e) {
+                log.error("Error calculating shipping for shop {}: {}", shop.getShopId(), e.getMessage());
+                shopShippingCost = BigDecimal.ZERO;
+            }
+            
+            shopOrder.setShippingCost(shopShippingCost);
+            shopOrder.setDiscountAmount(shopDiscountAmount);
+            shopOrder.setTotalAmount(shopSubtotal.add(shopShippingCost).subtract(shopDiscountAmount));
+            
+            // Create ShopOrderTransaction
+            ShopOrderTransaction shopTx = new ShopOrderTransaction();
+            shopTx.setShopOrder(shopOrder);
+            shopTx.setGlobalTransaction(tx);
+            shopTx.setAmount(shopOrder.getTotalAmount());
+            shopOrder.setShopOrderTransaction(shopTx);
+            
+            saved.addShopOrder(shopOrder);
+            shopOrderRepository.save(shopOrder);
+            
+            log.info("Created ShopOrder {} for shop {}", shopOrder.getShopOrderCode(), shop.getName());
         }
 
+        // Create order item batches
+        for (Map.Entry<CartItemDTO, List<FEFOStockAllocationService.BatchAllocation>> entry : fefoAllocations.entrySet()) {
+            createOrderItemBatchesForShopOrder(saved, entry.getKey(), entry.getValue());
+        }
+
+        // Lock stock
+        String sessionId = mockSessionId;
         if (!lockStockWithFEFOAllocation(sessionId, req.getItems(), req.getShippingAddress())) {
             log.error("Failed to lock stock for checkout: {}", saved.getOrderId());
             orderRepository.delete(saved);
             throw new IllegalStateException("Unable to secure stock for your order. Please try again.");
         }
 
-        String sessionUrl = stripeService.createCheckoutSessionForOrder(saved, req.getCurrency(), req.getPlatform());
+        // Confirm stock locks
+        enhancedStockLockService.confirmBatchLocks(sessionId);
+        stockLockService.confirmStock(sessionId);
 
-        tx = saved.getOrderTransaction();
-        if (tx.getStripeSessionId() != null && !tx.getStripeSessionId().equals(sessionId)) {
-            transferBatchLocks(sessionId, tx.getStripeSessionId());
+        // Update discount usage
+        updateDiscountUsage(saved);
+
+        // Award reward points if user is logged in
+        if (user != null) {
+            int totalProductCount = saved.getAllItems().size();
+            rewardService.checkRewardableOnOrderAndReward(user.getId(), saved.getOrderId(),
+                    totalProductCount, paymentSummary.getTotalAmount());
         }
 
-        log.info("Stripe session created successfully with stock locked");
+        // Send order confirmation email
+        try {
+            orderEmailService.sendOrderConfirmationEmail(saved);
+        } catch (Exception e) {
+            log.error("Failed to send order confirmation email for order {}", saved.getOrderId());
+        }
 
-        return sessionUrl;
+        // Clear cart
+        try {
+            cartService.clearCart(user.getId());
+            log.info("Successfully cleared cart for user: {}", user.getId());
+        } catch (Exception e) {
+            log.error("Failed to clear cart for user {}: {}", user.getId(), e.getMessage());
+        }
+
+        // LOG ACTIVITY: Order Placed and Payment Completed
+        String customerName = user.getFirstName() + " " + user.getLastName();
+        activityLogService.logOrderPlaced(saved.getOrderId(), customerName);
+        activityLogService.logPaymentCompleted(saved.getOrderId(), 
+                tx.getPaymentMethod().toString(), tx.getOrderAmount().doubleValue());
+
+        // Record payment in money flow
+        recordPaymentInMoneyFlow(saved, tx);
+
+        log.info("Mock checkout session created successfully. Order ID: {}, Session ID: {}", saved.getOrderId(), mockSessionId);
+
+        // Return success URL instead of Stripe session URL
+        return "/payment-success?sessionId=" + mockSessionId + "&orderId=" + saved.getOrderId();
     }
 
+    @Transactional
     public String createGuestCheckoutSession(GuestCheckoutRequest req) throws Exception {
         log.info("Creating guest checkout session");
 
-        validateDeliveryCountry(req.getAddress().getCountry());
+        if (req.getAddress() == null || req.getAddress().getCountry() == null) {
+            throw new IllegalArgumentException("Address and country are required");
+        }
+        
         if (req.getAddress().getLatitude() != null && req.getAddress().getLongitude() != null) {
             roadValidationService.validateRoadLocation(
                 req.getAddress().getLatitude(), 
@@ -236,16 +339,16 @@ public class CheckoutService {
 
         validateCartItems(req.getItems());
 
-        // Step 1: Allocate stock using FEFO across warehouses
+        // Allocate stock using FEFO across warehouses
         Map<CartItemDTO, List<FEFOStockAllocationService.BatchAllocation>> fefoAllocations = enhancedWarehouseAllocator
                 .allocateStockWithFEFO(req.getItems(), req.getAddress());
 
-        // Step 2: Convert FEFO allocations to stock allocations for locking
-        Map<Long, List<MultiWarehouseStockAllocator.StockAllocation>> stockAllocations = convertFEFOToStockAllocations(
-                fefoAllocations);
+        // Calculate payment summary (validates shops and warehouses)
+        com.ecommerce.dto.PaymentSummaryDTO paymentSummary = calculatePaymentSummary(req.getAddress(), req.getItems(), null);
 
+        // Create main Order entity
         Order order = new Order();
-        order.setOrderStatus(Order.OrderStatus.PENDING);
+
         OrderCustomerInfo customerInfo = new OrderCustomerInfo();
         customerInfo.setFirstName(req.getGuestName());
         customerInfo.setLastName(req.getGuestLastName());
@@ -258,49 +361,9 @@ public class CheckoutService {
             customerInfo.setCountry(req.getAddress().getCountry());
         }
         order.setOrderCustomerInfo(customerInfo);
-        customerInfo.setOrder(order);
-
-        BigDecimal total = BigDecimal.ZERO;
-        for (CartItemDTO ci : req.getItems()) {
-            log.info("Processing guest cart item: productId={}, variantId={}, quantity={}",
-                    ci.getProductId(), ci.getVariantId(), ci.getQuantity());
-
-            OrderItem oi = new OrderItem();
-            BigDecimal itemPrice;
-
-            if (ci.getVariantId() != null) {
-                ProductVariant variant = variantRepository.findById(ci.getVariantId())
-                        .orElseThrow(
-                                () -> new EntityNotFoundException("Variant not found with ID: " + ci.getVariantId()));
-
-                oi.setProductVariant(variant);
-                itemPrice = calculateDiscountedPrice(variant);
-                log.info("Set productVariant for guest OrderItem: {}", oi.getDebugInfo());
-            } else if (ci.getProductId() != null) {
-                Product product = productRepository.findById(ci.getProductId())
-                        .orElseThrow(
-                                () -> new EntityNotFoundException("Product not found with ID: " + ci.getProductId()));
-
-                oi.setProduct(product);
-                itemPrice = calculateDiscountedPrice(product);
-                log.info("Set product for guest OrderItem: {}", oi.getDebugInfo());
-            } else {
-                throw new IllegalArgumentException("Cart item must have either productId or variantId");
-            }
-
-            oi.setQuantity(ci.getQuantity());
-            oi.setPrice(itemPrice);
-            oi.setOrder(order);
-            order.getOrderItems().add(oi);
-            total = total.add(itemPrice.multiply(BigDecimal.valueOf(ci.getQuantity())));
-        }
-
-        com.ecommerce.dto.PaymentSummaryDTO paymentSummary = calculatePaymentSummary(req.getAddress(), req.getItems(),
-                null);
 
         OrderInfo orderInfo = new OrderInfo();
-        orderInfo.setOrder(order);
-        orderInfo.setSubtotal(paymentSummary.getSubtotal()); // Products total before discounts
+        orderInfo.setSubtotal(paymentSummary.getSubtotal());
         orderInfo.setTotalAmount(paymentSummary.getTotalAmount());
         orderInfo.setTaxAmount(paymentSummary.getTaxAmount());
         orderInfo.setShippingCost(paymentSummary.getShippingCost());
@@ -309,7 +372,6 @@ public class CheckoutService {
 
         if (req.getAddress() != null) {
             OrderAddress orderAddress = new OrderAddress();
-            orderAddress.setOrder(order);
             orderAddress.setStreet(req.getAddress().getStreetAddress());
             orderAddress.setCountry(req.getAddress().getCountry());
             orderAddress.setRegions(req.getAddress().getCity() + "," + req.getAddress().getState());
@@ -319,30 +381,118 @@ public class CheckoutService {
             order.setOrderAddress(orderAddress);
         }
 
+        // Create mock transaction (COMPLETED immediately)
+        String mockSessionId = "mock_guest_session_" + System.currentTimeMillis() + "_" + UUID.randomUUID().toString().substring(0, 8);
+        String mockPaymentIntentId = "pi_mock_guest_" + System.currentTimeMillis() + "_" + UUID.randomUUID().toString().substring(0, 8);
+        
         OrderTransaction tx = new OrderTransaction();
         tx.setOrderAmount(paymentSummary.getTotalAmount());
         tx.setPaymentMethod(OrderTransaction.PaymentMethod.CREDIT_CARD);
-        tx.setStatus(OrderTransaction.TransactionStatus.PENDING);
+        tx.setStatus(OrderTransaction.TransactionStatus.COMPLETED); // Mark as completed immediately
+        tx.setStripeSessionId(mockSessionId);
+        tx.setStripePaymentIntentId(mockPaymentIntentId);
+        tx.setPaymentDate(LocalDateTime.now());
+        tx.setReceiptUrl("/receipt/" + mockSessionId);
         order.setOrderTransaction(tx);
-        tx.setOrder(order);
 
+        // Save order first to get orderId
         Order saved = orderRepository.save(order);
         log.info("Guest order created with ID: {}", saved.getOrderId());
 
-        String guestCustomerName = req.getGuestName() + " " + req.getGuestLastName();
-        activityLogService.logOrderPlaced(saved.getOrderId(), guestCustomerName + " (Guest)");
-
-
-        for (Map.Entry<CartItemDTO, List<FEFOStockAllocationService.BatchAllocation>> entry : fefoAllocations
-                .entrySet()) {
-            createOrderItemBatches(saved, entry.getKey(), entry.getValue());
+        // Group items by shop and create ShopOrders
+        Map<Shop, List<CartItemDTO>> itemsByShop = new HashMap<>();
+        for (CartItemDTO item : req.getItems()) {
+            Shop shop = getShopForCartItem(item);
+            if (shop == null) {
+                throw new EntityNotFoundException("Product or variant not found or has no associated shop");
+            }
+            itemsByShop.computeIfAbsent(shop, k -> new ArrayList<>()).add(item);
         }
 
-        String sessionId = saved.getOrderTransaction().getStripeSessionId();
-        if (sessionId == null) {
-            sessionId = "temp_guest_" + saved.getOrderId().toString();
+        // Create ShopOrder for each shop
+        for (Map.Entry<Shop, List<CartItemDTO>> entry : itemsByShop.entrySet()) {
+            Shop shop = entry.getKey();
+            List<CartItemDTO> shopItems = entry.getValue();
+            
+            // Calculate shop-specific totals first
+            BigDecimal shopSubtotal = BigDecimal.ZERO;
+            BigDecimal shopDiscountAmount = BigDecimal.ZERO;
+            
+            // Create ShopOrder
+            ShopOrder shopOrder = new ShopOrder();
+            shopOrder.setOrder(saved);
+            shopOrder.setShop(shop);
+            shopOrder.setStatus(ShopOrder.ShopOrderStatus.PROCESSING); // Mark as processing (payment completed)
+            
+            // Calculate shop totals and create OrderItems
+            for (CartItemDTO ci : shopItems) {
+                OrderItem oi = new OrderItem();
+                BigDecimal itemPrice;
+                BigDecimal originalPrice;
+
+                if (ci.getVariantId() != null) {
+                    ProductVariant variant = variantRepository.findById(ci.getVariantId())
+                            .orElseThrow(() -> new EntityNotFoundException("Variant not found with ID: " + ci.getVariantId()));
+                    oi.setProductVariant(variant);
+                    originalPrice = variant.getPrice();
+                    itemPrice = calculateDiscountedPrice(variant);
+                    shopSubtotal = shopSubtotal.add(itemPrice.multiply(BigDecimal.valueOf(ci.getQuantity())));
+                    shopDiscountAmount = shopDiscountAmount.add(
+                            originalPrice.subtract(itemPrice).multiply(BigDecimal.valueOf(ci.getQuantity())));
+                } else if (ci.getProductId() != null) {
+                    Product product = productRepository.findById(ci.getProductId())
+                            .orElseThrow(() -> new EntityNotFoundException("Product not found with ID: " + ci.getProductId()));
+                    oi.setProduct(product);
+                    originalPrice = product.getPrice();
+                    itemPrice = calculateDiscountedPrice(product);
+                    shopSubtotal = shopSubtotal.add(itemPrice.multiply(BigDecimal.valueOf(ci.getQuantity())));
+                    shopDiscountAmount = shopDiscountAmount.add(
+                            originalPrice.subtract(itemPrice).multiply(BigDecimal.valueOf(ci.getQuantity())));
+                } else {
+                    throw new IllegalArgumentException("Cart item must have either productId or variantId");
+                }
+
+                oi.setQuantity(ci.getQuantity());
+                oi.setPrice(itemPrice);
+                oi.setShopOrder(shopOrder); // Link to ShopOrder, not Order
+                shopOrder.getItems().add(oi);
+            }
+            
+            // Calculate shipping for this shop (after we have shopSubtotal)
+            BigDecimal shopShippingCost = BigDecimal.ZERO;
+            try {
+                com.ecommerce.dto.ShippingDetailsDTO shopShippingDetails = shippingCostService.calculateEnhancedShippingDetails(
+                        req.getAddress(), shopItems, shopSubtotal, shop.getShopId());
+                shopShippingCost = shopShippingDetails.getShippingCost();
+            } catch (Exception e) {
+                log.error("Error calculating shipping for shop {}: {}", shop.getShopId(), e.getMessage());
+                shopShippingCost = BigDecimal.ZERO;
+            }
+            
+            shopOrder.setShippingCost(shopShippingCost);
+            shopOrder.setDiscountAmount(shopDiscountAmount);
+            shopOrder.setTotalAmount(shopSubtotal.add(shopShippingCost).subtract(shopDiscountAmount));
+            
+            // Create ShopOrderTransaction
+            ShopOrderTransaction shopTx = new ShopOrderTransaction();
+            shopTx.setShopOrder(shopOrder);
+            shopTx.setGlobalTransaction(tx);
+            shopTx.setAmount(shopOrder.getTotalAmount());
+            shopOrder.setShopOrderTransaction(shopTx);
+            
+            saved.addShopOrder(shopOrder);
+            shopOrderRepository.save(shopOrder);
+            
+            log.info("Created ShopOrder {} for shop {}", shopOrder.getShopOrderCode(), shop.getName());
         }
 
+        // Create order item batches
+        for (Map.Entry<CartItemDTO, List<FEFOStockAllocationService.BatchAllocation>> entry : fefoAllocations.entrySet()) {
+            createOrderItemBatchesForShopOrder(saved, entry.getKey(), entry.getValue());
+        }
+
+        // Lock stock
+        String sessionId = mockSessionId;
         boolean stockLocked = lockStockWithFEFOAllocation(sessionId, req.getItems(), req.getAddress());
         if (!stockLocked) {
             log.error("Failed to lock stock for guest order: {}", saved.getOrderId());
@@ -350,18 +500,33 @@ public class CheckoutService {
             throw new IllegalStateException("Unable to secure stock for your order. Please try again.");
         }
 
-        log.info("Successfully locked stock for guest order: {} with session: {}", saved.getOrderId(), sessionId);
+        // Confirm stock locks
+        enhancedStockLockService.confirmBatchLocks(sessionId);
+        stockLockService.confirmStock(sessionId);
 
-        String sessionUrl = stripeService.createCheckoutSessionForOrder(saved, "usd", req.getPlatform());
+        // Update discount usage
+        updateDiscountUsage(saved);
 
-        tx = saved.getOrderTransaction();
-        if (tx.getStripeSessionId() != null && !tx.getStripeSessionId().equals(sessionId)) {
-            transferBatchLocks(sessionId, tx.getStripeSessionId());
+        // Send order confirmation email
+        try {
+            orderEmailService.sendOrderConfirmationEmail(saved);
+        } catch (Exception e) {
+            log.error("Failed to send order confirmation email for guest order {}", saved.getOrderId());
         }
 
-        log.info("Guest Stripe session created successfully with stock locked");
+        // LOG ACTIVITY: Order Placed and Payment Completed
+        String guestCustomerName = req.getGuestName() + " " + req.getGuestLastName();
+        activityLogService.logOrderPlaced(saved.getOrderId(), guestCustomerName + " (Guest)");
+        activityLogService.logPaymentCompleted(saved.getOrderId(), 
+                tx.getPaymentMethod().toString(), tx.getOrderAmount().doubleValue());
 
-        return sessionUrl;
+        // Record payment in money flow
+        recordPaymentInMoneyFlow(saved, tx);
+
+        log.info("Mock guest checkout session created successfully. Order ID: {}, Session ID: {}", saved.getOrderId(), mockSessionId);
+
+        // Return success URL instead of Stripe session URL
+        return "/payment-success?sessionId=" + mockSessionId + "&orderId=" + saved.getOrderId();
     }
 
     @Transactional
@@ -407,7 +572,12 @@ public class CheckoutService {
         enhancedStockLockService.confirmBatchLocks(sessionId);
 
         Order order = tx.getOrder();
-        order.setOrderStatus(Order.OrderStatus.PROCESSING);
+        // Update ShopOrder statuses to PROCESSING (status is managed at ShopOrder level)
+        if (order.getShopOrders() != null) {
+            for (ShopOrder shopOrder : order.getShopOrders()) {
+                shopOrder.setStatus(ShopOrder.ShopOrderStatus.PROCESSING);
+            }
+        }
         orderRepository.save(order);
 
         activityLogService.logPaymentCompleted(
@@ -472,7 +642,7 @@ public class CheckoutService {
         OrderResponseDTO orderResponse = OrderResponseDTO.builder()
                 .id(order.getOrderId())
                 .orderNumber(order.getOrderCode())
-                .status(order.getOrderStatus().toString())
+                .status(order.getStatus() != null ? order.getStatus() : "PENDING")
                 .total(order.getTotalAmount())
                 .createdAt(order.getCreatedAt())
                 .build();
@@ -672,114 +842,251 @@ public class CheckoutService {
     public com.ecommerce.dto.PaymentSummaryDTO calculatePaymentSummary(AddressDto deliveryAddress,
             List<CartItemDTO> items, UUID userId) {
         
-        validateDeliveryCountry(deliveryAddress.getCountry());
+        if (deliveryAddress == null || deliveryAddress.getCountry() == null || deliveryAddress.getCountry().trim().isEmpty()) {
+            throw new IllegalArgumentException("Delivery address and country are required");
+        }
         
         // Validate that the pickup point is on or near a road
         if (deliveryAddress.getLatitude() != null && deliveryAddress.getLongitude() != null) {
             roadValidationService.validateRoadLocation(deliveryAddress.getLatitude(), deliveryAddress.getLongitude());
         }
         
-        BigDecimal subtotal = BigDecimal.ZERO;
-        BigDecimal discountAmount = BigDecimal.ZERO;
-        int totalProductCount = 0;
-
+        // Step 1: Group items by shop
+        Map<Shop, List<CartItemDTO>> itemsByShop = new HashMap<>();
+        Map<Shop, ShopCalculationResult> shopCalculations = new HashMap<>();
+        
         for (CartItemDTO item : items) {
-            BigDecimal itemPrice = BigDecimal.ZERO;
-            BigDecimal originalPrice = BigDecimal.ZERO;
-
-            if (item.getVariantId() != null) {
-                try {
+            Shop shop = getShopForCartItem(item);
+            if (shop == null) {
+                throw new EntityNotFoundException("Product or variant not found or has no associated shop");
+            }
+            itemsByShop.computeIfAbsent(shop, k -> new ArrayList<>()).add(item);
+        }
+        
+        // Step 2: Validate delivery country for each shop and calculate per-shop totals
+        BigDecimal totalSubtotal = BigDecimal.ZERO;
+        BigDecimal totalDiscountAmount = BigDecimal.ZERO;
+        BigDecimal totalShippingCost = BigDecimal.ZERO;
+        BigDecimal totalTaxAmount = BigDecimal.ZERO;
+        Integer totalRewardPoints = 0;
+        BigDecimal totalRewardPointsValue = BigDecimal.ZERO;
+        int totalProductCount = 0;
+        
+        com.ecommerce.dto.ShippingDetailsDTO farthestShippingDetails = null;
+        double maxDistance = 0.0;
+        
+        for (Map.Entry<Shop, List<CartItemDTO>> entry : itemsByShop.entrySet()) {
+            Shop shop = entry.getKey();
+            List<CartItemDTO> shopItems = entry.getValue();
+            
+            // Validate shop has warehouses in delivery country
+            validateShopWarehouseInCountry(shop.getShopId(), deliveryAddress.getCountry());
+            
+            // Calculate product costs for this shop
+            BigDecimal shopSubtotal = BigDecimal.ZERO;
+            BigDecimal shopDiscountAmount = BigDecimal.ZERO;
+            int shopProductCount = 0;
+            
+            for (CartItemDTO item : shopItems) {
+                BigDecimal itemPrice = BigDecimal.ZERO;
+                BigDecimal originalPrice = BigDecimal.ZERO;
+                
+                if (item.getVariantId() != null) {
                     ProductVariant variant = variantRepository.findById(item.getVariantId())
-                            .orElseThrow(
-                                    () -> new EntityNotFoundException(
-                                            "Variant not found with ID: " + item.getVariantId()));
+                            .orElseThrow(() -> new EntityNotFoundException(
+                                    "Variant not found with ID: " + item.getVariantId()));
                     originalPrice = variant.getPrice();
-
+                    
                     if (variant.getDiscount() != null) {
                         validateDiscountValidity(variant.getDiscount());
                     }
-
+                    
                     itemPrice = calculateDiscountedPrice(variant);
-                } catch (Exception e) {
-                    throw new EntityNotFoundException("Variant not found with ID: " + item.getVariantId());
-                }
-            } else if (item.getProductId() != null) {
-                try {
+                } else if (item.getProductId() != null) {
                     Product product = productRepository.findById(item.getProductId())
-                            .orElseThrow(
-                                    () -> new EntityNotFoundException(
-                                            "Product not found with ID: " + item.getProductId()));
+                            .orElseThrow(() -> new EntityNotFoundException(
+                                    "Product not found with ID: " + item.getProductId()));
                     originalPrice = product.getPrice();
-
+                    
                     if (product.getDiscount() != null) {
                         validateDiscountValidity(product.getDiscount());
                     }
-
+                    
                     itemPrice = calculateDiscountedPrice(product);
-                } catch (Exception e) {
-                    throw new EntityNotFoundException("Product not found with ID: " + item.getProductId());
+                } else {
+                    continue;
                 }
-            } else {
-                continue;
+                
+                BigDecimal itemTotal = itemPrice.multiply(BigDecimal.valueOf(item.getQuantity()));
+                BigDecimal itemDiscount = originalPrice.subtract(itemPrice)
+                        .multiply(BigDecimal.valueOf(item.getQuantity()));
+                
+                shopSubtotal = shopSubtotal.add(itemTotal);
+                shopDiscountAmount = shopDiscountAmount.add(itemDiscount);
+                shopProductCount += item.getQuantity();
             }
-
-            BigDecimal itemTotal = itemPrice.multiply(BigDecimal.valueOf(item.getQuantity()));
-            BigDecimal itemDiscount = originalPrice.subtract(itemPrice)
-                    .multiply(BigDecimal.valueOf(item.getQuantity()));
-
-            subtotal = subtotal.add(itemTotal);
-            discountAmount = discountAmount.add(itemDiscount);
-            totalProductCount += item.getQuantity();
+            
+            // Calculate shipping for this shop
+            com.ecommerce.dto.ShippingDetailsDTO shopShippingDetails;
+            try {
+                shopShippingDetails = shippingCostService.calculateEnhancedShippingDetails(
+                        deliveryAddress, shopItems, shopSubtotal, shop.getShopId());
+            } catch (Exception e) {
+                log.error("Error calculating shipping details for shop {}: {}", shop.getShopId(), e.getMessage(), e);
+                shopShippingDetails = com.ecommerce.dto.ShippingDetailsDTO.builder()
+                        .shippingCost(BigDecimal.valueOf(10.00))
+                        .distanceKm(0.0)
+                        .costPerKm(BigDecimal.ZERO)
+                        .selectedWarehouseName("Default")
+                        .selectedWarehouseCountry("Unknown")
+                        .isInternationalShipping(false)
+                        .build();
+            }
+            
+            BigDecimal shopShippingCost = shopShippingDetails.getShippingCost();
+            
+            // Calculate reward points for this shop (if user is logged in)
+            Integer shopRewardPoints = 0;
+            BigDecimal shopRewardPointsValue = BigDecimal.ZERO;
+            if (userId != null) {
+                try {
+                    com.ecommerce.dto.RewardSystemDTO rewardSystem = rewardService.getActiveRewardSystem(shop.getShopId());
+                    if (rewardSystem != null && rewardSystem.getIsSystemEnabled() && rewardSystem.getIsPurchasePointsEnabled()) {
+                        // Get the reward system entity to calculate points
+                        com.ecommerce.entity.RewardSystem rewardSystemEntity = rewardSystemRepository
+                                .findByShopShopIdAndIsActiveTrue(shop.getShopId())
+                                .orElse(null);
+                        if (rewardSystemEntity != null) {
+                            shopRewardPoints = rewardSystemEntity.calculatePurchasePoints(shopProductCount, shopSubtotal);
+                            shopRewardPointsValue = rewardSystemEntity.calculatePointsValue(shopRewardPoints);
+                        }
+                    }
+                } catch (Exception e) {
+                    log.warn("Error calculating reward points for shop {} and user {}: {}", 
+                            shop.getShopId(), userId, e.getMessage());
+                }
+            }
+            
+            // Store shop calculation result
+            ShopCalculationResult shopResult = new ShopCalculationResult();
+            shopResult.shop = shop;
+            shopResult.subtotal = shopSubtotal;
+            shopResult.discountAmount = shopDiscountAmount;
+            shopResult.shippingCost = shopShippingCost;
+            shopResult.shippingDetails = shopShippingDetails;
+            shopResult.rewardPoints = shopRewardPoints;
+            shopResult.rewardPointsValue = shopRewardPointsValue;
+            shopResult.productCount = shopProductCount;
+            shopCalculations.put(shop, shopResult);
+            
+            // Aggregate totals
+            totalSubtotal = totalSubtotal.add(shopSubtotal);
+            totalDiscountAmount = totalDiscountAmount.add(shopDiscountAmount);
+            totalShippingCost = totalShippingCost.add(shopShippingCost);
+            totalRewardPoints += shopRewardPoints;
+            totalRewardPointsValue = totalRewardPointsValue.add(shopRewardPointsValue);
+            totalProductCount += shopProductCount;
+            
+            // Track farthest warehouse (for display purposes)
+            if (shopShippingDetails.getDistanceKm() != null && shopShippingDetails.getDistanceKm() > maxDistance) {
+                maxDistance = shopShippingDetails.getDistanceKm();
+                farthestShippingDetails = shopShippingDetails;
+            }
         }
-
-        com.ecommerce.dto.ShippingDetailsDTO shippingDetails;
-        try {
-            shippingDetails = shippingCostService
-                    .calculateEnhancedShippingDetails(deliveryAddress, items, subtotal);
-        } catch (Exception e) {
-            log.error("Error calculating shipping details: {}", e.getMessage(), e);
-            shippingDetails = com.ecommerce.dto.ShippingDetailsDTO.builder()
-                    .shippingCost(BigDecimal.valueOf(10.00))
+        
+        // Use farthest shipping details or default
+        if (farthestShippingDetails == null) {
+            farthestShippingDetails = com.ecommerce.dto.ShippingDetailsDTO.builder()
+                    .shippingCost(totalShippingCost)
                     .distanceKm(0.0)
                     .costPerKm(BigDecimal.ZERO)
-                    .selectedWarehouseName("Default")
-                    .selectedWarehouseCountry("Unknown")
+                    .selectedWarehouseName("Multiple Warehouses")
+                    .selectedWarehouseCountry(deliveryAddress.getCountry())
                     .isInternationalShipping(false)
                     .build();
         }
         
-        BigDecimal shippingCost = shippingDetails.getShippingCost();
-        BigDecimal taxAmount = BigDecimal.ZERO;
-        BigDecimal totalAmount = subtotal.add(shippingCost).add(taxAmount);
-
-        Integer rewardPoints = 0;
-        BigDecimal rewardPointsValue = BigDecimal.ZERO;
-        if (userId != null) {
-            try {
-                rewardPoints = rewardService.getPreviewPointsForOrder(totalProductCount, subtotal);
-                rewardPointsValue = rewardService.calculatePointsValue(rewardPoints);
-            } catch (Exception e) {
-                log.warn("Error calculating reward points for user {}: {}", userId, e.getMessage());
-                rewardPoints = 0;
-                rewardPointsValue = BigDecimal.ZERO;
+        BigDecimal totalAmount = totalSubtotal.add(totalShippingCost).add(totalTaxAmount);
+        
+        log.info("Payment summary calculated: {} shops, {} items, total: {}", 
+                itemsByShop.size(), totalProductCount, totalAmount);
+        
+        return com.ecommerce.dto.PaymentSummaryDTO.builder()
+                .subtotal(totalSubtotal)
+                .discountAmount(totalDiscountAmount)
+                .shippingCost(totalShippingCost)
+                .taxAmount(totalTaxAmount)
+                .totalAmount(totalAmount)
+                .rewardPoints(totalRewardPoints)
+                .rewardPointsValue(totalRewardPointsValue)
+                .currency("USD")
+                .distanceKm(farthestShippingDetails.getDistanceKm())
+                .costPerKm(farthestShippingDetails.getCostPerKm())
+                .selectedWarehouseName(farthestShippingDetails.getSelectedWarehouseName())
+                .selectedWarehouseCountry(farthestShippingDetails.getSelectedWarehouseCountry())
+                .isInternationalShipping(farthestShippingDetails.getIsInternationalShipping())
+                .build();
+    }
+    
+    /**
+     * Helper class to store per-shop calculation results
+     */
+    private static class ShopCalculationResult {
+        Shop shop;
+        BigDecimal subtotal;
+        BigDecimal discountAmount;
+        BigDecimal shippingCost;
+        com.ecommerce.dto.ShippingDetailsDTO shippingDetails;
+        Integer rewardPoints;
+        BigDecimal rewardPointsValue;
+        int productCount;
+    }
+    
+    /**
+     * Get the shop associated with a cart item
+     */
+    private Shop getShopForCartItem(CartItemDTO item) {
+        if (item.getVariantId() != null) {
+            ProductVariant variant = variantRepository.findById(item.getVariantId()).orElse(null);
+            if (variant != null && variant.getProduct() != null) {
+                return variant.getProduct().getShop();
+            }
+        } else if (item.getProductId() != null) {
+            Product product = productRepository.findById(item.getProductId()).orElse(null);
+            if (product != null) {
+                return product.getShop();
             }
         }
-
-        return com.ecommerce.dto.PaymentSummaryDTO.builder()
-                .subtotal(subtotal)
-                .discountAmount(discountAmount)
-                .shippingCost(shippingCost)
-                .taxAmount(taxAmount)
-                .totalAmount(totalAmount)
-                .rewardPoints(rewardPoints)
-                .rewardPointsValue(rewardPointsValue)
-                .currency("USD")
-                .distanceKm(shippingDetails.getDistanceKm())
-                .costPerKm(shippingDetails.getCostPerKm())
-                .selectedWarehouseName(shippingDetails.getSelectedWarehouseName())
-                .selectedWarehouseCountry(shippingDetails.getSelectedWarehouseCountry())
-                .isInternationalShipping(shippingDetails.getIsInternationalShipping())
-                .build();
+        return null;
+    }
+    
+    /**
+     * Validate that a shop has warehouses in the delivery country
+     */
+    private void validateShopWarehouseInCountry(UUID shopId, String country) {
+        if (country == null || country.trim().isEmpty()) {
+            throw new IllegalArgumentException("Delivery country is required");
+        }
+        
+        List<Warehouse> shopWarehouses = warehouseRepository.findByShopShopIdAndIsActiveTrue(shopId);
+        if (shopWarehouses == null || shopWarehouses.isEmpty()) {
+            Shop shop = shopRepository.findById(shopId)
+                    .orElseThrow(() -> new EntityNotFoundException("Shop not found with ID: " + shopId));
+            throw new IllegalArgumentException(
+                    String.format("Shop '%s' does not have any active warehouses.", shop.getName()));
+        }
+        
+        boolean hasWarehouseInCountry = shopWarehouses.stream()
+                .anyMatch(w -> w.getCountry() != null && 
+                        w.getCountry().equalsIgnoreCase(country.trim()));
+        
+        if (!hasWarehouseInCountry) {
+            Shop shop = shopRepository.findById(shopId)
+                    .orElseThrow(() -> new EntityNotFoundException("Shop not found with ID: " + shopId));
+            throw new IllegalArgumentException(
+                    String.format("Shop '%s' does not deliver to %s as it doesn't have any warehouses there.", 
+                            shop.getName(), country));
+        }
     }
 
     private UUID getCurrentUserId() {
@@ -838,7 +1145,7 @@ public class CheckoutService {
     private void updateDiscountUsage(Order order) {
         log.info("Updating discount usage for order: {}", order.getOrderId());
 
-        for (OrderItem item : order.getOrderItems()) {
+        for (OrderItem item : order.getAllItems()) {
             if (item.isVariantBased() && item.getProductVariant() != null) {
                 ProductVariant variant = item.getProductVariant();
                 if (variant.getDiscount() != null) {
@@ -968,7 +1275,31 @@ public class CheckoutService {
     private void createOrderItemBatches(Order order, CartItemDTO cartItem,
             List<FEFOStockAllocationService.BatchAllocation> allocations) {
 
-        OrderItem orderItem = order.getOrderItems().stream()
+        OrderItem orderItem = order.getAllItems().stream()
+                .filter(oi -> matchesCartItem(oi, cartItem))
+                .findFirst()
+                .orElseThrow(() -> new IllegalStateException("OrderItem not found for cart item"));
+
+        for (FEFOStockAllocationService.BatchAllocation allocation : allocations) {
+            OrderItemBatch orderItemBatch = new OrderItemBatch();
+            orderItemBatch.setOrderItem(orderItem);
+            orderItemBatch.setStockBatch(allocation.getStockBatch());
+            orderItemBatch.setWarehouse(allocation.getWarehouse());
+            orderItemBatch.setQuantityUsed(allocation.getQuantityAllocated());
+
+            orderItem.addOrderItemBatch(orderItemBatch);
+            orderItemBatchRepository.save(orderItemBatch);
+        }
+    }
+    
+    /**
+     * Create order item batches for ShopOrder structure
+     */
+    private void createOrderItemBatchesForShopOrder(Order order, CartItemDTO cartItem,
+            List<FEFOStockAllocationService.BatchAllocation> allocations) {
+        
+        // Find the OrderItem across all ShopOrders
+        OrderItem orderItem = order.getAllItems().stream()
                 .filter(oi -> matchesCartItem(oi, cartItem))
                 .findFirst()
                 .orElseThrow(() -> new IllegalStateException("OrderItem not found for cart item"));
@@ -1006,9 +1337,16 @@ public class CheckoutService {
         dto.setUserId(
                 order.getUser() != null && order.getUser().getId() != null ? order.getUser().getId().toString() : null);
         dto.setOrderNumber(order.getOrderCode());
-        dto.setPickupToken(order.getPickupToken());
-        dto.setPickupTokenUsed(order.getPickupTokenUsed());
-        dto.setStatus(order.getOrderStatus() != null ? order.getOrderStatus().name() : null);
+        // Pickup token is on ShopOrder, get from first shop order if available
+        if (order.getShopOrders() != null && !order.getShopOrders().isEmpty()) {
+            ShopOrder firstShopOrder = order.getShopOrders().get(0);
+            dto.setPickupToken(firstShopOrder.getPickupToken());
+            dto.setPickupTokenUsed(firstShopOrder.getPickupTokenUsed());
+        } else {
+            dto.setPickupToken(null);
+            dto.setPickupTokenUsed(false);
+        }
+        dto.setStatus(order.getStatus() != null ? order.getStatus() : null);
         dto.setCreatedAt(order.getCreatedAt());
         dto.setUpdatedAt(order.getUpdatedAt());
 
@@ -1077,8 +1415,8 @@ public class CheckoutService {
         }
 
         // Set order items with product/variant information
-        if (order.getOrderItems() != null && !order.getOrderItems().isEmpty()) {
-            List<OrderResponseDTO.OrderItem> itemDTOs = order.getOrderItems().stream().map(this::mapOrderItemToResponseDTO).toList();
+        if (order.getAllItems() != null && !order.getAllItems().isEmpty()) {
+            List<OrderResponseDTO.OrderItem> itemDTOs = order.getAllItems().stream().map(this::mapOrderItemToResponseDTO).toList();
             dto.setItems(itemDTOs);
         }
 

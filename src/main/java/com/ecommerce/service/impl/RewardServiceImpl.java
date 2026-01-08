@@ -236,7 +236,8 @@ public class RewardServiceImpl implements RewardService {
     }
 
     @Override
-    public RewardSystemDTO togglePercentageBased(Long rewardSystemId, UUID shopId, Boolean enabled, BigDecimal percentageRate) {
+    public RewardSystemDTO togglePercentageBased(Long rewardSystemId, UUID shopId, Boolean enabled,
+            BigDecimal percentageRate) {
         RewardSystem system = rewardSystemRepository.findByIdAndShopShopId(rewardSystemId, shopId)
                 .orElseThrow(() -> new RuntimeException("Reward system not found"));
 
@@ -298,8 +299,11 @@ public class RewardServiceImpl implements RewardService {
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new RuntimeException("User not found"));
 
-        // Use User.points as single source of truth
-        Integer currentBalance = user.getPoints();
+        // Calculate current balance from UserPoints records
+        Integer currentBalance = userPointsRepository.calculateCurrentBalance(userId);
+        if (currentBalance == null) {
+            currentBalance = 0;
+        }
         Integer newBalance = currentBalance + pointsEarned;
 
         // Create audit trail record
@@ -318,9 +322,6 @@ public class RewardServiceImpl implements RewardService {
         }
 
         UserPoints saved = userPointsRepository.save(userPoints);
-
-        user.setPoints(newBalance);
-        userRepository.save(user);
 
         log.info("Awarded {} points to user {} for order {}. New balance: {}",
                 pointsEarned, userId, orderId, newBalance);
@@ -343,8 +344,11 @@ public class RewardServiceImpl implements RewardService {
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new RuntimeException("User not found"));
 
-        // Use User.points as single source of truth
-        Integer currentBalance = user.getPoints();
+        // Calculate current balance from UserPoints records
+        Integer currentBalance = userPointsRepository.calculateCurrentBalance(userId);
+        if (currentBalance == null) {
+            currentBalance = 0;
+        }
         Integer newBalance = currentBalance + reviewPoints;
 
         // Create audit trail record
@@ -359,24 +363,25 @@ public class RewardServiceImpl implements RewardService {
 
         UserPoints saved = userPointsRepository.save(userPoints);
 
-        user.setPoints(newBalance);
-        userRepository.save(user);
-
         return convertToDTO(saved);
     }
 
     @Override
     public UserPointsDTO deductPointsForPurchase(UUID userId, Integer points, String description) {
         if (!hasEnoughPoints(userId, points)) {
-            log.info("Required points are " + points + " but user has " + getUserCurrentPoints(userId));
+            Integer currentPoints = getUserCurrentPoints(userId);
+            log.info("Required points are " + points + " but user has " + currentPoints);
             throw new RuntimeException("Insufficient points");
         }
 
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new RuntimeException("User not found"));
 
-        // Use User.points as single source of truth
-        Integer currentBalance = user.getPoints();
+        // Calculate current balance from UserPoints records
+        Integer currentBalance = userPointsRepository.calculateCurrentBalance(userId);
+        if (currentBalance == null) {
+            currentBalance = 0;
+        }
         Integer newBalance = currentBalance - points;
 
         // Create audit trail record
@@ -395,10 +400,6 @@ public class RewardServiceImpl implements RewardService {
 
         UserPoints saved = userPointsRepository.save(userPoints);
 
-        // Update User.points (single source of truth)
-        user.setPoints(newBalance);
-        userRepository.save(user);
-
         log.info("Deducted {} points from user {}. New balance: {}", points, userId, newBalance);
 
         return convertToDTO(saved);
@@ -414,13 +415,16 @@ public class RewardServiceImpl implements RewardService {
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new RuntimeException("User not found"));
 
-        Integer currentBalance = user.getPoints();
+        Integer currentBalance = userPointsRepository.calculateCurrentBalance(userId);
+        if (currentBalance == null) {
+            currentBalance = 0;
+        }
         Integer newBalance = currentBalance + points;
 
         UserPoints userPoints = new UserPoints();
         userPoints.setUser(user);
         userPoints.setPoints(points);
-        userPoints.setPointsType(UserPoints.PointsType.ADJUSTMENT); 
+        userPoints.setPointsType(UserPoints.PointsType.ADJUSTMENT);
         userPoints.setDescription(description != null ? description : "Points refunded for cancelled order");
         userPoints.setBalanceAfter(newBalance);
         userPoints.setCreatedAt(LocalDateTime.now());
@@ -432,9 +436,6 @@ public class RewardServiceImpl implements RewardService {
 
         UserPoints saved = userPointsRepository.save(userPoints);
 
-        user.setPoints(newBalance);
-        userRepository.save(user);
-
         log.info("Refunded {} points to user {} for cancelled order. New balance: {}",
                 points, userId, newBalance);
 
@@ -443,9 +444,8 @@ public class RewardServiceImpl implements RewardService {
 
     @Override
     public Integer getUserCurrentPoints(UUID userId) {
-        User user = userRepository.findById(userId)
-                .orElseThrow(() -> new RuntimeException("User not found"));
-        return user.getPoints(); 
+        Integer balance = userPointsRepository.calculateCurrentBalance(userId);
+        return balance != null ? balance : 0;
     }
 
     @Override
@@ -501,9 +501,8 @@ public class RewardServiceImpl implements RewardService {
 
     @Override
     public boolean hasEnoughPoints(UUID userId, Integer requiredPoints) {
-        User user = userRepository.findById(userId)
-                .orElseThrow(() -> new RuntimeException("User not found"));
-        return user.getPoints() >= requiredPoints; // Single source of truth
+        Integer currentBalance = userPointsRepository.calculateCurrentBalance(userId);
+        return currentBalance != null && currentBalance >= requiredPoints;
     }
 
     @Override
@@ -567,7 +566,7 @@ public class RewardServiceImpl implements RewardService {
             List<RewardRange> newRanges = dto.getRewardRanges().stream()
                     .map(rangeDTO -> convertRangeToEntity(rangeDTO, existing))
                     .collect(Collectors.toList());
-            
+
             existing.getRewardRanges().addAll(newRanges);
         }
     }

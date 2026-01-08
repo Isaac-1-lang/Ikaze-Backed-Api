@@ -24,6 +24,10 @@ public class UserPoints {
     @JoinColumn(name = "user_id", nullable = false)
     private User user;
 
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "shop_id")
+    private Shop shop;
+
     @NotNull(message = "Points amount is required")
     @Column(nullable = false)
     private Integer points; // Positive for earned, negative for spent (existing schema)
@@ -61,7 +65,8 @@ public class UserPoints {
         ADJUSTMENT
     }
 
-    // Removed PointsCategory enum - not needed since PointsType provides categorization
+    // Removed PointsCategory enum - not needed since PointsType provides
+    // categorization
 
     public boolean isEarned() {
         return points > 0; // Positive points = earned

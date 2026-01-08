@@ -48,10 +48,10 @@ public class OrderDeliveryNoteDTO {
                 .createdAt(note.getCreatedAt())
                 .updatedAt(note.getUpdatedAt());
         
-        // Add order info if present
-        if (note.getOrder() != null) {
-            builder.orderId(note.getOrder().getOrderId())
-                   .orderNumber(note.getOrder().getOrderCode());
+        // Add order info if present (from shopOrder)
+        if (note.getShopOrder() != null && note.getShopOrder().getOrder() != null) {
+            builder.orderId(note.getShopOrder().getOrder().getOrderId())
+                   .orderNumber(note.getShopOrder().getOrder().getOrderCode());
         }
         
         // Add delivery group info if present

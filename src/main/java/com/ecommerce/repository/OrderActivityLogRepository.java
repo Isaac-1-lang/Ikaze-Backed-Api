@@ -15,12 +15,14 @@ public interface OrderActivityLogRepository extends JpaRepository<OrderActivityL
     /**
      * Find all activity logs for a specific order, ordered by timestamp
      */
-    List<OrderActivityLog> findByOrderIdOrderByTimestampAsc(Long orderId);
+    @Query("SELECT oal FROM OrderActivityLog oal WHERE (oal.order.orderId = :orderId OR oal.orderIdValue = :orderId) " +
+           "ORDER BY oal.timestamp ASC")
+    List<OrderActivityLog> findByOrderIdOrderByTimestampAsc(@Param("orderId") Long orderId);
 
     /**
      * Find all activity logs for a specific order within a date range
      */
-    @Query("SELECT oal FROM OrderActivityLog oal WHERE oal.orderId = :orderId " +
+    @Query("SELECT oal FROM OrderActivityLog oal WHERE (oal.order.orderId = :orderId OR oal.orderIdValue = :orderId) " +
            "AND oal.timestamp BETWEEN :startDate AND :endDate " +
            "ORDER BY oal.timestamp ASC")
     List<OrderActivityLog> findByOrderIdAndDateRange(
@@ -32,22 +34,26 @@ public interface OrderActivityLogRepository extends JpaRepository<OrderActivityL
     /**
      * Find activity logs by order ID and activity type
      */
+    @Query("SELECT oal FROM OrderActivityLog oal WHERE (oal.order.orderId = :orderId OR oal.orderIdValue = :orderId) " +
+           "AND oal.activityType = :activityType " +
+           "ORDER BY oal.timestamp ASC")
     List<OrderActivityLog> findByOrderIdAndActivityTypeOrderByTimestampAsc(
-            Long orderId, 
-            OrderActivityLog.ActivityType activityType
+            @Param("orderId") Long orderId, 
+            @Param("activityType") OrderActivityLog.ActivityType activityType
     );
 
     /**
      * Find recent activity logs for an order (last N entries)
      */
-    @Query("SELECT oal FROM OrderActivityLog oal WHERE oal.orderId = :orderId " +
+    @Query("SELECT oal FROM OrderActivityLog oal WHERE (oal.order.orderId = :orderId OR oal.orderIdValue = :orderId) " +
            "ORDER BY oal.timestamp DESC")
     List<OrderActivityLog> findRecentByOrderId(@Param("orderId") Long orderId);
 
     /**
      * Count total activities for an order
      */
-    long countByOrderId(Long orderId);
+    @Query("SELECT COUNT(oal) FROM OrderActivityLog oal WHERE (oal.order.orderId = :orderId OR oal.orderIdValue = :orderId)")
+    long countByOrderId(@Param("orderId") Long orderId);
 
     /**
      * Find activities by reference (e.g., all activities related to a specific return request)
@@ -60,5 +66,6 @@ public interface OrderActivityLogRepository extends JpaRepository<OrderActivityL
     /**
      * Delete all logs for a specific order (for cleanup/GDPR)
      */
-    void deleteByOrderId(Long orderId);
+    @Query("DELETE FROM OrderActivityLog oal WHERE (oal.order.orderId = :orderId OR oal.orderIdValue = :orderId)")
+    void deleteByOrderId(@Param("orderId") Long orderId);
 }
