@@ -40,8 +40,6 @@ public interface OrderService {
 
     AdminOrderDTO getAdminOrderById(Long orderId);
 
-    AdminOrderDTO getAdminOrderById(Long orderId, UUID shopId);
-
     AdminOrderDTO getAdminOrderByNumber(String orderNumber);
 
     Page<AdminOrderDTO> searchOrders(OrderSearchDTO searchRequest, Pageable pageable);
@@ -76,4 +74,9 @@ public interface OrderService {
     long countProcessingOrdersWithoutDeliveryGroup();
 
     long countProcessingOrdersWithoutDeliveryGroup(UUID shopId);
+
+    // Customer order tracking
+    com.ecommerce.dto.CustomerOrderTrackingDTO getCustomerOrderTracking(Long orderId, String token);
+
+    com.ecommerce.dto.CustomerOrderTrackingDTO getCustomerOrderTracking(Long orderId);
 }

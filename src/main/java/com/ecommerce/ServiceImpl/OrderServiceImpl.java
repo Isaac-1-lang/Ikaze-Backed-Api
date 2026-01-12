@@ -1,6 +1,7 @@
 package com.ecommerce.ServiceImpl;
 
 import com.ecommerce.entity.Order;
+import com.ecommerce.entity.OrderActivityLog;
 import com.ecommerce.entity.OrderItem;
 import com.ecommerce.entity.OrderAddress;
 import com.ecommerce.entity.OrderInfo;
@@ -15,11 +16,19 @@ import com.ecommerce.entity.OrderItemBatch;
 import com.ecommerce.entity.Warehouse;
 import com.ecommerce.entity.StockBatch;
 import com.ecommerce.entity.ReadyForDeliveryGroup;
+import com.ecommerce.entity.ShopOrder;
+import com.ecommerce.entity.ReturnItem;
+import com.ecommerce.entity.ReturnRequest;
+import com.ecommerce.entity.ReturnAppeal;
 import com.ecommerce.repository.OrderRepository;
 import com.ecommerce.repository.ProductRepository;
 import com.ecommerce.repository.ProductVariantRepository;
 import com.ecommerce.repository.UserRepository;
 import com.ecommerce.repository.ReadyForDeliveryGroupRepository;
+import com.ecommerce.repository.ShopOrderRepository;
+import com.ecommerce.repository.OrderActivityLogRepository;
+import com.ecommerce.repository.ReturnRequestRepository;
+import com.ecommerce.repository.ReturnItemRepository;
 import com.ecommerce.service.OrderService;
 import com.ecommerce.service.RewardService;
 import com.ecommerce.dto.CreateOrderDTO;
@@ -60,7 +69,10 @@ public class OrderServiceImpl implements OrderService {
     private final ProductVariantRepository productVariantRepository;
     private final UserRepository userRepository;
     private final ReadyForDeliveryGroupRepository readyForDeliveryGroupRepository;
-    private final com.ecommerce.repository.ShopOrderRepository shopOrderRepository;
+    private final ShopOrderRepository shopOrderRepository;
+    private final OrderActivityLogRepository orderActivityLogRepository;
+    private final ReturnRequestRepository returnRequestRepository;
+    private final ReturnItemRepository returnItemRepository;
     private final RewardService rewardService;
 
     public OrderServiceImpl(OrderRepository orderRepository,
@@ -68,7 +80,10 @@ public class OrderServiceImpl implements OrderService {
             ProductVariantRepository productVariantRepository,
             UserRepository userRepository,
             ReadyForDeliveryGroupRepository readyForDeliveryGroupRepository,
-            com.ecommerce.repository.ShopOrderRepository shopOrderRepository,
+            ShopOrderRepository shopOrderRepository,
+            OrderActivityLogRepository orderActivityLogRepository,
+            ReturnRequestRepository returnRequestRepository,
+            ReturnItemRepository returnItemRepository,
             @Autowired(required = false) RewardService rewardService) {
         this.orderRepository = orderRepository;
         this.productRepository = productRepository;
@@ -76,6 +91,9 @@ public class OrderServiceImpl implements OrderService {
         this.userRepository = userRepository;
         this.readyForDeliveryGroupRepository = readyForDeliveryGroupRepository;
         this.shopOrderRepository = shopOrderRepository;
+        this.orderActivityLogRepository = orderActivityLogRepository;
+        this.returnRequestRepository = returnRequestRepository;
+        this.returnItemRepository = returnItemRepository;
         this.rewardService = rewardService;
     }
 
@@ -170,60 +188,14 @@ public class OrderServiceImpl implements OrderService {
     @Transactional(readOnly = true)
     public Page<AdminOrderDTO> getAllAdminOrdersPaginated(Pageable pageable, UUID shopId) {
         if (shopId != null) {
-            // Use ShopOrderRepository to avoid MultipleBagFetchException and ensure data
-            // isolation
-            // This fetches only the ShopOrders for this shop, effectively filtering the
-            // "Bag" of items correctly
-            org.springframework.data.domain.Page<com.ecommerce.entity.ShopOrder> shopOrdersPage = shopOrderRepository
-                    .findAllWithDetailsByShopId(shopId, pageable);
-
-            return shopOrdersPage.map(this::toAdminOrderDTOFromShopOrder);
+            // Filter orders by shop - orders contain products from the shop
+            Page<Order> ordersPage = orderRepository.findAllWithDetailsForAdminByShop(shopId, pageable);
+            return ordersPage.map(this::toAdminOrderDTO);
         } else {
             // No shop filter, return all orders
             Page<Order> ordersPage = orderRepository.findAllWithDetailsForAdmin(pageable);
             return ordersPage.map(this::toAdminOrderDTO);
         }
-    }
-
-    private AdminOrderDTO toAdminOrderDTOFromShopOrder(com.ecommerce.entity.ShopOrder shopOrder) {
-        Order order = shopOrder.getOrder();
-
-        // Use the existing toShopOrderDTO method to map the single shop order
-        ShopOrderDTO singleShopOrderDTO = toShopOrderDTO(shopOrder);
-
-        // Calculate subtotal for the shop order manually or rely on shopOrder
-        // properties
-        // shopOrder.getTotalAmount() is stored. Subtotal + Shipping - Discount = Total
-        // If we don't store subtotal on shopOrder, we sum items.
-        BigDecimal subtotal = calculateShopOrderSubtotal(shopOrder);
-
-        return AdminOrderDTO.builder()
-                .id(order.getOrderId().toString())
-                .userId(order.getUser() != null ? order.getUser().getId().toString() : null)
-                .customerName(order.getOrderCustomerInfo() != null
-                        ? order.getOrderCustomerInfo().getFirstName() + " " + order.getOrderCustomerInfo().getLastName()
-                        : null)
-                .customerEmail(order.getOrderCustomerInfo() != null ? order.getOrderCustomerInfo().getEmail() : null)
-                .customerPhone(
-                        order.getOrderCustomerInfo() != null ? order.getOrderCustomerInfo().getPhoneNumber() : null)
-                .orderNumber(shopOrder.getShopOrderCode())
-                .status(shopOrder.getStatus().name())
-                .shopOrders(java.util.Collections.singletonList(singleShopOrderDTO))
-                .items(shopOrder.getItems().stream() // Populate top-level items for frontend
-                        .map(this::toAdminOrderItemDTO)
-                        .collect(Collectors.toList()))
-                .subtotal(subtotal)
-                .tax(BigDecimal.ZERO)
-                .shipping(shopOrder.getShippingCost()) // Shop specific shipping
-                .discount(shopOrder.getDiscountAmount()) // Shop specific discount
-                .total(shopOrder.getTotalAmount())
-                .shippingAddress(toAdminOrderAddressDTO(order.getOrderAddress(), order.getOrderCustomerInfo()))
-                .billingAddress(toAdminOrderAddressDTO(order.getOrderAddress(), order.getOrderCustomerInfo()))
-                .paymentInfo(toAdminPaymentInfoDTO(order.getOrderTransaction()))
-                .notes(order.getOrderInfo() != null ? order.getOrderInfo().getNotes() : null)
-                .createdAt(shopOrder.getCreatedAt())
-                .updatedAt(shopOrder.getUpdatedAt())
-                .build();
     }
 
     @Override
@@ -232,16 +204,6 @@ public class OrderServiceImpl implements OrderService {
         Order order = orderRepository.findByIdWithDetailsForAdmin(orderId)
                 .orElseThrow(() -> new EntityNotFoundException("Order not found"));
         return toAdminOrderDTO(order);
-    }
-
-    @Override
-    @Transactional(readOnly = true)
-    public AdminOrderDTO getAdminOrderById(Long orderId, UUID shopId) {
-        com.ecommerce.entity.ShopOrder shopOrder = shopOrderRepository
-                .findByOrderIdAndShopIdWithDetails(orderId, shopId)
-                .orElseThrow(() -> new EntityNotFoundException("Order not found for this shop"));
-
-        return toAdminOrderDTOFromShopOrder(shopOrder);
     }
 
     @Override
@@ -256,15 +218,6 @@ public class OrderServiceImpl implements OrderService {
     @Transactional(readOnly = true)
     public Page<AdminOrderDTO> searchOrders(OrderSearchDTO searchRequest, Pageable pageable) {
         log.info("Searching orders with criteria: {}", searchRequest);
-
-        if (searchRequest.getShopId() != null) {
-            // Using Shop specific search which returns Page<ShopOrder>
-            // This is the CRITICAL fix for the user request
-            Page<com.ecommerce.entity.ShopOrder> shopOrdersPage = shopOrderRepository.searchShopOrders(searchRequest,
-                    pageable);
-            return shopOrdersPage.map(this::toAdminOrderDTOFromShopOrder);
-        }
-
         Page<Order> ordersPage = orderRepository.searchOrders(searchRequest, pageable);
         return ordersPage.map(this::toAdminOrderDTO);
     }
@@ -938,11 +891,8 @@ public class OrderServiceImpl implements OrderService {
 
     @Override
     public long countProcessingOrdersWithoutDeliveryGroup(UUID shopId) {
-        if (shopId == null) {
-            return countProcessingOrdersWithoutDeliveryGroup();
-        }
-        return shopOrderRepository.countByShopIdAndStatusAndReadyForDeliveryGroupIsNull(shopId,
-                ShopOrderStatus.PROCESSING);
+        return shopOrderRepository.countByStatusAndReadyForDeliveryGroupIsNullAndShop_ShopId(ShopOrderStatus.PROCESSING,
+                shopId);
     }
 
     @Override
@@ -1042,5 +992,479 @@ public class OrderServiceImpl implements OrderService {
                 shopOrderId);
 
         return shopOrder; // No-op for now to avoid compilation error on missing field
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public com.ecommerce.dto.CustomerOrderTrackingDTO getCustomerOrderTracking(Long orderId, String token) {
+        log.info("Getting customer order tracking for order {} with token", orderId);
+
+        // Validate token
+        if (token == null || token.trim().isEmpty()) {
+            throw new IllegalArgumentException("Tracking token is required");
+        }
+
+        return getCustomerOrderTracking(orderId);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public com.ecommerce.dto.CustomerOrderTrackingDTO getCustomerOrderTracking(Long orderId) {
+        log.info("Getting customer order tracking for order {}", orderId);
+
+        // Get order with all details
+        Order order = orderRepository.findById(orderId)
+                .orElseThrow(() -> new EntityNotFoundException("Order not found with ID: " + orderId));
+
+        // Build customer info
+        com.ecommerce.dto.CustomerOrderTrackingDTO.CustomerInfo customerInfo = buildCustomerInfo(order);
+
+        // Build addresses
+        com.ecommerce.dto.CustomerOrderTrackingDTO.AddressDTO shippingAddress = buildAddress(order.getOrderAddress(),
+                order);
+        com.ecommerce.dto.CustomerOrderTrackingDTO.AddressDTO billingAddress = buildAddress(order.getOrderAddress(),
+                order);
+
+        // Build payment info
+        com.ecommerce.dto.CustomerOrderTrackingDTO.PaymentInfo paymentInfo = buildPaymentInfo(
+                order.getOrderTransaction());
+
+        // Build shop order groups
+        List<com.ecommerce.dto.CustomerOrderTrackingDTO.ShopOrderGroup> shopOrderGroups = order.getShopOrders().stream()
+                .map(this::buildShopOrderGroup)
+                .collect(Collectors.toList());
+
+        // Calculate totals
+        BigDecimal subtotal = shopOrderGroups.stream()
+                .map(com.ecommerce.dto.CustomerOrderTrackingDTO.ShopOrderGroup::getSubtotal)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+        BigDecimal totalShipping = shopOrderGroups.stream()
+                .map(com.ecommerce.dto.CustomerOrderTrackingDTO.ShopOrderGroup::getShippingCost)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+        BigDecimal totalDiscount = shopOrderGroups.stream()
+                .map(com.ecommerce.dto.CustomerOrderTrackingDTO.ShopOrderGroup::getDiscountAmount)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+        BigDecimal grandTotal = shopOrderGroups.stream()
+                .map(com.ecommerce.dto.CustomerOrderTrackingDTO.ShopOrderGroup::getTotal)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+        // Determine overall status (most advanced status among shop orders)
+        String overallStatus = determineOverallStatus(order.getShopOrders());
+
+        return com.ecommerce.dto.CustomerOrderTrackingDTO.builder()
+                .orderId(order.getOrderId())
+                .orderCode(order.getOrderCode())
+                .orderDate(order.getCreatedAt())
+                .overallStatus(overallStatus)
+                .customerInfo(customerInfo)
+                .shippingAddress(shippingAddress)
+                .billingAddress(billingAddress)
+                .paymentInfo(paymentInfo)
+                .shopOrders(shopOrderGroups)
+                .subtotal(subtotal)
+                .totalShipping(totalShipping)
+                .totalDiscount(totalDiscount)
+                .tax(BigDecimal.ZERO)
+                .grandTotal(grandTotal)
+                .build();
+    }
+
+    private com.ecommerce.dto.CustomerOrderTrackingDTO.CustomerInfo buildCustomerInfo(Order order) {
+        String name = "N/A";
+        String email = "N/A";
+        String phone = "N/A";
+
+        if (order.getUser() != null) {
+            name = order.getUser().getFullName();
+            email = order.getUser().getUserEmail();
+            phone = order.getUser().getPhoneNumber();
+        } else if (order.getOrderCustomerInfo() != null) {
+            name = order.getOrderCustomerInfo().getFirstName() + " " + order.getOrderCustomerInfo().getLastName();
+            email = order.getOrderCustomerInfo().getEmail();
+            phone = order.getOrderCustomerInfo().getPhoneNumber();
+        }
+
+        return com.ecommerce.dto.CustomerOrderTrackingDTO.CustomerInfo.builder()
+                .name(name)
+                .email(email)
+                .phone(phone)
+                .build();
+    }
+
+    private com.ecommerce.dto.CustomerOrderTrackingDTO.AddressDTO buildAddress(OrderAddress address, Order order) {
+        if (address == null) {
+            return null;
+        }
+
+        String phone = "";
+        if (order.getUser() != null && order.getUser().getPhoneNumber() != null) {
+            phone = order.getUser().getPhoneNumber();
+        } else if (order.getOrderCustomerInfo() != null && order.getOrderCustomerInfo().getPhoneNumber() != null) {
+            phone = order.getOrderCustomerInfo().getPhoneNumber();
+        }
+
+        return com.ecommerce.dto.CustomerOrderTrackingDTO.AddressDTO.builder()
+                .street(address.getStreet())
+                .city("") // OrderAddress doesn't have a city field, use regions for state info
+                .state(address.getRegions())
+                .country(address.getCountry())
+                .phone(phone)
+                .latitude(address.getLatitude())
+                .longitude(address.getLongitude())
+                .build();
+    }
+
+    private com.ecommerce.dto.CustomerOrderTrackingDTO.PaymentInfo buildPaymentInfo(OrderTransaction transaction) {
+        if (transaction == null) {
+            return null;
+        }
+
+        return com.ecommerce.dto.CustomerOrderTrackingDTO.PaymentInfo.builder()
+                .paymentMethod(transaction.getPaymentMethod() != null ? transaction.getPaymentMethod().name() : "N/A")
+                .paymentStatus(transaction.getStatus() != null ? transaction.getStatus().name() : "PENDING")
+                .paymentDate(transaction.getPaymentDate())
+                .transactionRef(transaction.getStripePaymentIntentId())
+                .pointsUsed(transaction.getPointsUsed() != null ? transaction.getPointsUsed() : 0)
+                .pointsValue(transaction.getPointsValue() != null ? transaction.getPointsValue() : BigDecimal.ZERO)
+                .build();
+    }
+
+    private com.ecommerce.dto.CustomerOrderTrackingDTO.ShopOrderGroup buildShopOrderGroup(
+            ShopOrder shopOrder) {
+        // Build items
+        List<com.ecommerce.dto.CustomerOrderTrackingDTO.OrderItemDTO> items = shopOrder.getItems().stream()
+                .map(this::buildOrderItemDTO)
+                .collect(Collectors.toList());
+
+        // Build timeline
+        List<com.ecommerce.dto.CustomerOrderTrackingDTO.StatusTimeline> timeline = buildStatusTimeline(shopOrder);
+
+        // Build delivery info
+        com.ecommerce.dto.CustomerOrderTrackingDTO.DeliveryInfo deliveryInfo = buildDeliveryInfo(shopOrder);
+
+        // Build delivery note
+        com.ecommerce.dto.CustomerOrderTrackingDTO.DeliveryNoteDTO deliveryNote = buildDeliveryNote(shopOrder);
+
+        // Calculate subtotal
+        BigDecimal subtotal = items.stream()
+                .map(com.ecommerce.dto.CustomerOrderTrackingDTO.OrderItemDTO::getTotalPrice)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+        return com.ecommerce.dto.CustomerOrderTrackingDTO.ShopOrderGroup.builder()
+                .shopOrderId(shopOrder.getId())
+                .shopOrderCode(shopOrder.getShopOrderCode())
+                .shopId(shopOrder.getShop().getShopId().toString())
+                .shopName(shopOrder.getShop().getName())
+                .shopLogo(shopOrder.getShop().getLogoUrl())
+                .shopSlug(shopOrder.getShop().getSlug())
+                .status(shopOrder.getStatus().name())
+                .timeline(timeline)
+                .items(items)
+                .subtotal(subtotal)
+                .shippingCost(shopOrder.getShippingCost())
+                .discountAmount(shopOrder.getDiscountAmount())
+                .total(shopOrder.getTotalAmount())
+                .deliveryInfo(deliveryInfo)
+                .returnRequests(returnRequestRepository.findByShopOrderId(shopOrder.getId()).stream()
+                        .map(rr -> com.ecommerce.dto.CustomerOrderTrackingDTO.ReturnRequest.builder()
+                                .returnId(rr.getId())
+                                .returnCode(rr.getId().toString()) // Use ID if no code available
+                                .reason(rr.getReason())
+                                .status(rr.getStatus().name())
+                                .requestedAt(rr.getSubmittedAt())
+                                .processedAt(rr.getDecisionAt())
+                                .notes(rr.getDecisionNotes())
+                                .build())
+                        .collect(Collectors.toList()))
+                .deliveryNote(deliveryNote)
+                .trackingToken(shopOrder.getPickupToken())
+                .pickupTokenUsed(shopOrder.getPickupTokenUsed())
+                .createdAt(shopOrder.getCreatedAt())
+                .updatedAt(shopOrder.getUpdatedAt())
+                .build();
+    }
+
+    private com.ecommerce.dto.CustomerOrderTrackingDTO.OrderItemDTO buildOrderItemDTO(OrderItem item) {
+        Product product = item.getProduct();
+        List<String> images = new ArrayList<>();
+
+        if (product != null && product.getImages() != null && !product.getImages().isEmpty()) {
+            images = product.getImages().stream()
+                    .map(ProductImage::getImageUrl)
+                    .collect(Collectors.toList());
+        }
+
+        Integer discountPercentage = 0;
+        String discountName = "";
+        boolean hasDiscount = false;
+
+        if (product != null) {
+            if (product.isOnSale() && product.getSalePercentage() != null && product.getSalePercentage() > 0) {
+                discountPercentage = product.getSalePercentage();
+                hasDiscount = true;
+                discountName = "Flash Sale";
+            } else if (product.getDiscount() != null && product.getDiscount().isValid()) {
+                discountPercentage = product.getDiscount().getPercentage().intValue();
+                hasDiscount = true;
+                discountName = product.getDiscount().getName();
+            }
+        }
+
+        // Return Eligibility Logic
+        boolean returnEligible = false;
+        int maxReturnDays = product != null && product.getMaximumDaysForReturn() != null
+                ? product.getMaximumDaysForReturn()
+                : 30;
+        int daysRemaining = 0;
+
+        if (item.getShopOrder() != null && item.getShopOrder().getStatus() == ShopOrder.ShopOrderStatus.DELIVERED
+                && item.getShopOrder().getDeliveredAt() != null) {
+            LocalDateTime deliveredAt = item.getShopOrder().getDeliveredAt();
+            LocalDateTime returnDeadline = deliveredAt.plusDays(maxReturnDays);
+            returnEligible = LocalDateTime.now().isBefore(returnDeadline);
+            daysRemaining = (int) java.time.temporal.ChronoUnit.DAYS.between(LocalDateTime.now(), returnDeadline);
+            if (daysRemaining < 0)
+                daysRemaining = 0;
+        }
+
+        // Return Information
+        List<ReturnItem> returnItems = returnItemRepository.findByOrderItemOrderItemId(item.getOrderItemId());
+        com.ecommerce.dto.CustomerOrderTrackingDTO.ReturnItemInfo returnInfo = null;
+
+        if (!returnItems.isEmpty()) {
+            int totalReturned = returnItems.stream()
+                    .filter(ri -> ri.getReturnRequest().getStatus() == ReturnRequest.ReturnStatus.APPROVED
+                            || ri.getReturnRequest().getStatus() == ReturnRequest.ReturnStatus.COMPLETED)
+                    .mapToInt(ReturnItem::getReturnQuantity)
+                    .sum();
+
+            List<com.ecommerce.dto.CustomerOrderTrackingDTO.ReturnRequestInfo> requests = returnItems.stream()
+                    .map(ri -> {
+                        ReturnRequest rr = ri.getReturnRequest();
+                        ReturnAppeal appeal = rr.getReturnAppeal();
+
+                        com.ecommerce.dto.CustomerOrderTrackingDTO.ReturnAppealInfo appealDTO = null;
+                        if (appeal != null) {
+                            appealDTO = com.ecommerce.dto.CustomerOrderTrackingDTO.ReturnAppealInfo.builder()
+                                    .id(appeal.getId())
+                                    .status(appeal.getStatus().name())
+                                    .reason(appeal.getReason())
+                                    .description(appeal.getDescription())
+                                    .submittedAt(appeal.getSubmittedAt())
+                                    .decisionAt(appeal.getDecisionAt())
+                                    .decisionNotes(appeal.getDecisionNotes())
+                                    .build();
+                        }
+
+                        return com.ecommerce.dto.CustomerOrderTrackingDTO.ReturnRequestInfo.builder()
+                                .id(rr.getId())
+                                .status(rr.getStatus().name())
+                                .reason(rr.getReason())
+                                .submittedAt(rr.getSubmittedAt())
+                                .decisionAt(rr.getDecisionAt())
+                                .decisionNotes(rr.getDecisionNotes())
+                                .canBeAppealed(rr.canBeAppealed())
+                                .appeal(appealDTO)
+                                .build();
+                    })
+                    .collect(Collectors.toList());
+
+            returnInfo = com.ecommerce.dto.CustomerOrderTrackingDTO.ReturnItemInfo.builder()
+                    .hasReturnRequest(true)
+                    .totalReturnedQuantity(totalReturned)
+                    .remainingQuantity(item.getQuantity() - totalReturned)
+                    .returnRequests(requests)
+                    .build();
+        }
+
+        return com.ecommerce.dto.CustomerOrderTrackingDTO.OrderItemDTO.builder()
+                .itemId(item.getOrderItemId())
+                .productId(product != null ? product.getProductId().toString() : null)
+                .productName(product != null ? product.getProductName() : "Unknown Product")
+                .productDescription(product != null ? product.getDescription() : "")
+                .productImages(images)
+                .quantity(item.getQuantity())
+                .price(item.getPrice())
+                .originalPrice(item.getPrice())
+                .totalPrice(item.getEffectivePrice())
+                .discountPercentage(discountPercentage)
+                .discountName(discountName)
+                .hasDiscount(hasDiscount)
+                .returnEligible(returnEligible)
+                .maxReturnDays(maxReturnDays)
+                .daysRemainingForReturn(daysRemaining)
+                .returnInfo(returnInfo)
+                .build();
+    }
+
+    private List<com.ecommerce.dto.CustomerOrderTrackingDTO.StatusTimeline> buildStatusTimeline(
+            ShopOrder shopOrder) {
+        List<com.ecommerce.dto.CustomerOrderTrackingDTO.StatusTimeline> timeline = new ArrayList<>();
+
+        // Get actual activity logs for this shop order
+        List<OrderActivityLog> logs = orderActivityLogRepository
+                .findByShopOrder_IdOrderByTimestampAsc(shopOrder.getId());
+
+        // Define standard statuses
+        String[] statuses = { "PENDING", "PROCESSING", "READY_FOR_PICKUP", "SHIPPED", "DELIVERED" };
+        String currentStatus = shopOrder.getStatus().name();
+
+        for (String status : statuses) {
+            boolean isCompleted = isStatusCompleted(status, currentStatus);
+            boolean isCurrent = status.equals(currentStatus);
+
+            // Find matching activity log for this status
+            LocalDateTime timestamp = null;
+            if (isCompleted) {
+                timestamp = findTimestampForStatus(logs, status, shopOrder);
+            }
+
+            timeline.add(com.ecommerce.dto.CustomerOrderTrackingDTO.StatusTimeline.builder()
+                    .status(status)
+                    .statusLabel(formatStatusLabel(status))
+                    .description(getStatusDescription(status))
+                    .timestamp(timestamp)
+                    .isCompleted(isCompleted)
+                    .isCurrent(isCurrent)
+                    .build());
+        }
+
+        return timeline;
+    }
+
+    private LocalDateTime findTimestampForStatus(List<OrderActivityLog> logs, String status, ShopOrder shopOrder) {
+        // Map status to ActivityType
+        OrderActivityLog.ActivityType type = null;
+        switch (status) {
+            case "PENDING":
+                return shopOrder.getCreatedAt();
+            case "PROCESSING":
+                type = OrderActivityLog.ActivityType.ORDER_PROCESSING;
+                break;
+            case "READY_FOR_PICKUP":
+                type = OrderActivityLog.ActivityType.READY_FOR_DELIVERY;
+                break;
+            case "SHIPPED":
+                type = OrderActivityLog.ActivityType.OUT_FOR_DELIVERY;
+                if (type == null)
+                    type = OrderActivityLog.ActivityType.TRACKING_INFO_UPDATED;
+                break;
+            case "DELIVERED":
+                type = OrderActivityLog.ActivityType.DELIVERY_COMPLETED;
+                break;
+        }
+
+        if (type != null) {
+            OrderActivityLog.ActivityType finalType = type;
+            return logs.stream()
+                    .filter(l -> l.getActivityType() == finalType)
+                    .map(OrderActivityLog::getTimestamp)
+                    .findFirst()
+                    .orElse(null);
+        }
+
+        return null;
+    }
+
+    private boolean isStatusCompleted(String status, String currentStatus) {
+        String[] statuses = { "PENDING", "PROCESSING", "READY_FOR_PICKUP", "SHIPPED", "DELIVERED" };
+        int statusIndex = -1;
+        int currentIndex = -1;
+
+        for (int i = 0; i < statuses.length; i++) {
+            if (statuses[i].equals(status))
+                statusIndex = i;
+            if (statuses[i].equals(currentStatus))
+                currentIndex = i;
+        }
+
+        return statusIndex <= currentIndex;
+    }
+
+    private String formatStatusLabel(String status) {
+        return status.replace("_", " ");
+    }
+
+    private String getStatusDescription(String status) {
+        switch (status) {
+            case "PENDING":
+                return "Order received and awaiting processing";
+            case "PROCESSING":
+                return "Order is being prepared";
+            case "READY_FOR_PICKUP":
+                return "Order is ready for pickup";
+            case "SHIPPED":
+                return "Order has been shipped";
+            case "DELIVERED":
+                return "Order has been delivered";
+            default:
+                return "";
+        }
+    }
+
+    private com.ecommerce.dto.CustomerOrderTrackingDTO.DeliveryInfo buildDeliveryInfo(
+            ShopOrder shopOrder) {
+        ReadyForDeliveryGroup deliveryGroup = shopOrder.getReadyForDeliveryGroup();
+
+        if (deliveryGroup == null) {
+            return null;
+        }
+
+        return com.ecommerce.dto.CustomerOrderTrackingDTO.DeliveryInfo.builder()
+                .deliveryGroupName(deliveryGroup.getDeliveryGroupName())
+                .delivererName(deliveryGroup.getDeliverer() != null ? deliveryGroup.getDeliverer().getFullName() : null)
+                .delivererPhone(
+                        deliveryGroup.getDeliverer() != null ? deliveryGroup.getDeliverer().getPhoneNumber() : null)
+                .scheduledAt(deliveryGroup.getScheduledAt())
+                .deliveryStartedAt(deliveryGroup.getDeliveryStartedAt())
+                .deliveredAt(shopOrder.getDeliveredAt())
+                .hasDeliveryStarted(deliveryGroup.getHasDeliveryStarted())
+                .pickupToken(shopOrder.getPickupToken())
+                .build();
+    }
+
+    private com.ecommerce.dto.CustomerOrderTrackingDTO.DeliveryNoteDTO buildDeliveryNote(
+            ShopOrder shopOrder) {
+        if (shopOrder.getDeliveryNote() == null) {
+            return null;
+        }
+
+        return com.ecommerce.dto.CustomerOrderTrackingDTO.DeliveryNoteDTO.builder()
+                .noteId(shopOrder.getDeliveryNote().getNoteId())
+                .note(shopOrder.getDeliveryNote().getNoteText())
+                .createdAt(shopOrder.getDeliveryNote().getCreatedAt())
+                .build();
+    }
+
+    private String determineOverallStatus(List<ShopOrder> shopOrders) {
+        if (shopOrders.isEmpty()) {
+            return "PENDING";
+        }
+
+        // If all delivered, return DELIVERED
+        boolean allDelivered = shopOrders.stream()
+                .allMatch(so -> "DELIVERED".equals(so.getStatus().name()));
+        if (allDelivered) {
+            return "DELIVERED";
+        }
+
+        // If any shipped, return SHIPPED
+        boolean anyShipped = shopOrders.stream()
+                .anyMatch(so -> "SHIPPED".equals(so.getStatus().name()));
+        if (anyShipped) {
+            return "SHIPPED";
+        }
+
+        // If any processing, return PROCESSING
+        boolean anyProcessing = shopOrders.stream()
+                .anyMatch(so -> "PROCESSING".equals(so.getStatus().name()));
+        if (anyProcessing) {
+            return "PROCESSING";
+        }
+
+        return "PENDING";
     }
 }

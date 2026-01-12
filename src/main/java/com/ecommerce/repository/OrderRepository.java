@@ -113,8 +113,7 @@ public interface OrderRepository extends JpaRepository<Order, Long>, OrderReposi
        @Query("SELECT DISTINCT o FROM Order o " +
                      "LEFT JOIN FETCH o.user u " +
                      "LEFT JOIN FETCH o.shopOrders so " +
-                     // "LEFT JOIN FETCH so.items oi " + // Removed to avoid
-                     // MultipleBagFetchException
+                     "LEFT JOIN FETCH so.items oi " +
                      "LEFT JOIN FETCH o.orderInfo info " +
                      "LEFT JOIN FETCH o.orderAddress addr " +
                      "LEFT JOIN FETCH o.orderCustomerInfo customer " +
@@ -129,14 +128,13 @@ public interface OrderRepository extends JpaRepository<Order, Long>, OrderReposi
        @Query("SELECT DISTINCT o FROM Order o " +
                      "LEFT JOIN FETCH o.user u " +
                      "LEFT JOIN FETCH o.shopOrders so " +
-                     // "LEFT JOIN FETCH so.items oi " + // Removed to avoid
-                     // MultipleBagFetchException
-                     // "LEFT JOIN FETCH oi.product p " + // Depends on oi
+                     "LEFT JOIN FETCH so.items oi " +
+                     "LEFT JOIN FETCH oi.product p " +
                      "LEFT JOIN FETCH o.orderInfo info " +
                      "LEFT JOIN FETCH o.orderAddress addr " +
                      "LEFT JOIN FETCH o.orderCustomerInfo customer " +
                      "LEFT JOIN FETCH o.orderTransaction tx " +
-                     "WHERE EXISTS (SELECT 1 FROM ShopOrder sub_so JOIN sub_so.items sub_item JOIN sub_item.product sub_p WHERE sub_so.order = o AND sub_p.shop.shopId = :shopId)")
+                     "WHERE p.shop.shopId = :shopId")
        Page<Order> findAllWithDetailsForAdminByShop(@Param("shopId") UUID shopId, Pageable pageable);
 
        /**
@@ -145,8 +143,7 @@ public interface OrderRepository extends JpaRepository<Order, Long>, OrderReposi
        @Query("SELECT DISTINCT o FROM Order o " +
                      "LEFT JOIN FETCH o.user u " +
                      "LEFT JOIN FETCH o.shopOrders so " +
-                     // "LEFT JOIN FETCH so.items oi " + // Removed to avoid
-                     // MultipleBagFetchException
+                     "LEFT JOIN FETCH so.items oi " +
                      "LEFT JOIN FETCH o.orderInfo info " +
                      "LEFT JOIN FETCH o.orderAddress addr " +
                      "LEFT JOIN FETCH o.orderCustomerInfo customer " +
@@ -160,8 +157,7 @@ public interface OrderRepository extends JpaRepository<Order, Long>, OrderReposi
        @Query("SELECT o FROM Order o " +
                      "LEFT JOIN FETCH o.user u " +
                      "LEFT JOIN FETCH o.shopOrders so " +
-                     // "LEFT JOIN FETCH so.items oi " + // Removed to avoid
-                     // MultipleBagFetchException
+                     "LEFT JOIN FETCH so.items oi " +
                      "LEFT JOIN FETCH o.orderInfo info " +
                      "LEFT JOIN FETCH o.orderAddress addr " +
                      "LEFT JOIN FETCH o.orderCustomerInfo customer " +
@@ -175,8 +171,7 @@ public interface OrderRepository extends JpaRepository<Order, Long>, OrderReposi
        @Query("SELECT o FROM Order o " +
                      "LEFT JOIN FETCH o.user u " +
                      "LEFT JOIN FETCH o.shopOrders so " +
-                     // "LEFT JOIN FETCH so.items oi " + // Removed to avoid
-                     // MultipleBagFetchException
+                     "LEFT JOIN FETCH so.items oi " +
                      "LEFT JOIN FETCH o.orderInfo info " +
                      "LEFT JOIN FETCH o.orderAddress addr " +
                      "LEFT JOIN FETCH o.orderCustomerInfo customer " +
