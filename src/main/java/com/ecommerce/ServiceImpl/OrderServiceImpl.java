@@ -937,6 +937,15 @@ public class OrderServiceImpl implements OrderService {
     }
 
     @Override
+    public long countProcessingOrdersWithoutDeliveryGroup(UUID shopId) {
+        if (shopId == null) {
+            return countProcessingOrdersWithoutDeliveryGroup();
+        }
+        return shopOrderRepository.countByShopIdAndStatusAndReadyForDeliveryGroupIsNull(shopId,
+                ShopOrderStatus.PROCESSING);
+    }
+
+    @Override
     public List<AdminOrderDTO> getOrdersByStatus(String status) {
         try {
             ShopOrderStatus shopOrderStatus = ShopOrderStatus.valueOf(status.toUpperCase());

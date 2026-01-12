@@ -341,10 +341,11 @@ public class AdminOrderController {
     }
 
     @PostMapping("/search")
-    @Operation(summary = "Search orders with filters", description = "Search and filter orders based on various criteria with pagination")
+    @Operation(summary = "Search orders with filters", description = "Search and filter orders based on various criteria with pagination. ShopId is required for shop-specific searches.")
     public ResponseEntity<?> searchOrders(@Valid @RequestBody OrderSearchDTO searchRequest) {
         try {
-            log.info("Searching orders with criteria: {}", searchRequest);
+            log.info("Searching orders with criteria - shopId: {}, keyword: {}, status: {}",
+                    searchRequest.getShopId(), searchRequest.getSearchKeyword(), searchRequest.getOrderStatus());
 
             if (!searchRequest.hasAtLeastOneFilter()) {
                 Map<String, Object> response = new HashMap<>();
@@ -383,18 +384,27 @@ public class AdminOrderController {
                 if (currentUserId != null) {
                     try {
                         shopAuthorizationService.assertCanManageShop(currentUserId, searchRequest.getShopId());
+                        log.info("User {} authorized to search orders for shop {}", currentUserId,
+                                searchRequest.getShopId());
                     } catch (com.ecommerce.Exception.CustomException e) {
+                        log.warn("User {} denied access to shop {}: {}", currentUserId, searchRequest.getShopId(),
+                                e.getMessage());
                         Map<String, Object> response = new HashMap<>();
                         response.put("success", false);
                         response.put("message", "Access denied to this shop");
                         response.put("errorCode", "ACCESS_DENIED");
+                        response.put("details", e.getMessage());
                         return ResponseEntity.status(HttpStatus.FORBIDDEN).body(response);
                     }
                 }
+            } else {
+                log.warn("Search request received without shopId - this may return global results");
             }
 
             // Search orders
             Page<AdminOrderDTO> ordersPage = orderService.searchOrders(searchRequest, pageable);
+            log.info("Search returned {} orders (page {} of {})",
+                    ordersPage.getNumberOfElements(), ordersPage.getNumber() + 1, ordersPage.getTotalPages());
 
             Map<String, Object> response = new HashMap<>();
             response.put("success", true);
@@ -431,20 +441,99 @@ public class AdminOrderController {
     }
 
     @GetMapping("/count/pending")
-    @Operation(summary = "Get pending orders count", description = "Get count of orders with PROCESSING status and no delivery group assigned")
-    public ResponseEntity<?> getPendingOrdersCount() {
+    @Operation(summary = "Get pending orders count", description = "Get count of orders with PROCESSING status and no delivery group assigned for a specific shop. ShopId or shopSlug is REQUIRED.")
+    public ResponseEntity<?> getPendingOrdersCount(
+            @Parameter(description = "Shop UUID (required if shopSlug not provided)") @RequestParam(required = false) String shopId,
+            @Parameter(description = "Shop Slug (required if shopId not provided)") @RequestParam(required = false) String shopSlug) {
         try {
-            long count = orderService.countProcessingOrdersWithoutDeliveryGroup();
+            log.info("Getting pending orders count - shopId: {}, shopSlug: {}", shopId, shopSlug);
+
+            // Validate that at least one parameter is provided
+            if ((shopId == null || shopId.trim().isEmpty()) && (shopSlug == null || shopSlug.trim().isEmpty())) {
+                log.warn("Pending orders count requested without shopId or shopSlug");
+                Map<String, Object> response = new HashMap<>();
+                response.put("success", false);
+                response.put("message", "Shop identification is required. Please provide either shopId or shopSlug.");
+                response.put("errorCode", "VALIDATION_ERROR");
+                response.put("count", 0);
+                return ResponseEntity.badRequest().body(response);
+            }
+
+            UUID shopUuid = null;
+
+            // Resolve Shop UUID from shopId
+            if (shopId != null && !shopId.trim().isEmpty()) {
+                try {
+                    shopUuid = UUID.fromString(shopId);
+                    log.info("Resolved shopId to UUID: {}", shopUuid);
+                } catch (IllegalArgumentException e) {
+                    log.warn("Invalid shopId format: {}", shopId);
+                    // Continue to try shopSlug if provided
+                }
+            }
+
+            // If shopUuid is still null, try resolving from shopSlug
+            if (shopUuid == null && shopSlug != null && !shopSlug.trim().isEmpty()) {
+                shopUuid = shopRepository.findBySlug(shopSlug)
+                        .map(com.ecommerce.entity.Shop::getShopId)
+                        .orElse(null);
+
+                if (shopUuid == null) {
+                    log.warn("Shop not found for slug: {}", shopSlug);
+                    Map<String, Object> response = new HashMap<>();
+                    response.put("success", false);
+                    response.put("message", "Shop not found with slug: " + shopSlug);
+                    response.put("errorCode", "NOT_FOUND");
+                    response.put("count", 0);
+                    return ResponseEntity.status(HttpStatus.NOT_FOUND).body(response);
+                }
+
+                log.info("Resolved shopSlug '{}' to UUID: {}", shopSlug, shopUuid);
+            }
+
+            // If we still don't have a shopUuid, return error
+            if (shopUuid == null) {
+                log.error("Failed to resolve shop UUID from provided parameters");
+                Map<String, Object> response = new HashMap<>();
+                response.put("success", false);
+                response.put("message", "Could not resolve shop from provided parameters");
+                response.put("errorCode", "VALIDATION_ERROR");
+                response.put("count", 0);
+                return ResponseEntity.badRequest().body(response);
+            }
+
+            // Check permissions - user must be authorized to manage this shop
+            UUID currentUserId = getCurrentUserId();
+            if (currentUserId != null) {
+                try {
+                    shopAuthorizationService.assertCanManageShop(currentUserId, shopUuid);
+                    log.info("User {} authorized to view pending count for shop {}", currentUserId, shopUuid);
+                } catch (com.ecommerce.Exception.CustomException e) {
+                    log.warn("User {} denied access to shop {}: {}", currentUserId, shopUuid, e.getMessage());
+                    Map<String, Object> response = new HashMap<>();
+                    response.put("success", false);
+                    response.put("message", "Access denied to this shop");
+                    response.put("errorCode", "ACCESS_DENIED");
+                    response.put("count", 0);
+                    return ResponseEntity.status(HttpStatus.FORBIDDEN).body(response);
+                }
+            }
+
+            // Get shop-specific pending count
+            Long count = orderService.countProcessingOrdersWithoutDeliveryGroup(shopUuid);
+            log.info("Shop-specific pending count for shop {}: {}", shopUuid, count);
 
             Map<String, Object> response = new HashMap<>();
             response.put("success", true);
             response.put("count", count);
             return ResponseEntity.ok(response);
+
         } catch (Exception e) {
             log.error("Error getting pending orders count: {}", e.getMessage(), e);
             Map<String, Object> response = new HashMap<>();
             response.put("success", false);
             response.put("message", "Failed to get pending orders count");
+            response.put("errorCode", "INTERNAL_ERROR");
             response.put("count", 0);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(response);
         }

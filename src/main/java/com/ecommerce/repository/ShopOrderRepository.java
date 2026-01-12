@@ -80,6 +80,10 @@ public interface ShopOrderRepository extends JpaRepository<ShopOrder, Long>, Sho
                         Long deliveryGroupId,
                         org.springframework.data.domain.Pageable pageable);
 
+        @Query("SELECT COUNT(so) FROM ShopOrder so WHERE so.shop.shopId = :shopId AND so.status = :status AND so.readyForDeliveryGroup IS NULL")
+        long countByShopIdAndStatusAndReadyForDeliveryGroupIsNull(@Param("shopId") UUID shopId,
+                        @Param("status") com.ecommerce.entity.ShopOrder.ShopOrderStatus status);
+
         @Query("SELECT DISTINCT so FROM ShopOrder so " +
                         "LEFT JOIN FETCH so.items oi " +
                         "LEFT JOIN FETCH oi.product p " +

@@ -74,4 +74,6 @@ public interface OrderService {
     long countOrdersByStatus(String status);
 
     long countProcessingOrdersWithoutDeliveryGroup();
+
+    long countProcessingOrdersWithoutDeliveryGroup(UUID shopId);
 }

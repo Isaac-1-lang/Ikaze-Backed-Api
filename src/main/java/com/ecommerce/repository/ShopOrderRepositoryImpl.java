@@ -67,7 +67,7 @@ public class ShopOrderRepositoryImpl implements ShopOrderRepositoryCustom {
             Predicate userFirstName = cb.like(cb.lower(user.get("firstName")), keyword);
             Predicate userLastName = cb.like(cb.lower(user.get("lastName")), keyword);
             Predicate userEmail = cb.like(cb.lower(user.get("userEmail")), keyword);
-            Predicate userPhone = cb.like(cb.lower(user.get("phone")), keyword);
+            Predicate userPhone = cb.like(cb.lower(user.get("phoneNumber")), keyword);
 
             predicates.add(cb.or(
                     shopOrderCodeMatch, orderCodeMatch,
