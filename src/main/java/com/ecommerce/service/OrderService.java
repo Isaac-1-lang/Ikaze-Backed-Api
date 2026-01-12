@@ -20,16 +20,10 @@ public interface OrderService {
     List<Order> getOrdersForUser(UUID userId);
 
     Order getOrderByIdForUser(UUID userId, Long orderId);
+
     Order getOrderById(Long orderId);
+
     Order getOrderByNumber(UUID userId, String orderNumber);
-
-    Order createOrder(UUID userId, CreateOrderDTO createOrderDTO);
-
-    Order cancelOrder(UUID userId, Long orderId);
-
-    Order updateOrderStatus(Long orderId, String status);
-
-    Map<String, Object> getOrderTracking(UUID userId, Long orderId);
 
     List<CustomerOrderDTO> getCustomerOrders(UUID userId);
 
@@ -41,16 +35,18 @@ public interface OrderService {
     List<AdminOrderDTO> getAllAdminOrders();
 
     Page<AdminOrderDTO> getAllAdminOrdersPaginated(Pageable pageable);
-    
-    Page<AdminOrderDTO> getAllAdminOrdersPaginated(Pageable pageable, UUID shopId);
 
-    List<AdminOrderDTO> getOrdersByStatus(String status);
+    Page<AdminOrderDTO> getAllAdminOrdersPaginated(Pageable pageable, UUID shopId);
 
     AdminOrderDTO getAdminOrderById(Long orderId);
 
     AdminOrderDTO getAdminOrderByNumber(String orderNumber);
 
     Page<AdminOrderDTO> searchOrders(OrderSearchDTO searchRequest, Pageable pageable);
+
+    List<AdminOrderDTO> getOrdersByStatus(String status);
+
+    com.ecommerce.entity.ShopOrder updateShopOrderStatus(Long shopOrderId, String status);
 
     // Delivery agency methods
     List<DeliveryOrderDTO> getDeliveryOrders();
@@ -59,20 +55,21 @@ public interface OrderService {
 
     DeliveryOrderDTO getDeliveryOrderByNumber(String orderNumber);
 
-    Order updateOrderTracking(Long orderId, String trackingNumber, String estimatedDelivery);
+    com.ecommerce.entity.ShopOrder updateShopOrderTracking(Long shopOrderId, String trackingNumber,
+            String estimatedDelivery);
 
     // Public tracking methods
     Order getOrderByOrderCode(String orderCode);
 
-    Order getOrderByPickupToken(String pickupToken);
+    com.ecommerce.entity.ShopOrder getShopOrderByPickupToken(String pickupToken);
 
     Order saveOrder(Order order);
 
     boolean checkAllOrdersDeliveredInGroup(Long groupId);
 
     void autoFinishDeliveryGroup(Long groupId);
-    
+
     long countOrdersByStatus(String status);
-    
+
     long countProcessingOrdersWithoutDeliveryGroup();
 }

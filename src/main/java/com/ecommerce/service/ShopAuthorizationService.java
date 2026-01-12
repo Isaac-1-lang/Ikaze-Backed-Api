@@ -7,6 +7,6 @@ public interface ShopAuthorizationService {
     boolean canManageShop(UUID userId, UUID shopId);
 
     void assertCanManageShop(UUID userId, UUID shopId);
+
+    boolean hasAccessToShop(UUID userId, UUID shopId);
 }
-
-

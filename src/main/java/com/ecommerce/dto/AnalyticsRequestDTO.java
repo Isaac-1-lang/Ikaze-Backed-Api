@@ -12,4 +12,5 @@ import java.time.LocalDate;
 public class AnalyticsRequestDTO {
     private LocalDate startDate; // inclusive
     private LocalDate endDate; // inclusive
+    private java.util.UUID shopId;
 }

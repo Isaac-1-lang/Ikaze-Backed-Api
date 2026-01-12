@@ -26,12 +26,10 @@ public interface OrderTransactionRepository extends JpaRepository<OrderTransacti
     /**
      * Get total revenue for a specific shop (sum of completed transactions for orders containing products from that shop)
      */
-    @Query("SELECT COALESCE(SUM(ot.orderAmount), 0) FROM OrderTransaction ot " +
+    @Query("SELECT COALESCE(SUM(so.totalAmount), 0) FROM OrderTransaction ot " +
            "JOIN ot.order o " +
-           "JOIN o.orderItems oi " +
-           "JOIN oi.productVariant pv " +
-           "JOIN pv.product p " +
-           "WHERE p.shop.shopId = :shopId " +
+           "JOIN o.shopOrders so " +
+           "WHERE so.shop.shopId = :shopId " +
            "AND ot.status = 'COMPLETED'")
     BigDecimal getTotalRevenueByShopId(java.util.UUID shopId);
 }

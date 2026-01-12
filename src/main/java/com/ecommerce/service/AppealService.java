@@ -108,16 +108,15 @@ public class AppealService {
 
         // LOG ACTIVITY: Appeal Submitted
         Order order = returnRequest.getOrder();
-        String customerName = order.getUser() != null 
-            ? order.getUser().getFirstName() + " " + order.getUser().getLastName()
-            : order.getOrderCustomerInfo().getFullName();
+        String customerName = order.getUser() != null
+                ? order.getUser().getFirstName() + " " + order.getUser().getLastName()
+                : order.getOrderCustomerInfo().getFullName();
         activityLogService.logAppealSubmitted(
-            order.getOrderId(),
-            customerName,
-            submitDTO.getReason(),
-            savedAppeal.getId(),
-            returnRequest.getId()
-        );
+                order.getOrderId(),
+                customerName,
+                submitDTO.getReason(),
+                savedAppeal.getId(),
+                returnRequest.getId());
 
         return convertToDTO(savedAppeal);
     }
@@ -172,16 +171,15 @@ public class AppealService {
 
         // LOG ACTIVITY: Appeal Submitted (Guest)
         Order order = returnRequest.getOrder();
-        String guestCustomerName = order.getOrderCustomerInfo() != null 
-            ? order.getOrderCustomerInfo().getFullName()
-            : "Guest Customer";
+        String guestCustomerName = order.getOrderCustomerInfo() != null
+                ? order.getOrderCustomerInfo().getFullName()
+                : "Guest Customer";
         activityLogService.logAppealSubmitted(
-            order.getOrderId(),
-            guestCustomerName + " (Guest)",
-            submitDTO.getReason(),
-            savedAppeal.getId(),
-            returnRequest.getId()
-        );
+                order.getOrderId(),
+                guestCustomerName + " (Guest)",
+                submitDTO.getReason(),
+                savedAppeal.getId(),
+                returnRequest.getId());
 
         return convertToDTO(savedAppeal);
     }
@@ -387,7 +385,17 @@ public class AppealService {
         Order order = orderRepository.findById(returnRequest.getOrderId())
                 .orElseThrow(() -> new RuntimeException("Order not found: " + returnRequest.getOrderId()));
 
-        LocalDateTime deliveryDate = order.getDeliveredAt();
+        LocalDateTime deliveryDate = null;
+
+        // Check if any shop order is delivered to get delivery date
+        if (order.getShopOrders() != null && !order.getShopOrders().isEmpty()) {
+            deliveryDate = order.getShopOrders().stream()
+                    .filter(so -> so.getDeliveredAt() != null)
+                    .map(ShopOrder::getDeliveredAt)
+                    .findFirst()
+                    .orElse(null);
+        }
+
         if (deliveryDate == null) {
             throw new RuntimeException("Order not delivered yet for return");
         }
@@ -495,7 +503,8 @@ public class AppealService {
                     log.error("Failed to validate video duration for '{}': {}",
                             file.getOriginalFilename(), e.getMessage());
                     throw new IllegalArgumentException(
-                            String.format("Failed to validate video '%s'. The file may be corrupted or in an unsupported format.",
+                            String.format(
+                                    "Failed to validate video '%s'. The file may be corrupted or in an unsupported format.",
                                     file.getOriginalFilename()));
                 }
             } else {
@@ -521,12 +530,12 @@ public class AppealService {
             parser.parse(inputStream, handler, metadata, context);
 
             String[] durationKeys = {
-                "xmpDM:duration",
-                "xmpDM:Duration",
-                "duration",
-                "Duration",
-                "video:duration",
-                "Content-Duration"
+                    "xmpDM:duration",
+                    "xmpDM:Duration",
+                    "duration",
+                    "Duration",
+                    "video:duration",
+                    "Content-Duration"
             };
 
             String durationStr = null;
@@ -627,10 +636,9 @@ public class AppealService {
 
         if (returnRequest != null) {
             activityLogService.logAppealApproved(
-                returnRequest.getOrderId(),
-                "Admin",
-                appeal.getId()
-            );
+                    returnRequest.getOrderId(),
+                    "Admin",
+                    appeal.getId());
         }
     }
 
@@ -643,11 +651,10 @@ public class AppealService {
         ReturnRequest returnRequest = appeal.getReturnRequest();
         if (returnRequest != null) {
             activityLogService.logAppealDenied(
-                returnRequest.getOrderId(),
-                "Admin", 
-                decisionDTO.getDecisionNotes(),
-                appeal.getId()
-            );
+                    returnRequest.getOrderId(),
+                    "Admin",
+                    decisionDTO.getDecisionNotes(),
+                    appeal.getId());
         }
     }
 

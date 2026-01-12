@@ -28,9 +28,26 @@ public class ShopAuthorizationServiceImpl implements ShopAuthorizationService {
     }
 
     @Override
+    public boolean hasAccessToShop(UUID userId, UUID shopId) {
+        if (canManageShop(userId, shopId)) {
+            return true;
+        }
+
+        User user = userRepository.findById(userId).orElse(null);
+        if (user != null && user.getRole() == UserRole.DELIVERY_AGENT) {
+            // Delivery agents have access to shops to pick up orders
+            // Specific order validation is done via pickup token and group assignment
+            log.info("Access granted for DELIVERY_AGENT {} to shop {}", userId, shopId);
+            return true;
+        }
+
+        return false;
+    }
+
+    @Override
     public boolean canManageShop(UUID userId, UUID shopId) {
         log.info("Checking shop management access - userId: {}, shopId: {}", userId, shopId);
-        
+
         if (userId == null || shopId == null) {
             log.warn("userId or shopId is null - userId: {}, shopId: {}", userId, shopId);
             return false;
@@ -55,19 +72,21 @@ public class ShopAuthorizationServiceImpl implements ShopAuthorizationService {
             return false;
         }
 
-        log.info("Shop found - shopId: {}, name: {}, ownerId: {}", shopId, shop.getName(), 
+        log.info("Shop found - shopId: {}, name: {}, ownerId: {}", shopId, shop.getName(),
                 shop.getOwner() != null ? shop.getOwner().getId() : "null");
 
         // VENDOR must own the shop
         if (user.getRole() == UserRole.VENDOR) {
             boolean canManage = shop.getOwner() != null && shop.getOwner().getId().equals(userId);
-            log.info("VENDOR access check - canManage: {}, ownerId: {}, userId: {}", 
+            log.info("VENDOR access check - canManage: {}, ownerId: {}, userId: {}",
                     canManage, shop.getOwner() != null ? shop.getOwner().getId() : "null", userId);
             return canManage;
         }
-        
-        // EMPLOYEE can manage any shop (since they access shops via shopSlug in the URL)
-        // In the future, this could be restricted to shops where the employee is explicitly associated
+
+        // EMPLOYEE can manage any shop (since they access shops via shopSlug in the
+        // URL)
+        // In the future, this could be restricted to shops where the employee is
+        // explicitly associated
         if (user.getRole() == UserRole.EMPLOYEE) {
             log.info("EMPLOYEE access granted for shopId: {}", shopId);
             return true;
@@ -87,5 +106,3 @@ public class ShopAuthorizationServiceImpl implements ShopAuthorizationService {
         log.info("Access granted - userId: {}, shopId: {}", userId, shopId);
     }
 }
-
-

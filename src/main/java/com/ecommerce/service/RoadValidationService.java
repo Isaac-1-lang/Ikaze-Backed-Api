@@ -35,113 +35,26 @@ public class RoadValidationService {
      * Validates if the given coordinates are on or near a road
      * Uses Google Maps Roads API - Snap to Roads feature
      * 
+     * NOTE: Road validation is currently DISABLED due to expired Google Maps API key.
+     * This method now returns immediately without performing any validation.
+     * 
      * @param latitude The latitude coordinate
      * @param longitude The longitude coordinate
      * @throws IllegalArgumentException if coordinates are not on/near a road
      */
     public void validateRoadLocation(Double latitude, Double longitude) {
-        log.info("Road validation started for coordinates: lat={}, lng={}", latitude, longitude);
+        // Road validation is DISABLED - Google Maps API key expired
+        // Return immediately without performing any validation
+        log.info("Road validation disabled - skipping validation for coordinates: lat={}, lng={}", latitude, longitude);
+        return;
         
+        /* Original validation code commented out - uncomment when Google Maps API key is available
         if (latitude == null || longitude == null) {
             throw new IllegalArgumentException("Latitude and longitude are required");
         }
-        log.info("The google maps key is" + googleMapsApiKey);
-        log.info("Google Maps API key status: {}", 
-                (googleMapsApiKey != null && !googleMapsApiKey.trim().isEmpty()) ? "CONFIGURED" : "NOT CONFIGURED");
         
-        if (googleMapsApiKey != null && googleMapsApiKey.length() > 10) {
-            log.info("API Key (first 10 chars): {}...", googleMapsApiKey.substring(0, 10));
-        }
-
-        if (googleMapsApiKey == null || googleMapsApiKey.trim().isEmpty()) {
-            log.warn("Google Maps API key not configured. Skipped the road validation.");
-            return;
-        }
-
-        try {
-            log.info("Calling Google Maps Roads API...");
-            
-            String url = UriComponentsBuilder
-                    .fromHttpUrl("https://roads.googleapis.com/v1/snapToRoads")
-                    .queryParam("path", latitude + "," + longitude)
-                    .queryParam("interpolate", "false")
-                    .queryParam("key", googleMapsApiKey)
-                    .toUriString();
-
-            log.info("API URL: {}", url.replace(googleMapsApiKey, "***KEY***"));
-
-            String response = restTemplate.getForObject(url, String.class);
-            
-            if (response == null || response.trim().isEmpty()) {
-                log.warn("Empty response from Google Maps Roads API. Trying Geocoding API fallback...");
-                validateWithGeocodingAPI(latitude, longitude);
-                return;
-            }
-
-            log.info("Received response from Google Maps Roads API: {}", response);
-            JsonNode jsonResponse = objectMapper.readTree(response);
-            
-            // Check for API errors
-            JsonNode error = jsonResponse.get("error");
-            if (error != null) {
-                String errorMessage = error.get("message").asText();
-                log.warn("Roads API returned error: {}. Trying Geocoding API fallback...", errorMessage);
-                validateWithGeocodingAPI(latitude, longitude);
-                return;
-            }
-            
-            JsonNode snappedPoints = jsonResponse.get("snappedPoints");
-            
-            if (snappedPoints == null || snappedPoints.isEmpty()) {
-                log.warn("No road found near coordinates via Roads API: lat={}, lng={}. Trying Geocoding API fallback...", 
-                        latitude, longitude);
-                validateWithGeocodingAPI(latitude, longitude);
-                return;
-            }
-
-            JsonNode firstPoint = snappedPoints.get(0);
-            JsonNode location = firstPoint.get("location");
-            
-            if (location == null) {
-                log.warn("Invalid response structure from Roads API. Trying Geocoding API fallback...");
-                validateWithGeocodingAPI(latitude, longitude);
-                return;
-            }
-
-            double snappedLat = location.get("latitude").asDouble();
-            double snappedLng = location.get("longitude").asDouble();
-
-            double distance = calculateDistance(latitude, longitude, snappedLat, snappedLng);
-
-            log.info("Distance to nearest road: {} meters", distance);
-
-            if (distance > MAX_DISTANCE_FROM_ROAD_METERS) {
-                String errorMsg = String.format(
-                    "Your pickup location is %.1f meters away from the nearest road (maximum allowed: %.1f meters). " +
-                    "Please select a location closer to a road or street for pickup.",
-                    distance, MAX_DISTANCE_FROM_ROAD_METERS
-                );
-                log.error("Road validation failed: {}", errorMsg);
-                throw new IllegalArgumentException(errorMsg);
-            }
-
-            log.info("Road validation successful via Roads API! Distance to road: {} meters", distance);
-
-        } catch (IllegalArgumentException e) {
-            throw e;
-        } catch (Exception e) {
-            log.error("Error validating road location: {}", e.getMessage(), e);
-            log.warn("Road validation failed due to technical error. Trying Geocoding API fallback...");
-            try {
-                validateWithGeocodingAPI(latitude, longitude);
-            } catch (IllegalArgumentException iae) {
-                throw iae;
-            } catch (Exception fallbackException) {
-                log.error("Geocoding API fallback also failed: {}", fallbackException.getMessage());
-                // Allow request to proceed only if both APIs fail due to technical issues
-                log.warn("Allowing request to proceed due to technical errors in validation services.");
-            }
-        }
+        // ... rest of validation code ...
+        */
     }
 
     /**

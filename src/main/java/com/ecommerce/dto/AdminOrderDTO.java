@@ -20,12 +20,13 @@ public class AdminOrderDTO {
     private String customerEmail;
     private String customerPhone;
     private String orderNumber;
-    private String status;
-    private List<AdminOrderItemDTO> items;
+    private String status; // Derived from shop orders
+    private List<ShopOrderDTO> shopOrders;
+    // private List<AdminOrderItemDTO> items; // Moved to ShopOrderDTO
     private BigDecimal subtotal;
     private BigDecimal tax;
-    private BigDecimal shipping;
-    private BigDecimal discount;
+    // private BigDecimal shipping; // Per ShopOrder
+    // private BigDecimal discount; // Per ShopOrder
     private BigDecimal total;
     private AdminOrderAddressDTO shippingAddress;
     private AdminOrderAddressDTO billingAddress;
@@ -33,9 +34,9 @@ public class AdminOrderDTO {
     private String notes;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
-    private String estimatedDelivery;
-    private String trackingNumber;
-    private DeliveryGroupInfoDTO deliveryGroup; // Delivery group assignment info
+    // private String estimatedDelivery; // Per ShopOrder
+    // private String trackingNumber; // Per ShopOrder
+    // private DeliveryGroupInfoDTO deliveryGroup; // Per ShopOrder
 
     @Data
     @Builder
@@ -106,7 +107,7 @@ public class AdminOrderDTO {
     @Builder
     @NoArgsConstructor
     @AllArgsConstructor
-    public static class AdminPaymentInfoDTO {                     
+    public static class AdminPaymentInfoDTO {
         private String paymentMethod;
         private String paymentStatus;
         private String stripePaymentIntentId;
@@ -114,6 +115,18 @@ public class AdminOrderDTO {
         private String transactionRef;
         private LocalDateTime paymentDate;
         private String receiptUrl;
+        private Integer pointsUsed;
+        private BigDecimal pointsValue;
+        private List<AdminShopTransactionDTO> shopTransactions;
+    }
+
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class AdminShopTransactionDTO {
+        private String shopName;
+        private BigDecimal amount;
         private Integer pointsUsed;
         private BigDecimal pointsValue;
     }

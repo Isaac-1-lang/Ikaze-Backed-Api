@@ -42,16 +42,11 @@ public class AdminOrderController {
     @GetMapping
     @Operation(summary = "Get all orders with pagination", description = "Retrieve all orders in the system with pagination support")
     public ResponseEntity<?> getAllOrders(
-            @Parameter(description = "Page number (0-based)", example = "0")
-            @RequestParam(defaultValue = "0") int page,
-            @Parameter(description = "Page size", example = "15")
-            @RequestParam(defaultValue = "15") int size,
-            @Parameter(description = "Sort by field", example = "createdAt")
-            @RequestParam(defaultValue = "createdAt") String sortBy,
-            @Parameter(description = "Sort direction", example = "desc")
-            @RequestParam(defaultValue = "desc") String sortDir,
-            @Parameter(description = "Shop ID to filter orders by shop")
-            @RequestParam(required = false) String shopId) {
+            @Parameter(description = "Page number (0-based)", example = "0") @RequestParam(defaultValue = "0") int page,
+            @Parameter(description = "Page size", example = "15") @RequestParam(defaultValue = "15") int size,
+            @Parameter(description = "Sort by field", example = "createdAt") @RequestParam(defaultValue = "createdAt") String sortBy,
+            @Parameter(description = "Sort direction", example = "desc") @RequestParam(defaultValue = "desc") String sortDir,
+            @Parameter(description = "Shop ID to filter orders by shop") @RequestParam(required = false) String shopId) {
         try {
             UUID shopUuid = null;
             if (shopId != null && !shopId.trim().isEmpty()) {
@@ -75,15 +70,15 @@ public class AdminOrderController {
                     return ResponseEntity.status(HttpStatus.FORBIDDEN).body(response);
                 }
             }
-            
+
             // Create sort object
-            Sort sort = sortDir.equalsIgnoreCase("desc") 
-                ? Sort.by(sortBy).descending() 
-                : Sort.by(sortBy).ascending();
-            
+            Sort sort = sortDir.equalsIgnoreCase("desc")
+                    ? Sort.by(sortBy).descending()
+                    : Sort.by(sortBy).ascending();
+
             // Create pageable object
             Pageable pageable = PageRequest.of(page, size, sort);
-            
+
             // Get paginated orders
             Page<AdminOrderDTO> ordersPage = orderService.getAllAdminOrdersPaginated(pageable, shopUuid);
 
@@ -91,15 +86,14 @@ public class AdminOrderController {
             response.put("success", true);
             response.put("data", ordersPage.getContent());
             response.put("pagination", Map.of(
-                "currentPage", ordersPage.getNumber(),
-                "totalPages", ordersPage.getTotalPages(),
-                "totalElements", ordersPage.getTotalElements(),
-                "pageSize", ordersPage.getSize(),
-                "hasNext", ordersPage.hasNext(),
-                "hasPrevious", ordersPage.hasPrevious(),
-                "isFirst", ordersPage.isFirst(),
-                "isLast", ordersPage.isLast()
-            ));
+                    "currentPage", ordersPage.getNumber(),
+                    "totalPages", ordersPage.getTotalPages(),
+                    "totalElements", ordersPage.getTotalElements(),
+                    "pageSize", ordersPage.getSize(),
+                    "hasNext", ordersPage.hasNext(),
+                    "hasPrevious", ordersPage.hasPrevious(),
+                    "isFirst", ordersPage.isFirst(),
+                    "isLast", ordersPage.isLast()));
 
             return ResponseEntity.ok(response);
 
@@ -218,8 +212,17 @@ public class AdminOrderController {
                 return ResponseEntity.badRequest().body(response);
             }
 
-            var order = orderService.updateOrderStatus(orderId, status);
-            AdminOrderDTO adminOrder = orderService.getAdminOrderById(order.getOrderId());
+            var shopOrder = orderService.updateShopOrderStatus(orderId, status);
+            // Returning the updated ShopOrder DTO would be ideal, or the parent Order.
+            // Since this is AdminOrderController, assuming we want to see the specific shop
+            // order update?
+            // Or the whole order? Let's return the whole order for consistency with
+            // existing code,
+            // or just the ShopOrderDTO if possible.
+            // Existing code: AdminOrderDTO adminOrder =
+            // orderService.getAdminOrderById(order.getOrderId());
+            // Now shopOrder.getOrder().getId() gives us the parent order ID.
+            AdminOrderDTO adminOrder = orderService.getAdminOrderById(shopOrder.getOrder().getId());
 
             Map<String, Object> response = new HashMap<>();
             response.put("success", true);
@@ -269,8 +272,8 @@ public class AdminOrderController {
                 return ResponseEntity.badRequest().body(response);
             }
 
-            var order = orderService.updateOrderTracking(orderId, trackingNumber, estimatedDelivery);
-            AdminOrderDTO adminOrder = orderService.getAdminOrderById(order.getOrderId());
+            var shopOrder = orderService.updateShopOrderTracking(orderId, trackingNumber, estimatedDelivery);
+            AdminOrderDTO adminOrder = orderService.getAdminOrderById(shopOrder.getOrder().getId());
 
             Map<String, Object> response = new HashMap<>();
             response.put("success", true);
@@ -327,13 +330,13 @@ public class AdminOrderController {
             }
 
             // Create sort object
-            Sort sort = searchRequest.getSortDirection().equalsIgnoreCase("desc") 
-                ? Sort.by(searchRequest.getSortBy()).descending() 
-                : Sort.by(searchRequest.getSortBy()).ascending();
-            
+            Sort sort = searchRequest.getSortDirection().equalsIgnoreCase("desc")
+                    ? Sort.by(searchRequest.getSortBy()).descending()
+                    : Sort.by(searchRequest.getSortBy()).ascending();
+
             // Create pageable object
             Pageable pageable = PageRequest.of(searchRequest.getPage(), searchRequest.getSize(), sort);
-            
+
             // Validate shop access if shopId is provided
             if (searchRequest.getShopId() != null) {
                 UUID currentUserId = getCurrentUserId();
@@ -349,7 +352,7 @@ public class AdminOrderController {
                     }
                 }
             }
-            
+
             // Search orders
             Page<AdminOrderDTO> ordersPage = orderService.searchOrders(searchRequest, pageable);
 
@@ -357,15 +360,14 @@ public class AdminOrderController {
             response.put("success", true);
             response.put("data", ordersPage.getContent());
             response.put("pagination", Map.of(
-                "currentPage", ordersPage.getNumber(),
-                "totalPages", ordersPage.getTotalPages(),
-                "totalElements", ordersPage.getTotalElements(),
-                "pageSize", ordersPage.getSize(),
-                "hasNext", ordersPage.hasNext(),
-                "hasPrevious", ordersPage.hasPrevious(),
-                "isFirst", ordersPage.isFirst(),
-                "isLast", ordersPage.isLast()
-            ));
+                    "currentPage", ordersPage.getNumber(),
+                    "totalPages", ordersPage.getTotalPages(),
+                    "totalElements", ordersPage.getTotalElements(),
+                    "pageSize", ordersPage.getSize(),
+                    "hasNext", ordersPage.hasNext(),
+                    "hasPrevious", ordersPage.hasPrevious(),
+                    "isFirst", ordersPage.isFirst(),
+                    "isLast", ordersPage.isLast()));
 
             return ResponseEntity.ok(response);
 
@@ -387,13 +389,13 @@ public class AdminOrderController {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(response);
         }
     }
-    
+
     @GetMapping("/count/pending")
     @Operation(summary = "Get pending orders count", description = "Get count of orders with PROCESSING status and no delivery group assigned")
     public ResponseEntity<?> getPendingOrdersCount() {
         try {
             long count = orderService.countProcessingOrdersWithoutDeliveryGroup();
-            
+
             Map<String, Object> response = new HashMap<>();
             response.put("success", true);
             response.put("count", count);
@@ -407,7 +409,7 @@ public class AdminOrderController {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(response);
         }
     }
-    
+
     private UUID getCurrentUserId() {
         try {
             Authentication auth = SecurityContextHolder.getContext().getAuthentication();

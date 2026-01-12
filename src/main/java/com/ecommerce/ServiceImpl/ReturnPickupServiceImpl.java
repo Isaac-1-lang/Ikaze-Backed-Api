@@ -326,19 +326,22 @@ public class ReturnPickupServiceImpl implements ReturnPickupService {
 
     private void updateOrderStatus(Order order) {
         try {
-            log.debug("Updating order {} status from {} to RETURNED",
-                    order.getOrderId(), order.getOrderStatus());
+            log.debug("Updating order {} status to reflect return completion",
+                    order.getOrderId());
 
-            // Validate current order status
-            Order.OrderStatus currentStatus = order.getOrderStatus();
-            if (currentStatus == Order.OrderStatus.CANCELLED) {
-                throw new IllegalStateException(String.format(
-                        "Cannot update cancelled order %s status", order.getOrderId()));
+            // Validate that no shop orders are cancelled
+            if (order.getShopOrders() != null) {
+                boolean hasCancelled = order.getShopOrders().stream()
+                        .anyMatch(so -> so.getStatus() == com.ecommerce.entity.ShopOrder.ShopOrderStatus.CANCELLED);
+                if (hasCancelled) {
+                    throw new IllegalStateException(String.format(
+                            "Cannot update order %s with cancelled shop orders", order.getOrderId()));
+                }
             }
 
             order.setUpdatedAt(LocalDateTime.now());
             orderRepository.save(order);
-            log.info("Successfully updated order {} status to RETURNED", order.getOrderId());
+            log.info("Successfully updated order {} after return completion", order.getOrderId());
 
         } catch (Exception e) {
             log.error("Failed to update order {} status: {}", order.getOrderId(), e.getMessage());
@@ -494,11 +497,15 @@ public class ReturnPickupServiceImpl implements ReturnPickupService {
             throw new IllegalStateException("Return request has no associated order");
         }
 
-        // Validate order status allows return completion
-        Order.OrderStatus currentOrderStatus = returnRequest.getOrder().getOrderStatus();
-        if (currentOrderStatus == Order.OrderStatus.CANCELLED) {
-            throw new IllegalStateException(String.format(
-                    "Cannot complete return pickup for order with status: %s", currentOrderStatus));
+        // Validate order status allows return completion - check if any shop order is cancelled
+        Order order = returnRequest.getOrder();
+        if (order.getShopOrders() != null) {
+            boolean hasCancelled = order.getShopOrders().stream()
+                    .anyMatch(so -> so.getStatus() == com.ecommerce.entity.ShopOrder.ShopOrderStatus.CANCELLED);
+            if (hasCancelled) {
+                throw new IllegalStateException(String.format(
+                        "Cannot complete return pickup for order with cancelled shop orders"));
+            }
         }
 
         log.debug("Status update validation passed for return request {}", returnRequest.getId());
@@ -1019,7 +1026,7 @@ public class ReturnPickupServiceImpl implements ReturnPickupService {
      */
     private boolean isFullOrderReturn(Order order, List<ReturnItem> returnedItems) {
         Map<Long, Integer> orderItemQuantities = new HashMap<>();
-        for (OrderItem orderItem : order.getOrderItems()) {
+        for (OrderItem orderItem : order.getAllItems()) {
             orderItemQuantities.put(orderItem.getOrderItemId(), orderItem.getQuantity());
         }
 
@@ -1047,7 +1054,7 @@ public class ReturnPickupServiceImpl implements ReturnPickupService {
      * Find order item by ID
      */
     private OrderItem findOrderItemById(Order order, Long orderItemId) {
-        return order.getOrderItems().stream()
+        return order.getAllItems().stream()
                 .filter(item -> item.getOrderItemId().equals(orderItemId))
                 .findFirst()
                 .orElse(null);

@@ -276,4 +276,7 @@ public interface ProductRepository extends JpaRepository<Product, UUID>, JpaSpec
 
         @Query("SELECT p FROM Product p WHERE p.shop.shopId = :shopId AND p.isActive = true AND p.displayToCustomers = true ORDER BY p.createdAt DESC")
         Page<Product> findByShopIdForCustomers(@Param("shopId") UUID shopId, Pageable pageable);
+
+        @Query("SELECT COUNT(p) FROM Product p WHERE p.shop.shopId = :shopId AND p.isActive = true")
+        long countActiveByShopId(@Param("shopId") UUID shopId);
 }

@@ -17,10 +17,10 @@ public interface OrderItemBatchRepository extends JpaRepository<OrderItemBatch, 
 
     List<OrderItemBatch> findByWarehouse_Id(Long warehouseId);
 
-    @Query("SELECT oib FROM OrderItemBatch oib WHERE oib.orderItem.order.orderId = :orderId")
+    @Query("SELECT oib FROM OrderItemBatch oib WHERE oib.orderItem.shopOrder.order.orderId = :orderId")
     List<OrderItemBatch> findByOrderId(@Param("orderId") Long orderId);
 
-    @Query("SELECT oib FROM OrderItemBatch oib JOIN FETCH oib.warehouse WHERE oib.orderItem.order.orderId = :orderId")
+    @Query("SELECT oib FROM OrderItemBatch oib JOIN FETCH oib.warehouse WHERE oib.orderItem.shopOrder.order.orderId = :orderId")
     List<OrderItemBatch> findByOrderIdWithWarehouse(@Param("orderId") Long orderId);
 
     @Query("SELECT SUM(oib.quantityUsed) FROM OrderItemBatch oib WHERE oib.stockBatch.id = :stockBatchId")

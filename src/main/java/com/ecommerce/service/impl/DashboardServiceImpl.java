@@ -36,6 +36,7 @@ public class DashboardServiceImpl implements DashboardService {
 
     private final ProductRepository productRepository;
     private final OrderRepository orderRepository;
+    private final com.ecommerce.repository.ShopOrderRepository shopOrderRepository;
     private final OrderTransactionRepository orderTransactionRepository;
     private final UserRepository userRepository;
     private final ShopRepository shopRepository;
@@ -48,27 +49,27 @@ public class DashboardServiceImpl implements DashboardService {
     public DashboardResponseDTO getDashboardData(String bearerToken, String shopSlug) {
         String token = extractToken(bearerToken);
         String username = token != null ? jwtService.extractUsername(token) : null;
-        
+
         if (username == null) {
             throw new IllegalArgumentException("Authentication required");
         }
 
         User user = userRepository.findByUserEmail(username)
                 .orElseThrow(() -> new IllegalArgumentException("User not found"));
-        
+
         UserRole role = user.getRole();
         UUID userId = user.getId();
-        
+
         UUID shopId = null;
         Shop shop = null;
-        
+
         // Validate shop access for VENDOR and EMPLOYEE
         if (shopSlug != null && !shopSlug.trim().isEmpty()) {
             shop = shopRepository.findBySlug(shopSlug)
                     .orElseThrow(() -> new IllegalArgumentException("Shop not found with slug: " + shopSlug));
-            
+
             shopId = shop.getShopId();
-            
+
             // For VENDOR and EMPLOYEE, validate they have access to this shop
             if (role == UserRole.VENDOR || role == UserRole.EMPLOYEE) {
                 if (!shopAuthorizationService.canManageShop(userId, shopId)) {
@@ -84,52 +85,67 @@ public class DashboardServiceImpl implements DashboardService {
             }
         }
 
-        // Filter data by shop if shopId is provided
         long totalProducts;
         long totalOrders;
         long totalCustomers;
         long pendingOrders;
         long lowStock;
         BigDecimal revenue = null;
-        List<Order> recent;
+        List<RecentOrderDTO> recentOrders = new java.util.ArrayList<>();
 
         if (shopId != null) {
-            // Shop-scoped data
+            // Shop-scoped data using ShopOrderRepository
             totalProducts = productRepository.countByShopId(shopId);
-            totalOrders = orderRepository.countByShopId(shopId);
-            totalCustomers = orderRepository.countDistinctCustomersByShopId(shopId);
-            pendingOrders = orderRepository.countPendingOrdersByShopId(shopId);
+            totalOrders = shopOrderRepository.countByShopId(shopId);
+            totalCustomers = shopOrderRepository.countDistinctCustomersByShopId(shopId);
+            pendingOrders = shopOrderRepository.countByShopIdAndStatus(shopId,
+                    com.ecommerce.entity.ShopOrder.ShopOrderStatus.PENDING);
             lowStock = productRepository.countLowStockByShopId(shopId);
-            recent = orderRepository.findRecentOrdersByShopId(shopId, PageRequest.of(0, 3));
-            
-            // Revenue for shop (only for ADMIN or shop owner)
-            if (role == UserRole.ADMIN || (role == UserRole.VENDOR && shop.getOwner().getId().equals(userId))) {
-                revenue = orderTransactionRepository.getTotalRevenueByShopId(shopId);
+
+            List<com.ecommerce.entity.ShopOrder> shopOrders = shopOrderRepository
+                    .findRecentOrdersByShopId(shopId, PageRequest.of(0, 3)).getContent();
+            recentOrders = shopOrders.stream()
+                    .map(so -> RecentOrderDTO.builder()
+                            .orderId(so.getShopOrderCode())
+                            .status(so.getStatus().name())
+                            .amount(so.getTotalAmount())
+                            .owner(so.getOrder().getUser() != null ? so.getOrder().getUser().getFullName() : "Guest")
+                            .build())
+                    .collect(Collectors.toList());
+
+            // Revenue for shop (only for ADMIN or shop owner/authorized)
+            if (role == UserRole.ADMIN || shopAuthorizationService.canManageShop(userId, shopId)) {
+                revenue = shopOrderRepository.sumTotalRevenueByShopId(shopId);
             }
         } else {
             // Global data (ADMIN only)
             totalProducts = productRepository.count();
             totalOrders = orderRepository.count();
             totalCustomers = userRepository.count();
-            pendingOrders = orderRepository.findByOrderStatus(Order.OrderStatus.PENDING).size();
+            // Count pending across all shop orders in the system
+            pendingOrders = com.ecommerce.entity.ShopOrder.ShopOrderStatus.PENDING != null
+                    ? shopOrderRepository.countByStatus(com.ecommerce.entity.ShopOrder.ShopOrderStatus.PENDING)
+                    : 0L;
             lowStock = productRepository.countLowStock();
-            recent = orderRepository.findAll(
-                    PageRequest.of(0, 3, org.springframework.data.domain.Sort.by("createdAt").descending()))
-                    .getContent();
-            
-        if (role == UserRole.ADMIN) {
-            revenue = moneyFlowService.getNetRevenue();
-            }
-        }
 
-        List<RecentOrderDTO> recentDtos = recent.stream().map(o -> RecentOrderDTO.builder()
-                .orderId(o.getOrderId())
-                .status(o.getOrderStatus())
+            List<Order> globalOrders = orderRepository.findAll(
+                    PageRequest.of(0, 3, org.springframework.data.domain.Sort.by("createdAt").descending()))
+                .getContent();
+
+            recentOrders = globalOrders.stream()
+                    .map(o -> RecentOrderDTO.builder()
+                            .orderId(o.getOrderCode())
+                            .status(o.getStatus())
                 .amount(o.getOrderTransaction() != null ? o.getOrderTransaction().getOrderAmount()
                         : (o.getOrderInfo() != null ? o.getOrderInfo().getTotalAmount() : BigDecimal.ZERO))
-                .owner(o.getUser() != null ? (o.getUser().getFullName()) : "guest")
+                            .owner(o.getUser() != null ? o.getUser().getFullName() : "Guest")
                 .build())
                 .collect(Collectors.toList());
+
+            if (role == UserRole.ADMIN) {
+                revenue = moneyFlowService.getNetRevenue();
+            }
+        }
 
         AlertsDTO alerts = AlertsDTO.builder()
                 .lowStockProducts(lowStock)
@@ -141,7 +157,7 @@ public class DashboardServiceImpl implements DashboardService {
                 .totalOrders(totalOrders)
                 .totalRevenue(revenue)
                 .totalCustomers(totalCustomers)
-                .recentOrders(recentDtos)
+                .recentOrders(recentOrders)
                 .alerts(alerts)
                 .build();
     }

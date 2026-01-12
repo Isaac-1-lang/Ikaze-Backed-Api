@@ -3,7 +3,6 @@ package com.ecommerce.service;
 import com.ecommerce.entity.Order;
 import com.ecommerce.entity.OrderCustomerInfo;
 import com.ecommerce.entity.OrderItem;
-import jakarta.mail.MessagingException;
 import jakarta.mail.internet.MimeMessage;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -62,17 +61,16 @@ public class OrderEmailService {
 
             // Attach PDF invoice
             helper.addAttachment(
-                "Order-" + order.getOrderCode() + "-Invoice.pdf",
-                new ByteArrayResource(pdfInvoice)
-            );
+                    "Order-" + order.getOrderCode() + "-Invoice.pdf",
+                    new ByteArrayResource(pdfInvoice));
 
             // Send email
             mailSender.send(message);
-            log.info("Order confirmation email sent successfully to {} for order: {}", 
+            log.info("Order confirmation email sent successfully to {} for order: {}",
                     customerEmail, order.getOrderCode());
 
         } catch (Exception e) {
-            log.error("Failed to send order confirmation email for order: {}", 
+            log.error("Failed to send order confirmation email for order: {}",
                     order.getOrderCode(), e);
             throw new RuntimeException("Failed to send order confirmation email", e);
         }
@@ -100,11 +98,11 @@ public class OrderEmailService {
             helper.setText(htmlContent, true);
 
             mailSender.send(message);
-            log.info("Order status update email sent successfully to {} for order: {}", 
+            log.info("Order status update email sent successfully to {} for order: {}",
                     customerEmail, order.getOrderCode());
 
         } catch (Exception e) {
-            log.error("Failed to send order status update email for order: {}", 
+            log.error("Failed to send order status update email for order: {}",
                     order.getOrderCode(), e);
         }
     }
@@ -121,12 +119,12 @@ public class OrderEmailService {
 
     private String generateOrderConfirmationHtml(Order order) {
         Context context = new Context();
-        
+
         // Order details
         context.setVariable("orderNumber", order.getOrderCode());
         context.setVariable("orderDate", order.getCreatedAt().format(DateTimeFormatter.ofPattern("MMMM dd, yyyy")));
-        context.setVariable("orderStatus", order.getOrderStatus().toString());
-        
+        context.setVariable("orderStatus", order.getStatus()); // Use the getStatus() method from Order entity
+
         // Customer info
         OrderCustomerInfo customerInfo = order.getOrderCustomerInfo();
         if (customerInfo != null) {
@@ -136,40 +134,40 @@ public class OrderEmailService {
             context.setVariable("customerName", order.getUser().getFirstName() + " " + order.getUser().getLastName());
             context.setVariable("customerEmail", order.getUser().getUserEmail());
         }
-        
+
         // Order totals
         if (order.getOrderInfo() != null) {
-            // Calculate subtotal from order items since OrderInfo doesn't have subtotal field
-            BigDecimal subtotal = order.getOrderItems().stream()
+            // Calculate subtotal from all items across shop orders
+            BigDecimal subtotal = order.getAllItems().stream()
                     .map(OrderItem::getSubtotal)
                     .reduce(BigDecimal.ZERO, BigDecimal::add);
-            
+
             context.setVariable("subtotal", formatCurrency(subtotal));
             context.setVariable("shippingCost", formatCurrency(order.getOrderInfo().getShippingCost()));
             context.setVariable("taxAmount", formatCurrency(order.getOrderInfo().getTaxAmount()));
             context.setVariable("discountAmount", formatCurrency(order.getOrderInfo().getDiscountAmount()));
             context.setVariable("totalAmount", formatCurrency(order.getOrderInfo().getTotalAmount()));
         }
-        
+
         // Points information for points and hybrid payments
         if (order.getOrderTransaction() != null) {
             Integer pointsUsed = order.getOrderTransaction().getPointsUsed();
             BigDecimal pointsValue = order.getOrderTransaction().getPointsValue();
-            
+
             if (pointsUsed != null && pointsUsed > 0) {
                 context.setVariable("pointsUsed", pointsUsed);
                 context.setVariable("pointsValue", formatCurrency(pointsValue));
                 context.setVariable("hasPointsPayment", true);
-                
+
                 // Determine payment method
                 String paymentMethod = order.getOrderTransaction().getPaymentMethod().toString();
-                boolean isHybridPayment = pointsValue != null && 
-                    order.getOrderInfo() != null && 
-                    pointsValue.compareTo(order.getOrderInfo().getTotalAmount()) < 0;
-                
+                boolean isHybridPayment = pointsValue != null &&
+                        order.getOrderInfo() != null &&
+                        pointsValue.compareTo(order.getOrderInfo().getTotalAmount()) < 0;
+
                 context.setVariable("isHybridPayment", isHybridPayment);
                 context.setVariable("paymentMethod", paymentMethod);
-                
+
                 if (isHybridPayment && order.getOrderInfo() != null) {
                     BigDecimal remainingAmount = order.getOrderInfo().getTotalAmount().subtract(pointsValue);
                     context.setVariable("remainingAmount", formatCurrency(remainingAmount));
@@ -180,33 +178,32 @@ public class OrderEmailService {
         } else {
             context.setVariable("hasPointsPayment", false);
         }
-        
-        List<OrderItemEmailDTO> emailItems = order.getOrderItems().stream()
+
+        List<OrderItemEmailDTO> emailItems = order.getAllItems().stream()
                 .map(this::convertToEmailDTO)
                 .collect(java.util.stream.Collectors.toList());
         context.setVariable("orderItems", emailItems);
-        
-        // Pickup token
-        String pickupToken = order.getPickupToken() != null ? order.getPickupToken() : 
-                            "PICKUP-" + order.getOrderCode() + "-" + System.currentTimeMillis();
+
+        // Pickup token - generate if not exists
+        String pickupToken = "PICKUP-" + order.getOrderCode() + "-" + System.currentTimeMillis();
         context.setVariable("pickupToken", pickupToken);
-        
+
         // URLs
         context.setVariable("baseUrl", baseUrl);
         context.setVariable("trackingUrl", baseUrl + "/orders/" + order.getOrderCode());
-        
+
         return templateEngine.process("order-confirmation", context);
     }
 
     private String generateOrderStatusUpdateHtml(Order order, String statusMessage) {
         Context context = new Context();
-        
+
         context.setVariable("orderNumber", order.getOrderCode());
-        context.setVariable("orderStatus", order.getOrderStatus().toString());
+        context.setVariable("orderStatus", order.getStatus()); // Use the getStatus() method from Order entity
         context.setVariable("statusMessage", statusMessage);
         context.setVariable("baseUrl", baseUrl);
         context.setVariable("trackingUrl", baseUrl + "/orders/" + order.getOrderCode());
-        
+
         // Customer info
         OrderCustomerInfo customerInfo = order.getOrderCustomerInfo();
         if (customerInfo != null) {
@@ -214,7 +211,7 @@ public class OrderEmailService {
         } else if (order.getUser() != null) {
             context.setVariable("customerName", order.getUser().getFirstName() + " " + order.getUser().getLastName());
         }
-        
+
         return templateEngine.process("order-status-update", context);
     }
 
@@ -224,10 +221,10 @@ public class OrderEmailService {
         }
         return String.format("$%.2f", amount);
     }
-    
+
     private OrderItemEmailDTO convertToEmailDTO(OrderItem item) {
         OrderItemEmailDTO dto = new OrderItemEmailDTO();
-        
+
         // Get product name
         if (item.isVariantBased() && item.getProductVariant() != null) {
             dto.setProductName(item.getProductVariant().getProduct().getProductName());
@@ -239,14 +236,14 @@ public class OrderEmailService {
             dto.setProductName("Unknown Product");
             dto.setVariantName(null);
         }
-        
+
         dto.setQuantity(item.getQuantity());
         dto.setUnitPrice(formatCurrency(item.getPrice()));
         dto.setTotalPrice(formatCurrency(item.getSubtotal()));
-        
+
         return dto;
     }
-    
+
     // DTO class for email template
     public static class OrderItemEmailDTO {
         private String productName;
@@ -254,21 +251,46 @@ public class OrderEmailService {
         private Integer quantity;
         private String unitPrice;
         private String totalPrice;
-        
+
         // Getters and setters
-        public String getProductName() { return productName; }
-        public void setProductName(String productName) { this.productName = productName; }
-        
-        public String getVariantName() { return variantName; }
-        public void setVariantName(String variantName) { this.variantName = variantName; }
-        
-        public Integer getQuantity() { return quantity; }
-        public void setQuantity(Integer quantity) { this.quantity = quantity; }
-        
-        public String getUnitPrice() { return unitPrice; }
-        public void setUnitPrice(String unitPrice) { this.unitPrice = unitPrice; }
-        
-        public String getTotalPrice() { return totalPrice; }
-        public void setTotalPrice(String totalPrice) { this.totalPrice = totalPrice; }
+        public String getProductName() {
+            return productName;
+        }
+
+        public void setProductName(String productName) {
+            this.productName = productName;
+        }
+
+        public String getVariantName() {
+            return variantName;
+        }
+
+        public void setVariantName(String variantName) {
+            this.variantName = variantName;
+        }
+
+        public Integer getQuantity() {
+            return quantity;
+        }
+
+        public void setQuantity(Integer quantity) {
+            this.quantity = quantity;
+        }
+
+        public String getUnitPrice() {
+            return unitPrice;
+        }
+
+        public void setUnitPrice(String unitPrice) {
+            this.unitPrice = unitPrice;
+        }
+
+        public String getTotalPrice() {
+            return totalPrice;
+        }
+
+        public void setTotalPrice(String totalPrice) {
+            this.totalPrice = totalPrice;
+        }
     }
 }

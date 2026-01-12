@@ -243,7 +243,7 @@ public class OrderTrackingServiceImpl implements OrderTrackingService {
         summary.setStatus(order.getStatus().toString());
         summary.setCreatedAt(order.getCreatedAt());
         summary.setTotal(order.getTotalAmount());
-        summary.setItemCount(order.getOrderItems() != null ? order.getOrderItems().size() : 0);
+        summary.setItemCount(order.getAllItems() != null ? order.getAllItems().size() : 0);
 
         if (order.getOrderCustomerInfo() != null) {
             summary.setCustomerName(order.getOrderCustomerInfo().getFullName());
@@ -264,7 +264,7 @@ public class OrderTrackingServiceImpl implements OrderTrackingService {
         OrderResponseDTO dto = new OrderResponseDTO();
         dto.setId(order.getId());
         dto.setOrderNumber(order.getOrderCode());
-        dto.setStatus(order.getOrderStatus() != null ? order.getOrderStatus().name() : null);
+        dto.setStatus(order.getStatus() != null ? order.getStatus() : null);
         dto.setCreatedAt(order.getCreatedAt());
         dto.setUpdatedAt(order.getUpdatedAt());
         dto.setTotal(order.getTotalAmount());
@@ -283,8 +283,15 @@ public class OrderTrackingServiceImpl implements OrderTrackingService {
             dto.setShipping(BigDecimal.ZERO);
             dto.setDiscount(BigDecimal.ZERO);
         }
-        dto.setPickupToken(order.getPickupToken());
-        dto.setPickupTokenUsed(order.getPickupTokenUsed());
+        // Pickup token is now on ShopOrder, get from first shop order if available
+        if (order.getShopOrders() != null && !order.getShopOrders().isEmpty()) {
+            com.ecommerce.entity.ShopOrder firstShopOrder = order.getShopOrders().get(0);
+            dto.setPickupToken(firstShopOrder.getPickupToken());
+            dto.setPickupTokenUsed(firstShopOrder.getPickupTokenUsed());
+        } else {
+            dto.setPickupToken(null);
+            dto.setPickupTokenUsed(false);
+        }
 
         // Set customer info
         if (order.getOrderCustomerInfo() != null) {
@@ -323,8 +330,8 @@ public class OrderTrackingServiceImpl implements OrderTrackingService {
         }
 
         // Set order items (simplified - you may want to add more details)
-        if (order.getOrderItems() != null) {
-            List<OrderResponseDTO.OrderItem> items = order.getOrderItems().stream()
+        if (order.getAllItems() != null) {
+            List<OrderResponseDTO.OrderItem> items = order.getAllItems().stream()
                     .map(this::convertToOrderItemDTO)
                     .collect(Collectors.toList());
             dto.setItems(items);
@@ -425,16 +432,16 @@ public class OrderTrackingServiceImpl implements OrderTrackingService {
         dto.setMaxReturnDays(maxReturnDays);
 
         // Calculate days remaining for return based on order creation date
-        LocalDateTime orderDate = orderItem.getOrder().getCreatedAt();
+        LocalDateTime orderDate = orderItem.getShopOrder().getOrder().getCreatedAt();
         LocalDateTime now = LocalDateTime.now();
         long daysSinceOrder = java.time.temporal.ChronoUnit.DAYS.between(orderDate, now);
         int daysRemaining = (int) (maxReturnDays - daysSinceOrder);
 
-        // Item is return eligible if within return window and order is
+        // Item is return eligible if within return window and shop order is
         // delivered/processing
         boolean isReturnEligible = daysRemaining > 0 &&
-                (orderItem.getOrder().getOrderStatus() == Order.OrderStatus.DELIVERED ||
-                        orderItem.getOrder().getOrderStatus() == Order.OrderStatus.PROCESSING);
+                (orderItem.getShopOrder().getStatus() == com.ecommerce.entity.ShopOrder.ShopOrderStatus.DELIVERED ||
+                        orderItem.getShopOrder().getStatus() == com.ecommerce.entity.ShopOrder.ShopOrderStatus.PROCESSING);
 
         dto.setReturnEligible(isReturnEligible);
         dto.setDaysRemainingForReturn(Math.max(0, daysRemaining));

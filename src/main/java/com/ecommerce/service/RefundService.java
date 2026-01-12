@@ -2,11 +2,9 @@ package com.ecommerce.service;
 
 import com.ecommerce.dto.AddressDto;
 import com.ecommerce.dto.CartItemDTO;
-import com.ecommerce.dto.ReturnDecisionDTO;
 import com.ecommerce.entity.*;
 import com.ecommerce.repository.OrderRepository;
 import com.ecommerce.repository.ReturnItemRepository;
-import com.ecommerce.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -16,10 +14,10 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.UUID;
 
 /**
  * Service for handling refund processing based on original payment method
+ * Updated for multivendor architecture
  */
 @Service
 @RequiredArgsConstructor
@@ -28,7 +26,6 @@ import java.util.UUID;
 public class RefundService {
 
     private final OrderRepository orderRepository;
-    private final UserRepository userRepository;
     private final NotificationService notificationService;
     private final StripeService stripeService;
     private final RewardService rewardService;
@@ -130,7 +127,6 @@ public class RefundService {
         log.info("Processing hybrid payment refund for return request {}", returnRequest.getId());
 
         BigDecimal originalCardAmount = transaction.getOrderAmount().subtract(transaction.getPointsValue());
-        BigDecimal originalPointsValue = transaction.getPointsValue();
         Integer originalPointsUsed = transaction.getPointsUsed();
         BigDecimal originalTotal = transaction.getOrderAmount();
 
@@ -349,10 +345,11 @@ public class RefundService {
 
     /**
      * Check if all items in the order are being returned
+     * Updated for multivendor architecture
      */
     private boolean isFullOrderReturn(Order order, List<ReturnItem> returnItems) {
-        // Get all order items
-        List<OrderItem> orderItems = order.getOrderItems();
+        // Get all order items across all shop orders
+        List<OrderItem> orderItems = order.getAllItems();
         if (orderItems == null || orderItems.isEmpty()) {
             return false;
         }
@@ -386,12 +383,13 @@ public class RefundService {
 
     /**
      * Calculate full items refund (all items, taxes, discounts)
+     * Updated for multivendor architecture
      */
     private BigDecimal calculateFullItemsRefund(Order order) {
         OrderInfo orderInfo = order.getOrderInfo();
         if (orderInfo == null) {
-            // Fallback: calculate from order items
-            return order.getOrderItems().stream()
+            // Fallback: calculate from order items across all shop orders
+            return order.getAllItems().stream()
                     .map(OrderItem::getSubtotal)
                     .reduce(BigDecimal.ZERO, BigDecimal::add);
         }
@@ -489,11 +487,12 @@ public class RefundService {
 
     /**
      * Get remaining items after removing returned items
+     * Updated for multivendor architecture
      */
     private List<OrderItem> getRemainingItems(Order order, List<ReturnItem> returnItems) {
         List<OrderItem> remainingItems = new ArrayList<>();
 
-        for (OrderItem orderItem : order.getOrderItems()) {
+        for (OrderItem orderItem : order.getAllItems()) { // Use getAllItems() for multivendor
             int orderedQuantity = orderItem.getQuantity();
 
             // Get total returned quantity for this item (including current return)
@@ -561,11 +560,11 @@ public class RefundService {
         return addressDto;
     }
 
-
     @Transactional(propagation = org.springframework.transaction.annotation.Propagation.NOT_SUPPORTED)
     public com.ecommerce.dto.ExpectedRefundDTO calculateExpectedRefund(ReturnRequest returnRequest) {
         try {
-            // Eagerly fetch order with all associations to prevent LazyInitializationException
+            // Eagerly fetch order with all associations to prevent
+            // LazyInitializationException
             // This is crucial because we're running outside a transaction (NOT_SUPPORTED)
             Order order = orderRepository.findByIdWithAllAssociations(returnRequest.getOrderId())
                     .orElseThrow(() -> new RuntimeException("Order not found: " + returnRequest.getOrderId()));
@@ -576,9 +575,9 @@ public class RefundService {
             }
 
             RefundCalculation refundCalc = calculateRefundAmounts(returnRequest, order);
-            
-            com.ecommerce.dto.ExpectedRefundDTO.ExpectedRefundDTOBuilder builder = 
-                com.ecommerce.dto.ExpectedRefundDTO.builder()
+
+            com.ecommerce.dto.ExpectedRefundDTO.ExpectedRefundDTOBuilder builder = com.ecommerce.dto.ExpectedRefundDTO
+                    .builder()
                     .paymentMethod(transaction.getPaymentMethod().name())
                     .isFullReturn(refundCalc.isFullReturn)
                     .itemsRefund(refundCalc.itemsRefundAmount)
@@ -586,26 +585,26 @@ public class RefundService {
                     .totalRefundValue(refundCalc.totalRefundAmount);
 
             BigDecimal totalRefundAmount = refundCalc.totalRefundAmount;
-            
+
             switch (transaction.getPaymentMethod()) {
                 case CREDIT_CARD:
                 case DEBIT_CARD:
                     // Full monetary refund
                     builder.monetaryRefund(totalRefundAmount)
-                           .pointsRefund(0)
-                           .pointsRefundValue(BigDecimal.ZERO)
-                           .refundDescription(String.format("$%.2f will be refunded to your card", 
-                                   totalRefundAmount.doubleValue()));
+                            .pointsRefund(0)
+                            .pointsRefundValue(BigDecimal.ZERO)
+                            .refundDescription(String.format("$%.2f will be refunded to your card",
+                                    totalRefundAmount.doubleValue()));
                     break;
-                    
+
                 case POINTS:
                     // Full points refund
                     Integer pointsUsed = transaction.getPointsUsed() != null ? transaction.getPointsUsed() : 0;
-                    BigDecimal originalPointsValue = transaction.getPointsValue() != null ? 
-                            transaction.getPointsValue() : BigDecimal.ZERO;
+                    BigDecimal originalPointsValue = transaction.getPointsValue() != null ? transaction.getPointsValue()
+                            : BigDecimal.ZERO;
                     Integer pointsToRefund;
                     BigDecimal pointsRefundValue;
-                    
+
                     if (refundCalc.isFullReturn) {
                         // Full return - refund all points
                         pointsToRefund = pointsUsed;
@@ -622,104 +621,70 @@ public class RefundService {
                         pointsRefundValue = originalPointsValue.multiply(refundRatio)
                                 .setScale(2, RoundingMode.HALF_UP);
                     }
-                    
+
                     BigDecimal pointsValue = pointsRefundValue;
-                    
+
                     builder.monetaryRefund(BigDecimal.ZERO)
-                           .pointsRefund(pointsToRefund)
-                           .pointsRefundValue(pointsValue)
-                           .refundDescription(String.format("%d points (worth $%.2f) will be refunded", 
-                                   pointsToRefund, pointsValue.doubleValue()));
+                            .pointsRefund(pointsToRefund)
+                            .pointsRefundValue(pointsValue)
+                            .refundDescription(String.format("%d points (worth $%.2f) will be refunded",
+                                    pointsToRefund, pointsValue.doubleValue()));
                     break;
-                    
+
                 case HYBRID:
                     // Hybrid refund - points first, then card
-                    BigDecimal pointsValueUsed = transaction.getPointsValue() != null ? 
-                            transaction.getPointsValue() : BigDecimal.ZERO;
-                    Integer hybridPointsUsed = transaction.getPointsUsed() != null ? 
-                            transaction.getPointsUsed() : 0;
+                    BigDecimal pointsValueUsed = transaction.getPointsValue() != null ? transaction.getPointsValue()
+                            : BigDecimal.ZERO;
+                    Integer hybridPointsUsed = transaction.getPointsUsed() != null ? transaction.getPointsUsed() : 0;
                     BigDecimal cardAmount = transaction.getOrderAmount().subtract(pointsValueUsed);
-                    
+
                     Integer hybridPointsToRefund = 0;
                     BigDecimal hybridPointsRefundValue = BigDecimal.ZERO;
                     BigDecimal cardRefundAmount = BigDecimal.ZERO;
-                    BigDecimal remainingRefund = totalRefundAmount;
-                    
+
                     if (refundCalc.isFullReturn) {
                         // Full return - refund all points and all card amount
                         hybridPointsToRefund = hybridPointsUsed;
                         hybridPointsRefundValue = pointsValueUsed;
                         cardRefundAmount = cardAmount;
                     } else {
-                        // Partial return - prioritize points first
-                        if (pointsValueUsed.compareTo(BigDecimal.ZERO) > 0 && 
-                            remainingRefund.compareTo(BigDecimal.ZERO) > 0) {
-                            // Calculate how much of the refund comes from points
-                            BigDecimal pointsPortionOfRefund = remainingRefund.min(pointsValueUsed);
-                            BigDecimal pointsRefundRatio = pointsPortionOfRefund.divide(
-                                    pointsValueUsed, 4, RoundingMode.HALF_UP);
-                            
-                            // Calculate proportional points to refund
-                            hybridPointsToRefund = BigDecimal.valueOf(hybridPointsUsed)
-                                    .multiply(pointsRefundRatio)
-                                    .setScale(0, RoundingMode.HALF_UP)
-                                    .intValue();
-                            
-                            // Calculate the value of refunded points using original point value
-                            hybridPointsRefundValue = pointsValueUsed.multiply(pointsRefundRatio)
-                                    .setScale(2, RoundingMode.HALF_UP);
-                            
-                            remainingRefund = remainingRefund.subtract(hybridPointsRefundValue);
-                        }
-                        
-                        // Refund remaining amount via card
-                        if (remainingRefund.compareTo(BigDecimal.ZERO) > 0) {
-                            cardRefundAmount = remainingRefund.min(cardAmount);
-                        }
+                        // Partial return - calculate proportionally
+                        BigDecimal refundRatio = totalRefundAmount.divide(
+                                transaction.getOrderAmount(), 4, RoundingMode.HALF_UP);
+                        hybridPointsToRefund = BigDecimal.valueOf(hybridPointsUsed)
+                                .multiply(refundRatio)
+                                .setScale(0, RoundingMode.HALF_UP)
+                                .intValue();
+                        hybridPointsRefundValue = pointsValueUsed.multiply(refundRatio)
+                                .setScale(2, RoundingMode.HALF_UP);
+                        cardRefundAmount = cardAmount.multiply(refundRatio)
+                                .setScale(2, RoundingMode.HALF_UP);
                     }
-                    
-                    BigDecimal hybridPointsValue = hybridPointsRefundValue;
-                    
-                    String hybridDesc;
-                    if (hybridPointsToRefund > 0 && cardRefundAmount.compareTo(BigDecimal.ZERO) > 0) {
-                        hybridDesc = String.format("%d points (worth $%.2f) + $%.2f to your card", 
-                                hybridPointsToRefund, hybridPointsValue.doubleValue(), 
-                                cardRefundAmount.doubleValue());
-                    } else if (hybridPointsToRefund > 0) {
-                        hybridDesc = String.format("%d points (worth $%.2f) will be refunded", 
-                                hybridPointsToRefund, hybridPointsValue.doubleValue());
-                    } else {
-                        hybridDesc = String.format("$%.2f will be refunded to your card", 
-                                cardRefundAmount.doubleValue());
-                    }
-                    
+
                     builder.monetaryRefund(cardRefundAmount)
-                           .pointsRefund(hybridPointsToRefund)
-                           .pointsRefundValue(hybridPointsValue)
-                           .refundDescription(hybridDesc);
+                            .pointsRefund(hybridPointsToRefund)
+                            .pointsRefundValue(hybridPointsRefundValue)
+                            .refundDescription(String.format("$%.2f to your card + %d points (worth $%.2f)",
+                                    cardRefundAmount.doubleValue(), hybridPointsToRefund,
+                                    hybridPointsRefundValue.doubleValue()));
                     break;
-                    
+
                 default:
-                    throw new IllegalArgumentException("Unsupported payment method: " + 
-                            transaction.getPaymentMethod());
+                    throw new IllegalArgumentException("Unsupported payment method: " + transaction.getPaymentMethod());
             }
-            
+
             return builder.build();
-            
+
         } catch (Exception e) {
-            log.error("Error calculating expected refund for return request {}: {}", 
+            log.error("Error calculating expected refund for return request {}: {}",
                     returnRequest.getId(), e.getMessage(), e);
-            // Return a default empty refund
-            return com.ecommerce.dto.ExpectedRefundDTO.builder()
-                    .monetaryRefund(BigDecimal.ZERO)
-                    .pointsRefund(0)
-                    .pointsRefundValue(BigDecimal.ZERO)
-                    .totalRefundValue(BigDecimal.ZERO)
-                    .refundDescription("Unable to calculate refund")
-                    .build();
+            throw new RuntimeException("Failed to calculate expected refund", e);
         }
     }
 
+    /**
+     * Inner class for refund calculation results
+     */
     private static class RefundCalculation {
         boolean isFullReturn;
         BigDecimal itemsRefundAmount = BigDecimal.ZERO;

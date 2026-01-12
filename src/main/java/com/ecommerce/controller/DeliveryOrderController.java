@@ -31,19 +31,18 @@ public class DeliveryOrderController {
     public ResponseEntity<?> getDeliveryOrders() {
         try {
             List<DeliveryOrderDTO> orders = orderService.getDeliveryOrders();
-            
+
             Map<String, Object> response = new HashMap<>();
             response.put("success", true);
             response.put("data", orders);
-            
+
             return ResponseEntity.ok(response);
-            
+
         } catch (Exception e) {
             log.error("Error fetching delivery orders: {}", e.getMessage(), e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(Map.of(
-                "success", false,
-                "message", "Failed to fetch orders"
-            ));
+                    "success", false,
+                    "message", "Failed to fetch orders"));
         }
     }
 
@@ -52,24 +51,22 @@ public class DeliveryOrderController {
     public ResponseEntity<?> getDeliveryOrdersByStatus(@PathVariable String status) {
         try {
             List<DeliveryOrderDTO> orders = orderService.getDeliveryOrdersByStatus(status);
-            
+
             Map<String, Object> response = new HashMap<>();
             response.put("success", true);
             response.put("data", orders);
-            
+
             return ResponseEntity.ok(response);
-            
+
         } catch (IllegalArgumentException e) {
             return ResponseEntity.badRequest().body(Map.of(
-                "success", false,
-                "message", "Invalid status: " + status
-            ));
+                    "success", false,
+                    "message", "Invalid status: " + status));
         } catch (Exception e) {
             log.error("Error fetching delivery orders by status: {}", e.getMessage(), e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(Map.of(
-                "success", false,
-                "message", "Failed to fetch orders"
-            ));
+                    "success", false,
+                    "message", "Failed to fetch orders"));
         }
     }
 
@@ -78,119 +75,109 @@ public class DeliveryOrderController {
     public ResponseEntity<?> getDeliveryOrderByNumber(@PathVariable String orderNumber) {
         try {
             DeliveryOrderDTO order = orderService.getDeliveryOrderByNumber(orderNumber);
-            
+
             Map<String, Object> response = new HashMap<>();
             response.put("success", true);
             response.put("data", order);
-            
+
             return ResponseEntity.ok(response);
-            
+
         } catch (EntityNotFoundException e) {
             return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of(
-                "success", false,
-                "message", "Order not found"
-            ));
+                    "success", false,
+                    "message", "Order not found"));
         } catch (Exception e) {
             log.error("Error fetching delivery order by number: {}", e.getMessage(), e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(Map.of(
-                "success", false,
-                "message", "Failed to fetch order"
-            ));
+                    "success", false,
+                    "message", "Failed to fetch order"));
         }
     }
 
     @PutMapping("/{orderId}/status")
     @Operation(summary = "Update delivery status", description = "Update the delivery status of an order")
-    public ResponseEntity<?> updateDeliveryStatus(@PathVariable Long orderId, @RequestBody Map<String, String> request) {
+    public ResponseEntity<?> updateDeliveryStatus(@PathVariable Long orderId,
+            @RequestBody Map<String, String> request) {
         try {
             String status = request.get("status");
             if (status == null) {
                 return ResponseEntity.badRequest().body(Map.of(
-                    "success", false,
-                    "message", "Status is required"
-                ));
+                        "success", false,
+                        "message", "Status is required"));
             }
 
             // Only allow delivery-related status updates
             if (!isValidDeliveryStatus(status)) {
                 return ResponseEntity.badRequest().body(Map.of(
-                    "success", false,
-                    "message", "Invalid delivery status. Allowed values: SHIPPED, OUT_FOR_DELIVERY, DELIVERED"
-                ));
+                        "success", false,
+                        "message", "Invalid delivery status. Allowed values: SHIPPED, OUT_FOR_DELIVERY, DELIVERED"));
             }
 
-            var order = orderService.updateOrderStatus(orderId, status);
-            DeliveryOrderDTO deliveryOrder = orderService.getDeliveryOrderByNumber(order.getOrderCode());
-            
+            var shopOrder = orderService.updateShopOrderStatus(orderId, status);
+            DeliveryOrderDTO deliveryOrder = orderService.getDeliveryOrderByNumber(shopOrder.getShopOrderCode());
+
             Map<String, Object> response = new HashMap<>();
             response.put("success", true);
             response.put("message", "Delivery status updated successfully");
             response.put("data", deliveryOrder);
-            
+
             return ResponseEntity.ok(response);
-            
+
         } catch (EntityNotFoundException e) {
             return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of(
-                "success", false,
-                "message", "Order not found"
-            ));
+                    "success", false,
+                    "message", "Order not found"));
         } catch (IllegalArgumentException e) {
             return ResponseEntity.badRequest().body(Map.of(
-                "success", false,
-                "message", e.getMessage()
-            ));
+                    "success", false,
+                    "message", e.getMessage()));
         } catch (Exception e) {
             log.error("Error updating delivery status: {}", e.getMessage(), e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(Map.of(
-                "success", false,
-                "message", "Failed to update delivery status"
-            ));
+                    "success", false,
+                    "message", "Failed to update delivery status"));
         }
     }
 
     @PutMapping("/{orderId}/tracking")
     @Operation(summary = "Update delivery tracking", description = "Update tracking information for delivery")
-    public ResponseEntity<?> updateDeliveryTracking(@PathVariable Long orderId, @RequestBody Map<String, String> request) {
+    public ResponseEntity<?> updateDeliveryTracking(@PathVariable Long orderId,
+            @RequestBody Map<String, String> request) {
         try {
             String trackingNumber = request.get("trackingNumber");
             String estimatedDelivery = request.get("estimatedDelivery");
 
             if (trackingNumber == null) {
                 return ResponseEntity.badRequest().body(Map.of(
-                    "success", false,
-                    "message", "Tracking number is required"
-                ));
+                        "success", false,
+                        "message", "Tracking number is required"));
             }
 
-            var order = orderService.updateOrderTracking(orderId, trackingNumber, estimatedDelivery);
-            DeliveryOrderDTO deliveryOrder = orderService.getDeliveryOrderByNumber(order.getOrderCode());
-            
+            var shopOrder = orderService.updateShopOrderTracking(orderId, trackingNumber, estimatedDelivery);
+            DeliveryOrderDTO deliveryOrder = orderService.getDeliveryOrderByNumber(shopOrder.getShopOrderCode());
+
             Map<String, Object> response = new HashMap<>();
             response.put("success", true);
             response.put("message", "Tracking information updated successfully");
             response.put("data", deliveryOrder);
-            
+
             return ResponseEntity.ok(response);
-            
+
         } catch (EntityNotFoundException e) {
             return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of(
-                "success", false,
-                "message", "Order not found"
-            ));
+                    "success", false,
+                    "message", "Order not found"));
         } catch (Exception e) {
             log.error("Error updating delivery tracking: {}", e.getMessage(), e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(Map.of(
-                "success", false,
-                "message", "Failed to update tracking information"
-            ));
+                    "success", false,
+                    "message", "Failed to update tracking information"));
         }
     }
 
     private boolean isValidDeliveryStatus(String status) {
-        return status != null && (
-            status.equals("SHIPPED") ||
-            status.equals("OUT_FOR_DELIVERY") ||
-            status.equals("DELIVERED")
-        );
+        return status != null && (status.equals("SHIPPED") ||
+                status.equals("OUT_FOR_DELIVERY") ||
+                status.equals("DELIVERED"));
     }
 }

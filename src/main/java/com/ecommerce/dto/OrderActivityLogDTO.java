@@ -37,7 +37,14 @@ public class OrderActivityLogDTO {
 
         OrderActivityLogDTO dto = new OrderActivityLogDTO();
         dto.setId(entity.getId());
-        dto.setOrderId(entity.getOrderId());
+        // Get orderId from orderIdValue, or from order/shopOrder if available
+        if (entity.getOrderIdValue() != null) {
+            dto.setOrderId(entity.getOrderIdValue());
+        } else if (entity.getOrder() != null) {
+            dto.setOrderId(entity.getOrder().getOrderId());
+        } else if (entity.getShopOrder() != null && entity.getShopOrder().getOrder() != null) {
+            dto.setOrderId(entity.getShopOrder().getOrder().getOrderId());
+        }
         dto.setActivityType(entity.getActivityType());
         dto.setTitle(entity.getTitle());
         dto.setDescription(entity.getDescription());

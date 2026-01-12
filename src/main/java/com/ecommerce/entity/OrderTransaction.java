@@ -14,7 +14,7 @@ import java.time.LocalDateTime;
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
-@EqualsAndHashCode(exclude = { "order" })
+@EqualsAndHashCode(exclude = { "order", "shopTransactions" })
 public class OrderTransaction {
 
     @Id
@@ -63,6 +63,9 @@ public class OrderTransaction {
 
     @Column(name = "updated_at")
     private LocalDateTime updatedAt;
+
+    @OneToMany(mappedBy = "globalTransaction", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
+    private java.util.List<ShopOrderTransaction> shopTransactions = new java.util.ArrayList<>();
 
     @PrePersist
     protected void onCreate() {

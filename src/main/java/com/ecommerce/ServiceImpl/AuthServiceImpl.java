@@ -197,7 +197,8 @@ public class AuthServiceImpl implements AuthService {
         userDTO.setEmailVerified(user.isEmailVerified());
         userDTO.setPhoneVerified(user.isPhoneVerified());
         userDTO.setEnabled(user.isEnabled());
-        userDTO.setPoints(user.getPoints());
+        // Points are now handled by UserPoints entity per shop, not directly on User
+        userDTO.setPoints(0);
         userDTO.setLastLogin(user.getLastLogin());
         userDTO.setCreatedAt(user.getCreatedAt());
         userDTO.setUpdatedAt(user.getUpdatedAt());
