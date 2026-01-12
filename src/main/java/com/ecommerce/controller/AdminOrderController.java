@@ -38,6 +38,7 @@ public class AdminOrderController {
 
     private final OrderService orderService;
     private final ShopAuthorizationService shopAuthorizationService;
+    private final com.ecommerce.repository.ShopRepository shopRepository;
 
     @GetMapping
     @Operation(summary = "Get all orders with pagination", description = "Retrieve all orders in the system with pagination support")
@@ -139,10 +140,49 @@ public class AdminOrderController {
     }
 
     @GetMapping("/{orderId}")
-    @Operation(summary = "Get order by ID", description = "Retrieve a specific order by ID")
-    public ResponseEntity<?> getOrderById(@PathVariable Long orderId) {
+    @Operation(summary = "Get order by ID", description = "Retrieve a specific order by ID. If shopId (UUID) or shopSlug is provided via query params, fetches shop-specific order details.")
+    public ResponseEntity<?> getOrderById(@PathVariable Long orderId,
+            @Parameter(description = "Optional Shop UUID to filter/view order as shop owner") @RequestParam(required = false) String shopId,
+            @Parameter(description = "Optional Shop Slug to filter/view order as shop owner") @RequestParam(required = false) String shopSlug) {
         try {
-            AdminOrderDTO order = orderService.getAdminOrderById(orderId);
+            AdminOrderDTO order;
+            UUID shopUuid = null;
+
+            // Resolve Shop UUID from shopId or shopSlug
+            if (shopId != null && !shopId.trim().isEmpty()) {
+                try {
+                    log.info("Your shop id is: {}", shopId);
+                    shopUuid = UUID.fromString(shopId);
+                } catch (IllegalArgumentException e) {
+                    // Ignore, continue to check shopSlug
+                }
+            }
+
+            if (shopUuid == null && shopSlug != null && !shopSlug.trim().isEmpty()) {
+                shopUuid = shopRepository.findBySlug(shopSlug)
+                        .map(com.ecommerce.entity.Shop::getShopId)
+                        .orElse(null);
+            }
+
+            if (shopUuid != null) {
+                try {
+                    UUID currentUserId = getCurrentUserId();
+                    if (currentUserId != null) {
+                        shopAuthorizationService.assertCanManageShop(currentUserId, shopUuid);
+                    }
+                    // Fetch shop-specific order details
+                    order = orderService.getAdminOrderById(orderId, shopUuid);
+
+                } catch (com.ecommerce.Exception.CustomException e) {
+                    Map<String, Object> response = new HashMap<>();
+                    response.put("success", false);
+                    response.put("message", "Access denied to this shop");
+                    response.put("errorCode", "ACCESS_DENIED");
+                    return ResponseEntity.status(HttpStatus.FORBIDDEN).body(response);
+                }
+            } else {
+                order = orderService.getAdminOrderById(orderId);
+            }
 
             Map<String, Object> response = new HashMap<>();
             response.put("success", true);

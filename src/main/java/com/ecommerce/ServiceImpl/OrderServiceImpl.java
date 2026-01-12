@@ -170,14 +170,60 @@ public class OrderServiceImpl implements OrderService {
     @Transactional(readOnly = true)
     public Page<AdminOrderDTO> getAllAdminOrdersPaginated(Pageable pageable, UUID shopId) {
         if (shopId != null) {
-            // Filter orders by shop - orders contain products from the shop
-            Page<Order> ordersPage = orderRepository.findAllWithDetailsForAdminByShop(shopId, pageable);
-            return ordersPage.map(this::toAdminOrderDTO);
+            // Use ShopOrderRepository to avoid MultipleBagFetchException and ensure data
+            // isolation
+            // This fetches only the ShopOrders for this shop, effectively filtering the
+            // "Bag" of items correctly
+            org.springframework.data.domain.Page<com.ecommerce.entity.ShopOrder> shopOrdersPage = shopOrderRepository
+                    .findAllWithDetailsByShopId(shopId, pageable);
+
+            return shopOrdersPage.map(this::toAdminOrderDTOFromShopOrder);
         } else {
             // No shop filter, return all orders
             Page<Order> ordersPage = orderRepository.findAllWithDetailsForAdmin(pageable);
             return ordersPage.map(this::toAdminOrderDTO);
         }
+    }
+
+    private AdminOrderDTO toAdminOrderDTOFromShopOrder(com.ecommerce.entity.ShopOrder shopOrder) {
+        Order order = shopOrder.getOrder();
+
+        // Use the existing toShopOrderDTO method to map the single shop order
+        ShopOrderDTO singleShopOrderDTO = toShopOrderDTO(shopOrder);
+
+        // Calculate subtotal for the shop order manually or rely on shopOrder
+        // properties
+        // shopOrder.getTotalAmount() is stored. Subtotal + Shipping - Discount = Total
+        // If we don't store subtotal on shopOrder, we sum items.
+        BigDecimal subtotal = calculateShopOrderSubtotal(shopOrder);
+
+        return AdminOrderDTO.builder()
+                .id(order.getOrderId().toString())
+                .userId(order.getUser() != null ? order.getUser().getId().toString() : null)
+                .customerName(order.getOrderCustomerInfo() != null
+                        ? order.getOrderCustomerInfo().getFirstName() + " " + order.getOrderCustomerInfo().getLastName()
+                        : null)
+                .customerEmail(order.getOrderCustomerInfo() != null ? order.getOrderCustomerInfo().getEmail() : null)
+                .customerPhone(
+                        order.getOrderCustomerInfo() != null ? order.getOrderCustomerInfo().getPhoneNumber() : null)
+                .orderNumber(shopOrder.getShopOrderCode())
+                .status(shopOrder.getStatus().name())
+                .shopOrders(java.util.Collections.singletonList(singleShopOrderDTO))
+                .items(shopOrder.getItems().stream() // Populate top-level items for frontend
+                        .map(this::toAdminOrderItemDTO)
+                        .collect(Collectors.toList()))
+                .subtotal(subtotal)
+                .tax(BigDecimal.ZERO)
+                .shipping(shopOrder.getShippingCost()) // Shop specific shipping
+                .discount(shopOrder.getDiscountAmount()) // Shop specific discount
+                .total(shopOrder.getTotalAmount())
+                .shippingAddress(toAdminOrderAddressDTO(order.getOrderAddress(), order.getOrderCustomerInfo()))
+                .billingAddress(toAdminOrderAddressDTO(order.getOrderAddress(), order.getOrderCustomerInfo()))
+                .paymentInfo(toAdminPaymentInfoDTO(order.getOrderTransaction()))
+                .notes(order.getOrderInfo() != null ? order.getOrderInfo().getNotes() : null)
+                .createdAt(shopOrder.getCreatedAt())
+                .updatedAt(shopOrder.getUpdatedAt())
+                .build();
     }
 
     @Override
@@ -186,6 +232,16 @@ public class OrderServiceImpl implements OrderService {
         Order order = orderRepository.findByIdWithDetailsForAdmin(orderId)
                 .orElseThrow(() -> new EntityNotFoundException("Order not found"));
         return toAdminOrderDTO(order);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public AdminOrderDTO getAdminOrderById(Long orderId, UUID shopId) {
+        com.ecommerce.entity.ShopOrder shopOrder = shopOrderRepository
+                .findByOrderIdAndShopIdWithDetails(orderId, shopId)
+                .orElseThrow(() -> new EntityNotFoundException("Order not found for this shop"));
+
+        return toAdminOrderDTOFromShopOrder(shopOrder);
     }
 
     @Override
@@ -200,6 +256,15 @@ public class OrderServiceImpl implements OrderService {
     @Transactional(readOnly = true)
     public Page<AdminOrderDTO> searchOrders(OrderSearchDTO searchRequest, Pageable pageable) {
         log.info("Searching orders with criteria: {}", searchRequest);
+
+        if (searchRequest.getShopId() != null) {
+            // Using Shop specific search which returns Page<ShopOrder>
+            // This is the CRITICAL fix for the user request
+            Page<com.ecommerce.entity.ShopOrder> shopOrdersPage = shopOrderRepository.searchShopOrders(searchRequest,
+                    pageable);
+            return shopOrdersPage.map(this::toAdminOrderDTOFromShopOrder);
+        }
+
         Page<Order> ordersPage = orderRepository.searchOrders(searchRequest, pageable);
         return ordersPage.map(this::toAdminOrderDTO);
     }
