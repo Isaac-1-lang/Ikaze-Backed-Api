@@ -27,12 +27,12 @@ import java.util.stream.Collectors;
 @Service
 @RequiredArgsConstructor
 @Slf4j
-@Transactional
 public class MoneyFlowServiceImpl implements MoneyFlowService {
 
     private final MoneyFlowRepository moneyFlowRepository;
 
     @Override
+    @Transactional(propagation = org.springframework.transaction.annotation.Propagation.REQUIRES_NEW)
     public MoneyFlow save(CreateMoneyFlowDTO createMoneyFlowDTO) {
         log.info("Creating new money flow: type={}, amount={}", 
                 createMoneyFlowDTO.getType(), createMoneyFlowDTO.getAmount());

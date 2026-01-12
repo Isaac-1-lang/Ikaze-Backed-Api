@@ -27,7 +27,7 @@ public class OrderActivityLogService {
         private final com.ecommerce.repository.OrderRepository orderRepository;
         private final com.ecommerce.repository.OrderDeliveryNoteRepository orderDeliveryNoteRepository;
 
-        @Transactional
+        @Transactional(propagation = org.springframework.transaction.annotation.Propagation.REQUIRES_NEW)
         public OrderActivityLog logActivity(
                         Long orderId,
                         OrderActivityLog.ActivityType activityType,
@@ -240,6 +240,7 @@ public class OrderActivityLogService {
         /**
          * Log order placement
          */
+        @Transactional(propagation = org.springframework.transaction.annotation.Propagation.REQUIRES_NEW)
         public void logOrderPlaced(Long orderId, String customerName) {
                 logActivity(
                                 orderId,
@@ -254,6 +255,7 @@ public class OrderActivityLogService {
                                 null);
         }
 
+        @Transactional(propagation = org.springframework.transaction.annotation.Propagation.REQUIRES_NEW)
         public void logPaymentCompleted(Long orderId, String paymentMethod, Double amount) {
                 logActivity(
                                 orderId,

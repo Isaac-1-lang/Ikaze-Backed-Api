@@ -18,7 +18,7 @@ import java.util.List;
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
-@EqualsAndHashCode(exclude = { "order", "product", "productVariant", "orderItemBatches" })
+@EqualsAndHashCode(exclude = { "shopOrder", "product", "productVariant", "orderItemBatches" })
 public class OrderItem {
 
     @Id

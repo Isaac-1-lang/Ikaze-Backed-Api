@@ -95,12 +95,13 @@ public class CheckoutService {
             throw new IllegalArgumentException("Shipping address and country are required");
         }
         
-        if (req.getShippingAddress().getLatitude() != null && req.getShippingAddress().getLongitude() != null) {
-            roadValidationService.validateRoadLocation(
-                req.getShippingAddress().getLatitude(), 
-                req.getShippingAddress().getLongitude()
-            );
-        }
+        // Road validation disabled - Google Maps API key expired
+        // if (req.getShippingAddress().getLatitude() != null && req.getShippingAddress().getLongitude() != null) {
+        //     roadValidationService.validateRoadLocation(
+        //         req.getShippingAddress().getLatitude(), 
+        //         req.getShippingAddress().getLongitude()
+        //     );
+        // }
 
         UUID userId;
         try {
@@ -126,6 +127,7 @@ public class CheckoutService {
         // Create main Order entity
         Order order = new Order();
         order.setUser(user);
+        order.setStatus("PENDING"); // Set initial status
 
         OrderCustomerInfo customerInfo = new OrderCustomerInfo();
         customerInfo.setFirstName(user.getFirstName());
@@ -264,9 +266,13 @@ public class CheckoutService {
             log.info("Created ShopOrder {} for shop {}", shopOrder.getShopOrderCode(), shop.getName());
         }
 
-        // Create order item batches
-        for (Map.Entry<CartItemDTO, List<FEFOStockAllocationService.BatchAllocation>> entry : fefoAllocations.entrySet()) {
-            createOrderItemBatchesForShopOrder(saved, entry.getKey(), entry.getValue());
+        // Create order item batches (non-critical - wrap in try-catch to prevent transaction rollback)
+        try {
+            for (Map.Entry<CartItemDTO, List<FEFOStockAllocationService.BatchAllocation>> entry : fefoAllocations.entrySet()) {
+                createOrderItemBatchesForShopOrder(saved, entry.getKey(), entry.getValue());
+            }
+        } catch (Exception e) {
+            log.error("Failed to create order item batches for order {}: {}", saved.getOrderId(), e.getMessage(), e);
         }
 
         // Lock stock
@@ -281,38 +287,55 @@ public class CheckoutService {
         enhancedStockLockService.confirmBatchLocks(sessionId);
         stockLockService.confirmStock(sessionId);
 
-        // Update discount usage
-        updateDiscountUsage(saved);
-
-        // Award reward points if user is logged in
-        if (user != null) {
-            int totalProductCount = saved.getAllItems().size();
-            rewardService.checkRewardableOnOrderAndReward(user.getId(), saved.getOrderId(),
-                    totalProductCount, paymentSummary.getTotalAmount());
+        // Update discount usage (non-critical - wrap in try-catch to prevent transaction rollback)
+        try {
+            updateDiscountUsage(saved);
+        } catch (Exception e) {
+            log.error("Failed to update discount usage for order {}: {}", saved.getOrderId(), e.getMessage(), e);
         }
 
-        // Send order confirmation email
+        // Award reward points if user is logged in (non-critical)
+        if (user != null) {
+            try {
+                int totalProductCount = saved.getAllItems().size();
+                rewardService.checkRewardableOnOrderAndReward(user.getId(), saved.getOrderId(),
+                        totalProductCount, paymentSummary.getTotalAmount());
+            } catch (Exception e) {
+                log.error("Failed to award reward points for order {}: {}", saved.getOrderId(), e.getMessage(), e);
+            }
+        }
+
+        // Send order confirmation email (non-critical)
         try {
             orderEmailService.sendOrderConfirmationEmail(saved);
         } catch (Exception e) {
-            log.error("Failed to send order confirmation email for order {}", saved.getOrderId());
+            log.error("Failed to send order confirmation email for order {}: {}", saved.getOrderId(), e.getMessage(), e);
         }
 
-        // Clear cart
+        // Clear cart (non-critical)
         try {
             cartService.clearCart(user.getId());
             log.info("Successfully cleared cart for user: {}", user.getId());
         } catch (Exception e) {
-            log.error("Failed to clear cart for user {}: {}", user.getId(), e.getMessage());
+            log.error("Failed to clear cart for user {}: {}", user.getId(), e.getMessage(), e);
         }
 
-        // LOG ACTIVITY: Order Placed and Payment Completed
+        // LOG ACTIVITY: Order Placed and Payment Completed (non-critical - wrap in try-catch)
         String customerName = user.getFirstName() + " " + user.getLastName();
-        activityLogService.logOrderPlaced(saved.getOrderId(), customerName);
-        activityLogService.logPaymentCompleted(saved.getOrderId(), 
-                tx.getPaymentMethod().toString(), tx.getOrderAmount().doubleValue());
+        try {
+            activityLogService.logOrderPlaced(saved.getOrderId(), customerName);
+        } catch (Exception e) {
+            log.error("Failed to log order placed activity for order {}: {}", saved.getOrderId(), e.getMessage(), e);
+        }
+        
+        try {
+            activityLogService.logPaymentCompleted(saved.getOrderId(), 
+                    tx.getPaymentMethod().toString(), tx.getOrderAmount().doubleValue());
+        } catch (Exception e) {
+            log.error("Failed to log payment completed activity for order {}: {}", saved.getOrderId(), e.getMessage(), e);
+        }
 
-        // Record payment in money flow
+        // Record payment in money flow (non-critical - already has try-catch)
         recordPaymentInMoneyFlow(saved, tx);
 
         log.info("Mock checkout session created successfully. Order ID: {}, Session ID: {}", saved.getOrderId(), mockSessionId);
@@ -321,7 +344,7 @@ public class CheckoutService {
         return "/payment-success?sessionId=" + mockSessionId + "&orderId=" + saved.getOrderId();
     }
 
-    @Transactional
+    // @Transactional
     public String createGuestCheckoutSession(GuestCheckoutRequest req) throws Exception {
         log.info("Creating guest checkout session");
 
@@ -329,13 +352,14 @@ public class CheckoutService {
             throw new IllegalArgumentException("Address and country are required");
         }
         
-        if (req.getAddress().getLatitude() != null && req.getAddress().getLongitude() != null) {
-            roadValidationService.validateRoadLocation(
-                req.getAddress().getLatitude(), 
-                req.getAddress().getLongitude()
-            );
-            log.info("Road validated successfully");
-        }
+        // Road validation disabled - Google Maps API key expired
+        // if (req.getAddress().getLatitude() != null && req.getAddress().getLongitude() != null) {
+        //     roadValidationService.validateRoadLocation(
+        //         req.getAddress().getLatitude(), 
+        //         req.getAddress().getLongitude()
+        //     );
+        //     log.info("Road validated successfully");
+        // }
 
         validateCartItems(req.getItems());
 
@@ -348,6 +372,7 @@ public class CheckoutService {
 
         // Create main Order entity
         Order order = new Order();
+        order.setStatus("PENDING"); // Set initial status
 
         OrderCustomerInfo customerInfo = new OrderCustomerInfo();
         customerInfo.setFirstName(req.getGuestName());
@@ -486,9 +511,13 @@ public class CheckoutService {
             log.info("Created ShopOrder {} for shop {}", shopOrder.getShopOrderCode(), shop.getName());
         }
 
-        // Create order item batches
-        for (Map.Entry<CartItemDTO, List<FEFOStockAllocationService.BatchAllocation>> entry : fefoAllocations.entrySet()) {
-            createOrderItemBatchesForShopOrder(saved, entry.getKey(), entry.getValue());
+        // Create order item batches (non-critical - wrap in try-catch to prevent transaction rollback)
+        try {
+            for (Map.Entry<CartItemDTO, List<FEFOStockAllocationService.BatchAllocation>> entry : fefoAllocations.entrySet()) {
+                createOrderItemBatchesForShopOrder(saved, entry.getKey(), entry.getValue());
+            }
+        } catch (Exception e) {
+            log.error("Failed to create order item batches for guest order {}: {}", saved.getOrderId(), e.getMessage(), e);
         }
 
         // Lock stock
@@ -504,23 +533,36 @@ public class CheckoutService {
         enhancedStockLockService.confirmBatchLocks(sessionId);
         stockLockService.confirmStock(sessionId);
 
-        // Update discount usage
-        updateDiscountUsage(saved);
+        // Update discount usage (non-critical - wrap in try-catch to prevent transaction rollback)
+        try {
+            updateDiscountUsage(saved);
+        } catch (Exception e) {
+            log.error("Failed to update discount usage for guest order {}: {}", saved.getOrderId(), e.getMessage(), e);
+        }
 
-        // Send order confirmation email
+        // Send order confirmation email (non-critical)
         try {
             orderEmailService.sendOrderConfirmationEmail(saved);
         } catch (Exception e) {
-            log.error("Failed to send order confirmation email for guest order {}", saved.getOrderId());
+            log.error("Failed to send order confirmation email for guest order {}: {}", saved.getOrderId(), e.getMessage(), e);
         }
 
-        // LOG ACTIVITY: Order Placed and Payment Completed
+        // LOG ACTIVITY: Order Placed and Payment Completed (non-critical - wrap in try-catch)
         String guestCustomerName = req.getGuestName() + " " + req.getGuestLastName();
-        activityLogService.logOrderPlaced(saved.getOrderId(), guestCustomerName + " (Guest)");
-        activityLogService.logPaymentCompleted(saved.getOrderId(), 
-                tx.getPaymentMethod().toString(), tx.getOrderAmount().doubleValue());
+        try {
+            activityLogService.logOrderPlaced(saved.getOrderId(), guestCustomerName + " (Guest)");
+        } catch (Exception e) {
+            log.error("Failed to log order placed activity for guest order {}: {}", saved.getOrderId(), e.getMessage(), e);
+        }
+        
+        try {
+            activityLogService.logPaymentCompleted(saved.getOrderId(), 
+                    tx.getPaymentMethod().toString(), tx.getOrderAmount().doubleValue());
+        } catch (Exception e) {
+            log.error("Failed to log payment completed activity for guest order {}: {}", saved.getOrderId(), e.getMessage(), e);
+        }
 
-        // Record payment in money flow
+        // Record payment in money flow (non-critical - already has try-catch)
         recordPaymentInMoneyFlow(saved, tx);
 
         log.info("Mock guest checkout session created successfully. Order ID: {}, Session ID: {}", saved.getOrderId(), mockSessionId);
@@ -846,10 +888,11 @@ public class CheckoutService {
             throw new IllegalArgumentException("Delivery address and country are required");
         }
         
+        // Road validation disabled - Google Maps API key expired
         // Validate that the pickup point is on or near a road
-        if (deliveryAddress.getLatitude() != null && deliveryAddress.getLongitude() != null) {
-            roadValidationService.validateRoadLocation(deliveryAddress.getLatitude(), deliveryAddress.getLongitude());
-        }
+        // if (deliveryAddress.getLatitude() != null && deliveryAddress.getLongitude() != null) {
+        //     roadValidationService.validateRoadLocation(deliveryAddress.getLatitude(), deliveryAddress.getLongitude());
+        // }
         
         // Step 1: Group items by shop
         Map<Shop, List<CartItemDTO>> itemsByShop = new HashMap<>();
@@ -1008,6 +1051,33 @@ public class CheckoutService {
         
         BigDecimal totalAmount = totalSubtotal.add(totalShippingCost).add(totalTaxAmount);
         
+        // Build shop summaries
+        List<com.ecommerce.dto.PaymentSummaryDTO.ShopSummary> shopSummaries = shopCalculations.values().stream()
+                .map(shopResult -> {
+                    BigDecimal shopTotal = shopResult.subtotal
+                            .add(shopResult.shippingCost)
+                            .subtract(shopResult.discountAmount);
+                    
+                    return com.ecommerce.dto.PaymentSummaryDTO.ShopSummary.builder()
+                            .shopId(shopResult.shop.getShopId().toString())
+                            .shopName(shopResult.shop.getName())
+                            .subtotal(shopResult.subtotal)
+                            .discountAmount(shopResult.discountAmount)
+                            .shippingCost(shopResult.shippingCost)
+                            .taxAmount(BigDecimal.ZERO) // Tax is typically calculated at order level
+                            .totalAmount(shopTotal)
+                            .rewardPoints(shopResult.rewardPoints)
+                            .rewardPointsValue(shopResult.rewardPointsValue)
+                            .productCount(shopResult.productCount)
+                            .distanceKm(shopResult.shippingDetails.getDistanceKm())
+                            .costPerKm(shopResult.shippingDetails.getCostPerKm())
+                            .selectedWarehouseName(shopResult.shippingDetails.getSelectedWarehouseName())
+                            .selectedWarehouseCountry(shopResult.shippingDetails.getSelectedWarehouseCountry())
+                            .isInternationalShipping(shopResult.shippingDetails.getIsInternationalShipping())
+                            .build();
+                })
+                .collect(java.util.stream.Collectors.toList());
+        
         log.info("Payment summary calculated: {} shops, {} items, total: {}", 
                 itemsByShop.size(), totalProductCount, totalAmount);
         
@@ -1025,6 +1095,7 @@ public class CheckoutService {
                 .selectedWarehouseName(farthestShippingDetails.getSelectedWarehouseName())
                 .selectedWarehouseCountry(farthestShippingDetails.getSelectedWarehouseCountry())
                 .isInternationalShipping(farthestShippingDetails.getIsInternationalShipping())
+                .shopSummaries(shopSummaries)
                 .build();
     }
     

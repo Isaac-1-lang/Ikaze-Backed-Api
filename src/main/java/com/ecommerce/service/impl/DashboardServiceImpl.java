@@ -130,17 +130,17 @@ public class DashboardServiceImpl implements DashboardService {
 
             List<Order> globalOrders = orderRepository.findAll(
                     PageRequest.of(0, 3, org.springframework.data.domain.Sort.by("createdAt").descending()))
-                    .getContent();
+                .getContent();
 
             recentOrders = globalOrders.stream()
                     .map(o -> RecentOrderDTO.builder()
                             .orderId(o.getOrderCode())
                             .status(o.getStatus())
-                            .amount(o.getOrderTransaction() != null ? o.getOrderTransaction().getOrderAmount()
-                                    : (o.getOrderInfo() != null ? o.getOrderInfo().getTotalAmount() : BigDecimal.ZERO))
+                .amount(o.getOrderTransaction() != null ? o.getOrderTransaction().getOrderAmount()
+                        : (o.getOrderInfo() != null ? o.getOrderInfo().getTotalAmount() : BigDecimal.ZERO))
                             .owner(o.getUser() != null ? o.getUser().getFullName() : "Guest")
-                            .build())
-                    .collect(Collectors.toList());
+                .build())
+                .collect(Collectors.toList());
 
             if (role == UserRole.ADMIN) {
                 revenue = moneyFlowService.getNetRevenue();

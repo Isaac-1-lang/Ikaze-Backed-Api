@@ -50,6 +50,9 @@ public class Order {
     @OneToMany(mappedBy = "order", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
     private List<ShopOrder> shopOrders = new ArrayList<>();
 
+    @Column(name = "order_status", nullable = false)
+    private String orderStatus = "PENDING";
+
     @Column(name = "created_at")
     private LocalDateTime createdAt;
 
@@ -62,6 +65,9 @@ public class Order {
         updatedAt = LocalDateTime.now();
         if (orderCode == null || orderCode.isEmpty()) {
             orderCode = generateOrderCode();
+        }
+        if (orderStatus == null || orderStatus.isEmpty()) {
+            orderStatus = "PENDING";
         }
     }
 
@@ -147,9 +153,15 @@ public class Order {
     }
 
     /**
-     * Get aggregated status (simple heuristic)
+     * Get order status (from database column or calculated)
      */
     public String getStatus() {
+        // Return persisted status if available
+        if (orderStatus != null && !orderStatus.isEmpty()) {
+            return orderStatus;
+        }
+        
+        // Fallback: calculate from shop orders
         if (shopOrders == null || shopOrders.isEmpty())
             return "PENDING";
 
@@ -161,6 +173,13 @@ public class Order {
             return "DELIVERED";
 
         return "PROCESSING"; // simplified
+    }
+    
+    /**
+     * Set order status
+     */
+    public void setStatus(String status) {
+        this.orderStatus = status;
     }
 
     /**
