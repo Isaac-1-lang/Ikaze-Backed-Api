@@ -72,4 +72,11 @@ public interface OrderService {
     long countOrdersByStatus(String status);
 
     long countProcessingOrdersWithoutDeliveryGroup();
+
+    long countProcessingOrdersWithoutDeliveryGroup(UUID shopId);
+
+    // Customer order tracking
+    com.ecommerce.dto.CustomerOrderTrackingDTO getCustomerOrderTracking(Long orderId, String token);
+
+    com.ecommerce.dto.CustomerOrderTrackingDTO getCustomerOrderTracking(Long orderId);
 }

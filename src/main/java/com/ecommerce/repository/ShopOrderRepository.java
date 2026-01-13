@@ -28,6 +28,9 @@ public interface ShopOrderRepository extends JpaRepository<ShopOrder, Long> {
 
         long countByStatusAndReadyForDeliveryGroupIsNull(com.ecommerce.entity.ShopOrder.ShopOrderStatus status);
 
+        long countByStatusAndReadyForDeliveryGroupIsNullAndShop_ShopId(
+                        com.ecommerce.entity.ShopOrder.ShopOrderStatus status, UUID shopId);
+
         @Query("SELECT so FROM ShopOrder so WHERE so.shop.shopId = :shopId AND so.createdAt BETWEEN :start AND :end")
         List<ShopOrder> findByShopIdAndCreatedAtBetween(@Param("shopId") UUID shopId,
                         @Param("start") LocalDateTime start,

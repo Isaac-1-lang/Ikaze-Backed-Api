@@ -22,11 +22,11 @@ public class AdminOrderDTO {
     private String orderNumber;
     private String status; // Derived from shop orders
     private List<ShopOrderDTO> shopOrders;
-    // private List<AdminOrderItemDTO> items; // Moved to ShopOrderDTO
+    private List<AdminOrderItemDTO> items;
     private BigDecimal subtotal;
     private BigDecimal tax;
-    // private BigDecimal shipping; // Per ShopOrder
-    // private BigDecimal discount; // Per ShopOrder
+    private BigDecimal shipping;
+    private BigDecimal discount;
     private BigDecimal total;
     private AdminOrderAddressDTO shippingAddress;
     private AdminOrderAddressDTO billingAddress;
@@ -34,9 +34,9 @@ public class AdminOrderDTO {
     private String notes;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
-    // private String estimatedDelivery; // Per ShopOrder
-    // private String trackingNumber; // Per ShopOrder
-    // private DeliveryGroupInfoDTO deliveryGroup; // Per ShopOrder
+    private String estimatedDelivery;
+    private String trackingNumber;
+    private com.ecommerce.dto.DeliveryGroupInfoDTO deliveryGroup;
 
     @Data
     @Builder

@@ -222,7 +222,12 @@ public class OrderController {
                 res.put("details", "Order with id " + orderId + " not found.");
                 return ResponseEntity.status(HttpStatus.NOT_FOUND).body(res);
             }
-            return ResponseEntity.ok(Map.of("success", true, "data", toDto(order)));
+
+            // Get enhanced order tracking with shop-grouped products
+            com.ecommerce.dto.CustomerOrderTrackingDTO trackingDTO = orderService.getCustomerOrderTracking(orderId);
+            log.info("Successfully retrieved order tracking {} for user {}", orderId, userId);
+
+            return ResponseEntity.ok(Map.of("success", true, "data", trackingDTO));
         } catch (SecurityException e) {
             log.warn("Access denied for order {}: {}", orderId, e.getMessage());
             Map<String, Object> res = new HashMap<>();
@@ -290,14 +295,14 @@ public class OrderController {
      * Get specific order by ID using token authentication (public endpoint)
      */
     @GetMapping("/track/order/{orderId}")
-    @Operation(summary = "Get order by token and ID", description = "Get specific order details using tracking token and order ID", responses = {
-            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "Order retrieved successfully", content = @Content(schema = @Schema(implementation = OrderResponseDTO.class))),
+    @Operation(summary = "Get order by token and ID", description = "Get detailed order tracking with shop-grouped products using tracking token and order ID", responses = {
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "Order retrieved successfully"),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "Invalid or expired token"),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "403", description = "Access denied - order does not belong to email"),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "Order not found"),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "500", description = "Internal server error")
     })
-    public ResponseEntity<ApiResponse<OrderResponseDTO>> getOrderByIdWithToken(
+    public ResponseEntity<ApiResponse<com.ecommerce.dto.CustomerOrderTrackingDTO>> getOrderByIdWithToken(
             @PathVariable Long orderId,
             @RequestParam String token) {
         try {
@@ -340,11 +345,12 @@ public class OrderController {
                         .body(ApiResponse.error("Access denied: Order does not belong to your email"));
             }
 
-            // Convert to DTO and return
-            OrderResponseDTO dto = toDto(order);
-            log.info("Successfully retrieved order {} for email {}", orderId, email);
+            // Get enhanced order tracking with shop-grouped products
+            com.ecommerce.dto.CustomerOrderTrackingDTO trackingDTO = orderService.getCustomerOrderTracking(orderId,
+                    token);
+            log.info("Successfully retrieved order tracking {} for email {}", orderId, email);
 
-            return ResponseEntity.ok(ApiResponse.success(dto));
+            return ResponseEntity.ok(ApiResponse.success(trackingDTO));
 
         } catch (Exception e) {
             log.error("Error fetching order {} with token", orderId, e);
