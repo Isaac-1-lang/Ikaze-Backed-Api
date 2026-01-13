@@ -21,6 +21,7 @@ public class AdminOrderDTO {
     private String customerPhone;
     private String orderNumber;
     private String status; // Derived from shop orders
+    private String paymentStatus;
     private List<ShopOrderDTO> shopOrders;
     private List<AdminOrderItemDTO> items;
     private BigDecimal subtotal;

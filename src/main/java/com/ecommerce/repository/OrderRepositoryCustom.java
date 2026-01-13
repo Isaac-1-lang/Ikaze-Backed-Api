@@ -7,4 +7,6 @@ import org.springframework.data.domain.Pageable;
 
 public interface OrderRepositoryCustom {
     Page<Order> searchOrders(OrderSearchDTO searchRequest, Pageable pageable);
+
+    java.math.BigDecimal calculateTotalAmount(OrderSearchDTO searchRequest);
 }

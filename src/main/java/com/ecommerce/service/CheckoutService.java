@@ -94,13 +94,14 @@ public class CheckoutService {
         if (req.getShippingAddress() == null || req.getShippingAddress().getCountry() == null) {
             throw new IllegalArgumentException("Shipping address and country are required");
         }
-        
+
         // Road validation disabled - Google Maps API key expired
-        // if (req.getShippingAddress().getLatitude() != null && req.getShippingAddress().getLongitude() != null) {
-        //     roadValidationService.validateRoadLocation(
-        //         req.getShippingAddress().getLatitude(), 
-        //         req.getShippingAddress().getLongitude()
-        //     );
+        // if (req.getShippingAddress().getLatitude() != null &&
+        // req.getShippingAddress().getLongitude() != null) {
+        // roadValidationService.validateRoadLocation(
+        // req.getShippingAddress().getLatitude(),
+        // req.getShippingAddress().getLongitude()
+        // );
         // }
 
         UUID userId;
@@ -116,7 +117,7 @@ public class CheckoutService {
                 .orElseThrow(() -> new EntityNotFoundException("User not found with ID: " + userId));
 
         validateCartItems(req.getItems());
-            
+
         Map<CartItemDTO, List<FEFOStockAllocationService.BatchAllocation>> fefoAllocations = enhancedWarehouseAllocator
                 .allocateStockWithFEFO(req.getItems(), req.getShippingAddress());
 
@@ -162,9 +163,11 @@ public class CheckoutService {
         }
 
         // Create mock transaction (COMPLETED immediately)
-        String mockSessionId = "mock_session_" + System.currentTimeMillis() + "_" + UUID.randomUUID().toString().substring(0, 8);
-        String mockPaymentIntentId = "pi_mock_" + System.currentTimeMillis() + "_" + UUID.randomUUID().toString().substring(0, 8);
-        
+        String mockSessionId = "mock_session_" + System.currentTimeMillis() + "_"
+                + UUID.randomUUID().toString().substring(0, 8);
+        String mockPaymentIntentId = "pi_mock_" + System.currentTimeMillis() + "_"
+                + UUID.randomUUID().toString().substring(0, 8);
+
         OrderTransaction tx = new OrderTransaction();
         tx.setOrderAmount(paymentSummary.getTotalAmount());
         tx.setPaymentMethod(OrderTransaction.PaymentMethod.CREDIT_CARD);
@@ -193,17 +196,17 @@ public class CheckoutService {
         for (Map.Entry<Shop, List<CartItemDTO>> entry : itemsByShop.entrySet()) {
             Shop shop = entry.getKey();
             List<CartItemDTO> shopItems = entry.getValue();
-            
+
             // Calculate shop-specific totals first
             BigDecimal shopSubtotal = BigDecimal.ZERO;
             BigDecimal shopDiscountAmount = BigDecimal.ZERO;
-            
+
             // Create ShopOrder
             ShopOrder shopOrder = new ShopOrder();
             shopOrder.setOrder(saved);
             shopOrder.setShop(shop);
             shopOrder.setStatus(ShopOrder.ShopOrderStatus.PROCESSING); // Mark as processing (payment completed)
-            
+
             // Calculate shop totals and create OrderItems
             for (CartItemDTO ci : shopItems) {
                 OrderItem oi = new OrderItem();
@@ -212,7 +215,8 @@ public class CheckoutService {
 
                 if (ci.getVariantId() != null) {
                     ProductVariant variant = variantRepository.findById(ci.getVariantId())
-                            .orElseThrow(() -> new EntityNotFoundException("Variant not found with ID: " + ci.getVariantId()));
+                            .orElseThrow(() -> new EntityNotFoundException(
+                                    "Variant not found with ID: " + ci.getVariantId()));
                     oi.setProductVariant(variant);
                     originalPrice = variant.getPrice();
                     itemPrice = calculateDiscountedPrice(variant);
@@ -221,7 +225,8 @@ public class CheckoutService {
                             originalPrice.subtract(itemPrice).multiply(BigDecimal.valueOf(ci.getQuantity())));
                 } else if (ci.getProductId() != null) {
                     Product product = productRepository.findById(ci.getProductId())
-                            .orElseThrow(() -> new EntityNotFoundException("Product not found with ID: " + ci.getProductId()));
+                            .orElseThrow(() -> new EntityNotFoundException(
+                                    "Product not found with ID: " + ci.getProductId()));
                     oi.setProduct(product);
                     originalPrice = product.getPrice();
                     itemPrice = calculateDiscountedPrice(product);
@@ -237,38 +242,41 @@ public class CheckoutService {
                 oi.setShopOrder(shopOrder); // Link to ShopOrder, not Order
                 shopOrder.getItems().add(oi);
             }
-            
+
             // Calculate shipping for this shop (after we have shopSubtotal)
             BigDecimal shopShippingCost = BigDecimal.ZERO;
             try {
-                com.ecommerce.dto.ShippingDetailsDTO shopShippingDetails = shippingCostService.calculateEnhancedShippingDetails(
-                        req.getShippingAddress(), shopItems, shopSubtotal, shop.getShopId());
+                com.ecommerce.dto.ShippingDetailsDTO shopShippingDetails = shippingCostService
+                        .calculateEnhancedShippingDetails(
+                                req.getShippingAddress(), shopItems, shopSubtotal, shop.getShopId());
                 shopShippingCost = shopShippingDetails.getShippingCost();
             } catch (Exception e) {
                 log.error("Error calculating shipping for shop {}: {}", shop.getShopId(), e.getMessage());
                 shopShippingCost = BigDecimal.ZERO;
             }
-            
+
             shopOrder.setShippingCost(shopShippingCost);
             shopOrder.setDiscountAmount(shopDiscountAmount);
             shopOrder.setTotalAmount(shopSubtotal.add(shopShippingCost).subtract(shopDiscountAmount));
-            
+
             // Create ShopOrderTransaction
             ShopOrderTransaction shopTx = new ShopOrderTransaction();
             shopTx.setShopOrder(shopOrder);
             shopTx.setGlobalTransaction(tx);
             shopTx.setAmount(shopOrder.getTotalAmount());
             shopOrder.setShopOrderTransaction(shopTx);
-            
+
             saved.addShopOrder(shopOrder);
             shopOrderRepository.save(shopOrder);
-            
+
             log.info("Created ShopOrder {} for shop {}", shopOrder.getShopOrderCode(), shop.getName());
         }
 
-        // Create order item batches (non-critical - wrap in try-catch to prevent transaction rollback)
+        // Create order item batches (non-critical - wrap in try-catch to prevent
+        // transaction rollback)
         try {
-            for (Map.Entry<CartItemDTO, List<FEFOStockAllocationService.BatchAllocation>> entry : fefoAllocations.entrySet()) {
+            for (Map.Entry<CartItemDTO, List<FEFOStockAllocationService.BatchAllocation>> entry : fefoAllocations
+                    .entrySet()) {
                 createOrderItemBatchesForShopOrder(saved, entry.getKey(), entry.getValue());
             }
         } catch (Exception e) {
@@ -287,7 +295,8 @@ public class CheckoutService {
         enhancedStockLockService.confirmBatchLocks(sessionId);
         stockLockService.confirmStock(sessionId);
 
-        // Update discount usage (non-critical - wrap in try-catch to prevent transaction rollback)
+        // Update discount usage (non-critical - wrap in try-catch to prevent
+        // transaction rollback)
         try {
             updateDiscountUsage(saved);
         } catch (Exception e) {
@@ -309,7 +318,8 @@ public class CheckoutService {
         try {
             orderEmailService.sendOrderConfirmationEmail(saved);
         } catch (Exception e) {
-            log.error("Failed to send order confirmation email for order {}: {}", saved.getOrderId(), e.getMessage(), e);
+            log.error("Failed to send order confirmation email for order {}: {}", saved.getOrderId(), e.getMessage(),
+                    e);
         }
 
         // Clear cart (non-critical)
@@ -320,25 +330,28 @@ public class CheckoutService {
             log.error("Failed to clear cart for user {}: {}", user.getId(), e.getMessage(), e);
         }
 
-        // LOG ACTIVITY: Order Placed and Payment Completed (non-critical - wrap in try-catch)
+        // LOG ACTIVITY: Order Placed and Payment Completed (non-critical - wrap in
+        // try-catch)
         String customerName = user.getFirstName() + " " + user.getLastName();
         try {
             activityLogService.logOrderPlaced(saved.getOrderId(), customerName);
         } catch (Exception e) {
             log.error("Failed to log order placed activity for order {}: {}", saved.getOrderId(), e.getMessage(), e);
         }
-        
+
         try {
-            activityLogService.logPaymentCompleted(saved.getOrderId(), 
+            activityLogService.logPaymentCompleted(saved.getOrderId(),
                     tx.getPaymentMethod().toString(), tx.getOrderAmount().doubleValue());
         } catch (Exception e) {
-            log.error("Failed to log payment completed activity for order {}: {}", saved.getOrderId(), e.getMessage(), e);
+            log.error("Failed to log payment completed activity for order {}: {}", saved.getOrderId(), e.getMessage(),
+                    e);
         }
 
         // Record payment in money flow (non-critical - already has try-catch)
         recordPaymentInMoneyFlow(saved, tx);
 
-        log.info("Mock checkout session created successfully. Order ID: {}, Session ID: {}", saved.getOrderId(), mockSessionId);
+        log.info("Mock checkout session created successfully. Order ID: {}, Session ID: {}", saved.getOrderId(),
+                mockSessionId);
 
         // Return success URL instead of Stripe session URL
         return "/payment-success?sessionId=" + mockSessionId + "&orderId=" + saved.getOrderId();
@@ -351,14 +364,15 @@ public class CheckoutService {
         if (req.getAddress() == null || req.getAddress().getCountry() == null) {
             throw new IllegalArgumentException("Address and country are required");
         }
-        
+
         // Road validation disabled - Google Maps API key expired
-        // if (req.getAddress().getLatitude() != null && req.getAddress().getLongitude() != null) {
-        //     roadValidationService.validateRoadLocation(
-        //         req.getAddress().getLatitude(), 
-        //         req.getAddress().getLongitude()
-        //     );
-        //     log.info("Road validated successfully");
+        // if (req.getAddress().getLatitude() != null && req.getAddress().getLongitude()
+        // != null) {
+        // roadValidationService.validateRoadLocation(
+        // req.getAddress().getLatitude(),
+        // req.getAddress().getLongitude()
+        // );
+        // log.info("Road validated successfully");
         // }
 
         validateCartItems(req.getItems());
@@ -368,7 +382,8 @@ public class CheckoutService {
                 .allocateStockWithFEFO(req.getItems(), req.getAddress());
 
         // Calculate payment summary (validates shops and warehouses)
-        com.ecommerce.dto.PaymentSummaryDTO paymentSummary = calculatePaymentSummary(req.getAddress(), req.getItems(), null);
+        com.ecommerce.dto.PaymentSummaryDTO paymentSummary = calculatePaymentSummary(req.getAddress(), req.getItems(),
+                null);
 
         // Create main Order entity
         Order order = new Order();
@@ -407,9 +422,11 @@ public class CheckoutService {
         }
 
         // Create mock transaction (COMPLETED immediately)
-        String mockSessionId = "mock_guest_session_" + System.currentTimeMillis() + "_" + UUID.randomUUID().toString().substring(0, 8);
-        String mockPaymentIntentId = "pi_mock_guest_" + System.currentTimeMillis() + "_" + UUID.randomUUID().toString().substring(0, 8);
-        
+        String mockSessionId = "mock_guest_session_" + System.currentTimeMillis() + "_"
+                + UUID.randomUUID().toString().substring(0, 8);
+        String mockPaymentIntentId = "pi_mock_guest_" + System.currentTimeMillis() + "_"
+                + UUID.randomUUID().toString().substring(0, 8);
+
         OrderTransaction tx = new OrderTransaction();
         tx.setOrderAmount(paymentSummary.getTotalAmount());
         tx.setPaymentMethod(OrderTransaction.PaymentMethod.CREDIT_CARD);
@@ -438,17 +455,17 @@ public class CheckoutService {
         for (Map.Entry<Shop, List<CartItemDTO>> entry : itemsByShop.entrySet()) {
             Shop shop = entry.getKey();
             List<CartItemDTO> shopItems = entry.getValue();
-            
+
             // Calculate shop-specific totals first
             BigDecimal shopSubtotal = BigDecimal.ZERO;
             BigDecimal shopDiscountAmount = BigDecimal.ZERO;
-            
+
             // Create ShopOrder
             ShopOrder shopOrder = new ShopOrder();
             shopOrder.setOrder(saved);
             shopOrder.setShop(shop);
             shopOrder.setStatus(ShopOrder.ShopOrderStatus.PROCESSING); // Mark as processing (payment completed)
-            
+
             // Calculate shop totals and create OrderItems
             for (CartItemDTO ci : shopItems) {
                 OrderItem oi = new OrderItem();
@@ -457,7 +474,8 @@ public class CheckoutService {
 
                 if (ci.getVariantId() != null) {
                     ProductVariant variant = variantRepository.findById(ci.getVariantId())
-                            .orElseThrow(() -> new EntityNotFoundException("Variant not found with ID: " + ci.getVariantId()));
+                            .orElseThrow(() -> new EntityNotFoundException(
+                                    "Variant not found with ID: " + ci.getVariantId()));
                     oi.setProductVariant(variant);
                     originalPrice = variant.getPrice();
                     itemPrice = calculateDiscountedPrice(variant);
@@ -466,7 +484,8 @@ public class CheckoutService {
                             originalPrice.subtract(itemPrice).multiply(BigDecimal.valueOf(ci.getQuantity())));
                 } else if (ci.getProductId() != null) {
                     Product product = productRepository.findById(ci.getProductId())
-                            .orElseThrow(() -> new EntityNotFoundException("Product not found with ID: " + ci.getProductId()));
+                            .orElseThrow(() -> new EntityNotFoundException(
+                                    "Product not found with ID: " + ci.getProductId()));
                     oi.setProduct(product);
                     originalPrice = product.getPrice();
                     itemPrice = calculateDiscountedPrice(product);
@@ -482,42 +501,46 @@ public class CheckoutService {
                 oi.setShopOrder(shopOrder); // Link to ShopOrder, not Order
                 shopOrder.getItems().add(oi);
             }
-            
+
             // Calculate shipping for this shop (after we have shopSubtotal)
             BigDecimal shopShippingCost = BigDecimal.ZERO;
             try {
-                com.ecommerce.dto.ShippingDetailsDTO shopShippingDetails = shippingCostService.calculateEnhancedShippingDetails(
-                        req.getAddress(), shopItems, shopSubtotal, shop.getShopId());
+                com.ecommerce.dto.ShippingDetailsDTO shopShippingDetails = shippingCostService
+                        .calculateEnhancedShippingDetails(
+                                req.getAddress(), shopItems, shopSubtotal, shop.getShopId());
                 shopShippingCost = shopShippingDetails.getShippingCost();
             } catch (Exception e) {
                 log.error("Error calculating shipping for shop {}: {}", shop.getShopId(), e.getMessage());
                 shopShippingCost = BigDecimal.ZERO;
             }
-            
+
             shopOrder.setShippingCost(shopShippingCost);
             shopOrder.setDiscountAmount(shopDiscountAmount);
             shopOrder.setTotalAmount(shopSubtotal.add(shopShippingCost).subtract(shopDiscountAmount));
-            
+
             // Create ShopOrderTransaction
             ShopOrderTransaction shopTx = new ShopOrderTransaction();
             shopTx.setShopOrder(shopOrder);
             shopTx.setGlobalTransaction(tx);
             shopTx.setAmount(shopOrder.getTotalAmount());
             shopOrder.setShopOrderTransaction(shopTx);
-            
+
             saved.addShopOrder(shopOrder);
             shopOrderRepository.save(shopOrder);
-            
+
             log.info("Created ShopOrder {} for shop {}", shopOrder.getShopOrderCode(), shop.getName());
         }
 
-        // Create order item batches (non-critical - wrap in try-catch to prevent transaction rollback)
+        // Create order item batches (non-critical - wrap in try-catch to prevent
+        // transaction rollback)
         try {
-            for (Map.Entry<CartItemDTO, List<FEFOStockAllocationService.BatchAllocation>> entry : fefoAllocations.entrySet()) {
+            for (Map.Entry<CartItemDTO, List<FEFOStockAllocationService.BatchAllocation>> entry : fefoAllocations
+                    .entrySet()) {
                 createOrderItemBatchesForShopOrder(saved, entry.getKey(), entry.getValue());
             }
         } catch (Exception e) {
-            log.error("Failed to create order item batches for guest order {}: {}", saved.getOrderId(), e.getMessage(), e);
+            log.error("Failed to create order item batches for guest order {}: {}", saved.getOrderId(), e.getMessage(),
+                    e);
         }
 
         // Lock stock
@@ -533,7 +556,8 @@ public class CheckoutService {
         enhancedStockLockService.confirmBatchLocks(sessionId);
         stockLockService.confirmStock(sessionId);
 
-        // Update discount usage (non-critical - wrap in try-catch to prevent transaction rollback)
+        // Update discount usage (non-critical - wrap in try-catch to prevent
+        // transaction rollback)
         try {
             updateDiscountUsage(saved);
         } catch (Exception e) {
@@ -544,28 +568,33 @@ public class CheckoutService {
         try {
             orderEmailService.sendOrderConfirmationEmail(saved);
         } catch (Exception e) {
-            log.error("Failed to send order confirmation email for guest order {}: {}", saved.getOrderId(), e.getMessage(), e);
+            log.error("Failed to send order confirmation email for guest order {}: {}", saved.getOrderId(),
+                    e.getMessage(), e);
         }
 
-        // LOG ACTIVITY: Order Placed and Payment Completed (non-critical - wrap in try-catch)
+        // LOG ACTIVITY: Order Placed and Payment Completed (non-critical - wrap in
+        // try-catch)
         String guestCustomerName = req.getGuestName() + " " + req.getGuestLastName();
         try {
             activityLogService.logOrderPlaced(saved.getOrderId(), guestCustomerName + " (Guest)");
         } catch (Exception e) {
-            log.error("Failed to log order placed activity for guest order {}: {}", saved.getOrderId(), e.getMessage(), e);
+            log.error("Failed to log order placed activity for guest order {}: {}", saved.getOrderId(), e.getMessage(),
+                    e);
         }
-        
+
         try {
-            activityLogService.logPaymentCompleted(saved.getOrderId(), 
+            activityLogService.logPaymentCompleted(saved.getOrderId(),
                     tx.getPaymentMethod().toString(), tx.getOrderAmount().doubleValue());
         } catch (Exception e) {
-            log.error("Failed to log payment completed activity for guest order {}: {}", saved.getOrderId(), e.getMessage(), e);
+            log.error("Failed to log payment completed activity for guest order {}: {}", saved.getOrderId(),
+                    e.getMessage(), e);
         }
 
         // Record payment in money flow (non-critical - already has try-catch)
         recordPaymentInMoneyFlow(saved, tx);
 
-        log.info("Mock guest checkout session created successfully. Order ID: {}, Session ID: {}", saved.getOrderId(), mockSessionId);
+        log.info("Mock guest checkout session created successfully. Order ID: {}, Session ID: {}", saved.getOrderId(),
+                mockSessionId);
 
         // Return success URL instead of Stripe session URL
         return "/payment-success?sessionId=" + mockSessionId + "&orderId=" + saved.getOrderId();
@@ -614,7 +643,8 @@ public class CheckoutService {
         enhancedStockLockService.confirmBatchLocks(sessionId);
 
         Order order = tx.getOrder();
-        // Update ShopOrder statuses to PROCESSING (status is managed at ShopOrder level)
+        // Update ShopOrder statuses to PROCESSING (status is managed at ShopOrder
+        // level)
         if (order.getShopOrders() != null) {
             for (ShopOrder shopOrder : order.getShopOrders()) {
                 shopOrder.setStatus(ShopOrder.ShopOrderStatus.PROCESSING);
@@ -623,10 +653,9 @@ public class CheckoutService {
         orderRepository.save(order);
 
         activityLogService.logPaymentCompleted(
-            order.getOrderId(),
-            tx.getPaymentMethod().toString(),
-            tx.getOrderAmount().doubleValue()
-        );
+                order.getOrderId(),
+                tx.getPaymentMethod().toString(),
+                tx.getOrderAmount().doubleValue());
 
         recordPaymentInMoneyFlow(order, tx);
 
@@ -718,7 +747,7 @@ public class CheckoutService {
     @org.springframework.transaction.annotation.Transactional(rollbackFor = Exception.class)
     private synchronized void cleanupFailedOrderTransactional(String sessionId) {
         log.info("Starting cleanup for failed order session: {}", sessionId);
-        
+
         // Double-check to prevent concurrent cleanup
         OrderTransaction tx = transactionRepository.findByStripeSessionId(sessionId).orElse(null);
         if (tx == null) {
@@ -727,30 +756,30 @@ public class CheckoutService {
             stockLockService.releaseStock(sessionId);
             return;
         }
-        
+
         if (tx.getStatus() != OrderTransaction.TransactionStatus.PENDING) {
-            log.info("Transaction for session: {} is not pending (status: {}) - skipping cleanup", 
+            log.info("Transaction for session: {} is not pending (status: {}) - skipping cleanup",
                     sessionId, tx.getStatus());
             return;
         }
-        
+
         // Mark transaction as processing to prevent concurrent cleanup
         tx.setStatus(OrderTransaction.TransactionStatus.FAILED);
         transactionRepository.save(tx);
-        
+
         log.info("CLEANUP: Unlocking enhanced batch locks for session: {}", sessionId);
         enhancedStockLockService.unlockAllBatches(sessionId);
-        
+
         log.info("CLEANUP: Unlocking general stock locks for session: {}", sessionId);
         stockLockService.releaseStock(sessionId);
-        
+
         Order order = tx.getOrder();
         Long orderId = order.getOrderId();
-                    
+
         refundPointsForFailedPayment(order);
-        
+
         transactionRepository.flush();
-        
+
         // Delete the order (cascades to related entities)
         log.info("Deleting order: {} for session: {}", orderId, sessionId);
         if (orderRepository.existsById(orderId)) {
@@ -760,18 +789,18 @@ public class CheckoutService {
         } else {
             log.info("Order {} was already deleted", orderId);
         }
-        
+
         // Clean up temporary session locks
         String tempSessionId = "temp_" + orderId.toString();
         String tempGuestSessionId = "temp_guest_" + orderId.toString();
-        
+
         enhancedStockLockService.unlockAllBatches(tempSessionId);
         stockLockService.releaseStock(tempSessionId);
         enhancedStockLockService.unlockAllBatches(tempGuestSessionId);
         stockLockService.releaseStock(tempGuestSessionId);
-        
+
         log.info("Cleaned up temporary session locks: {} and {}", tempSessionId, tempGuestSessionId);
-        
+
         log.info("Successfully completed cleanup for session: {}", sessionId);
     }
 
@@ -783,9 +812,11 @@ public class CheckoutService {
             int totalRestoredQuantity = 0;
             Map<String, Integer> restorationSummary = new HashMap<>();
 
-            // Fetch all OrderItemBatch entities for this order with warehouses eagerly loaded
-            List<OrderItemBatch> orderItemBatches = orderItemBatchRepository.findByOrderIdWithWarehouse(order.getOrderId());
-            
+            // Fetch all OrderItemBatch entities for this order with warehouses eagerly
+            // loaded
+            List<OrderItemBatch> orderItemBatches = orderItemBatchRepository
+                    .findByOrderIdWithWarehouse(order.getOrderId());
+
             for (OrderItemBatch orderItemBatch : orderItemBatches) {
                 StockBatch batch = orderItemBatch.getStockBatch();
                 int quantityToRestore = orderItemBatch.getQuantityUsed();
@@ -883,21 +914,24 @@ public class CheckoutService {
 
     public com.ecommerce.dto.PaymentSummaryDTO calculatePaymentSummary(AddressDto deliveryAddress,
             List<CartItemDTO> items, UUID userId) {
-        
-        if (deliveryAddress == null || deliveryAddress.getCountry() == null || deliveryAddress.getCountry().trim().isEmpty()) {
+
+        if (deliveryAddress == null || deliveryAddress.getCountry() == null
+                || deliveryAddress.getCountry().trim().isEmpty()) {
             throw new IllegalArgumentException("Delivery address and country are required");
         }
-        
+
         // Road validation disabled - Google Maps API key expired
         // Validate that the pickup point is on or near a road
-        // if (deliveryAddress.getLatitude() != null && deliveryAddress.getLongitude() != null) {
-        //     roadValidationService.validateRoadLocation(deliveryAddress.getLatitude(), deliveryAddress.getLongitude());
+        // if (deliveryAddress.getLatitude() != null && deliveryAddress.getLongitude()
+        // != null) {
+        // roadValidationService.validateRoadLocation(deliveryAddress.getLatitude(),
+        // deliveryAddress.getLongitude());
         // }
-        
+
         // Step 1: Group items by shop
         Map<Shop, List<CartItemDTO>> itemsByShop = new HashMap<>();
         Map<Shop, ShopCalculationResult> shopCalculations = new HashMap<>();
-        
+
         for (CartItemDTO item : items) {
             Shop shop = getShopForCartItem(item);
             if (shop == null) {
@@ -905,7 +939,7 @@ public class CheckoutService {
             }
             itemsByShop.computeIfAbsent(shop, k -> new ArrayList<>()).add(item);
         }
-        
+
         // Step 2: Validate delivery country for each shop and calculate per-shop totals
         BigDecimal totalSubtotal = BigDecimal.ZERO;
         BigDecimal totalDiscountAmount = BigDecimal.ZERO;
@@ -914,61 +948,61 @@ public class CheckoutService {
         Integer totalRewardPoints = 0;
         BigDecimal totalRewardPointsValue = BigDecimal.ZERO;
         int totalProductCount = 0;
-        
+
         com.ecommerce.dto.ShippingDetailsDTO farthestShippingDetails = null;
         double maxDistance = 0.0;
-        
+
         for (Map.Entry<Shop, List<CartItemDTO>> entry : itemsByShop.entrySet()) {
             Shop shop = entry.getKey();
             List<CartItemDTO> shopItems = entry.getValue();
-            
+
             // Validate shop has warehouses in delivery country
             validateShopWarehouseInCountry(shop.getShopId(), deliveryAddress.getCountry());
-            
+
             // Calculate product costs for this shop
             BigDecimal shopSubtotal = BigDecimal.ZERO;
             BigDecimal shopDiscountAmount = BigDecimal.ZERO;
             int shopProductCount = 0;
-            
+
             for (CartItemDTO item : shopItems) {
                 BigDecimal itemPrice = BigDecimal.ZERO;
                 BigDecimal originalPrice = BigDecimal.ZERO;
-                
+
                 if (item.getVariantId() != null) {
                     ProductVariant variant = variantRepository.findById(item.getVariantId())
                             .orElseThrow(() -> new EntityNotFoundException(
                                     "Variant not found with ID: " + item.getVariantId()));
                     originalPrice = variant.getPrice();
-                    
+
                     if (variant.getDiscount() != null) {
                         validateDiscountValidity(variant.getDiscount());
                     }
-                    
+
                     itemPrice = calculateDiscountedPrice(variant);
                 } else if (item.getProductId() != null) {
                     Product product = productRepository.findById(item.getProductId())
                             .orElseThrow(() -> new EntityNotFoundException(
                                     "Product not found with ID: " + item.getProductId()));
                     originalPrice = product.getPrice();
-                    
+
                     if (product.getDiscount() != null) {
                         validateDiscountValidity(product.getDiscount());
                     }
-                    
+
                     itemPrice = calculateDiscountedPrice(product);
                 } else {
                     continue;
                 }
-                
+
                 BigDecimal itemTotal = itemPrice.multiply(BigDecimal.valueOf(item.getQuantity()));
                 BigDecimal itemDiscount = originalPrice.subtract(itemPrice)
                         .multiply(BigDecimal.valueOf(item.getQuantity()));
-                
+
                 shopSubtotal = shopSubtotal.add(itemTotal);
                 shopDiscountAmount = shopDiscountAmount.add(itemDiscount);
                 shopProductCount += item.getQuantity();
             }
-            
+
             // Calculate shipping for this shop
             com.ecommerce.dto.ShippingDetailsDTO shopShippingDetails;
             try {
@@ -985,31 +1019,34 @@ public class CheckoutService {
                         .isInternationalShipping(false)
                         .build();
             }
-            
+
             BigDecimal shopShippingCost = shopShippingDetails.getShippingCost();
-            
+
             // Calculate reward points for this shop (if user is logged in)
             Integer shopRewardPoints = 0;
             BigDecimal shopRewardPointsValue = BigDecimal.ZERO;
             if (userId != null) {
                 try {
-                    com.ecommerce.dto.RewardSystemDTO rewardSystem = rewardService.getActiveRewardSystem(shop.getShopId());
-                    if (rewardSystem != null && rewardSystem.getIsSystemEnabled() && rewardSystem.getIsPurchasePointsEnabled()) {
+                    com.ecommerce.dto.RewardSystemDTO rewardSystem = rewardService
+                            .getActiveRewardSystem(shop.getShopId());
+                    if (rewardSystem != null && rewardSystem.getIsSystemEnabled()
+                            && rewardSystem.getIsPurchasePointsEnabled()) {
                         // Get the reward system entity to calculate points
                         com.ecommerce.entity.RewardSystem rewardSystemEntity = rewardSystemRepository
                                 .findByShopShopIdAndIsActiveTrue(shop.getShopId())
                                 .orElse(null);
                         if (rewardSystemEntity != null) {
-                            shopRewardPoints = rewardSystemEntity.calculatePurchasePoints(shopProductCount, shopSubtotal);
+                            shopRewardPoints = rewardSystemEntity.calculatePurchasePoints(shopProductCount,
+                                    shopSubtotal);
                             shopRewardPointsValue = rewardSystemEntity.calculatePointsValue(shopRewardPoints);
                         }
                     }
                 } catch (Exception e) {
-                    log.warn("Error calculating reward points for shop {} and user {}: {}", 
+                    log.warn("Error calculating reward points for shop {} and user {}: {}",
                             shop.getShopId(), userId, e.getMessage());
                 }
             }
-            
+
             // Store shop calculation result
             ShopCalculationResult shopResult = new ShopCalculationResult();
             shopResult.shop = shop;
@@ -1021,7 +1058,7 @@ public class CheckoutService {
             shopResult.rewardPointsValue = shopRewardPointsValue;
             shopResult.productCount = shopProductCount;
             shopCalculations.put(shop, shopResult);
-            
+
             // Aggregate totals
             totalSubtotal = totalSubtotal.add(shopSubtotal);
             totalDiscountAmount = totalDiscountAmount.add(shopDiscountAmount);
@@ -1029,14 +1066,14 @@ public class CheckoutService {
             totalRewardPoints += shopRewardPoints;
             totalRewardPointsValue = totalRewardPointsValue.add(shopRewardPointsValue);
             totalProductCount += shopProductCount;
-            
+
             // Track farthest warehouse (for display purposes)
             if (shopShippingDetails.getDistanceKm() != null && shopShippingDetails.getDistanceKm() > maxDistance) {
                 maxDistance = shopShippingDetails.getDistanceKm();
                 farthestShippingDetails = shopShippingDetails;
             }
         }
-        
+
         // Use farthest shipping details or default
         if (farthestShippingDetails == null) {
             farthestShippingDetails = com.ecommerce.dto.ShippingDetailsDTO.builder()
@@ -1048,16 +1085,16 @@ public class CheckoutService {
                     .isInternationalShipping(false)
                     .build();
         }
-        
+
         BigDecimal totalAmount = totalSubtotal.add(totalShippingCost).add(totalTaxAmount);
-        
+
         // Build shop summaries
         List<com.ecommerce.dto.PaymentSummaryDTO.ShopSummary> shopSummaries = shopCalculations.values().stream()
                 .map(shopResult -> {
                     BigDecimal shopTotal = shopResult.subtotal
                             .add(shopResult.shippingCost)
                             .subtract(shopResult.discountAmount);
-                    
+
                     return com.ecommerce.dto.PaymentSummaryDTO.ShopSummary.builder()
                             .shopId(shopResult.shop.getShopId().toString())
                             .shopName(shopResult.shop.getName())
@@ -1077,10 +1114,10 @@ public class CheckoutService {
                             .build();
                 })
                 .collect(java.util.stream.Collectors.toList());
-        
-        log.info("Payment summary calculated: {} shops, {} items, total: {}", 
+
+        log.info("Payment summary calculated: {} shops, {} items, total: {}",
                 itemsByShop.size(), totalProductCount, totalAmount);
-        
+
         return com.ecommerce.dto.PaymentSummaryDTO.builder()
                 .subtotal(totalSubtotal)
                 .discountAmount(totalDiscountAmount)
@@ -1098,7 +1135,7 @@ public class CheckoutService {
                 .shopSummaries(shopSummaries)
                 .build();
     }
-    
+
     /**
      * Helper class to store per-shop calculation results
      */
@@ -1112,7 +1149,7 @@ public class CheckoutService {
         BigDecimal rewardPointsValue;
         int productCount;
     }
-    
+
     /**
      * Get the shop associated with a cart item
      */
@@ -1130,7 +1167,7 @@ public class CheckoutService {
         }
         return null;
     }
-    
+
     /**
      * Validate that a shop has warehouses in the delivery country
      */
@@ -1138,7 +1175,7 @@ public class CheckoutService {
         if (country == null || country.trim().isEmpty()) {
             throw new IllegalArgumentException("Delivery country is required");
         }
-        
+
         List<Warehouse> shopWarehouses = warehouseRepository.findByShopShopIdAndIsActiveTrue(shopId);
         if (shopWarehouses == null || shopWarehouses.isEmpty()) {
             Shop shop = shopRepository.findById(shopId)
@@ -1146,16 +1183,16 @@ public class CheckoutService {
             throw new IllegalArgumentException(
                     String.format("Shop '%s' does not have any active warehouses.", shop.getName()));
         }
-        
+
         boolean hasWarehouseInCountry = shopWarehouses.stream()
-                .anyMatch(w -> w.getCountry() != null && 
+                .anyMatch(w -> w.getCountry() != null &&
                         w.getCountry().equalsIgnoreCase(country.trim()));
-        
+
         if (!hasWarehouseInCountry) {
             Shop shop = shopRepository.findById(shopId)
                     .orElseThrow(() -> new EntityNotFoundException("Shop not found with ID: " + shopId));
             throw new IllegalArgumentException(
-                    String.format("Shop '%s' does not deliver to %s as it doesn't have any warehouses there.", 
+                    String.format("Shop '%s' does not deliver to %s as it doesn't have any warehouses there.",
                             shop.getName(), country));
         }
     }
@@ -1336,11 +1373,12 @@ public class CheckoutService {
         }
 
         boolean hasWarehouseInCountry = warehouseRepository.existsByCountryIgnoreCase(country.trim());
-        
+
         if (!hasWarehouseInCountry) {
-            throw new IllegalArgumentException("Sorry, we don't deliver to " + country + " as we don't have any warehouses there.");
+            throw new IllegalArgumentException(
+                    "Sorry, we don't deliver to " + country + " as we don't have any warehouses there.");
         }
-        
+
     }
 
     private void createOrderItemBatches(Order order, CartItemDTO cartItem,
@@ -1362,13 +1400,13 @@ public class CheckoutService {
             orderItemBatchRepository.save(orderItemBatch);
         }
     }
-    
+
     /**
      * Create order item batches for ShopOrder structure
      */
     private void createOrderItemBatchesForShopOrder(Order order, CartItemDTO cartItem,
             List<FEFOStockAllocationService.BatchAllocation> allocations) {
-        
+
         // Find the OrderItem across all ShopOrders
         OrderItem orderItem = order.getAllItems().stream()
                 .filter(oi -> matchesCartItem(oi, cartItem))
@@ -1400,7 +1438,7 @@ public class CheckoutService {
     private OrderResponseDTO convertOrderToResponseDTO(Order order) {
         OrderInfo info = order.getOrderInfo();
         OrderAddress addr = order.getOrderAddress();
-        log.info("The order addressses obtained are "  + addr);
+        log.info("The order addressses obtained are " + addr);
         OrderTransaction tx = order.getOrderTransaction();
 
         OrderResponseDTO dto = new OrderResponseDTO();
@@ -1408,9 +1446,9 @@ public class CheckoutService {
         dto.setUserId(
                 order.getUser() != null && order.getUser().getId() != null ? order.getUser().getId().toString() : null);
         dto.setOrderNumber(order.getOrderCode());
-        // Pickup token is on ShopOrder, get from first shop order if available
+        // Pickup token is now on ShopOrder, get from first shop order if available
         if (order.getShopOrders() != null && !order.getShopOrders().isEmpty()) {
-            ShopOrder firstShopOrder = order.getShopOrders().get(0);
+            com.ecommerce.entity.ShopOrder firstShopOrder = order.getShopOrders().iterator().next();
             dto.setPickupToken(firstShopOrder.getPickupToken());
             dto.setPickupTokenUsed(firstShopOrder.getPickupTokenUsed());
         } else {
@@ -1424,7 +1462,8 @@ public class CheckoutService {
         // Set customer information from OrderCustomerInfo entity
         if (order.getOrderCustomerInfo() != null) {
             OrderResponseDTO.CustomerInfo customerInfo = new OrderResponseDTO.CustomerInfo();
-            customerInfo.setName(order.getOrderCustomerInfo().getFirstName() + " " + order.getOrderCustomerInfo().getLastName());
+            customerInfo.setName(
+                    order.getOrderCustomerInfo().getFirstName() + " " + order.getOrderCustomerInfo().getLastName());
             customerInfo.setEmail(order.getOrderCustomerInfo().getEmail());
             customerInfo.setPhone(order.getOrderCustomerInfo().getPhoneNumber());
             dto.setCustomerInfo(customerInfo);
@@ -1470,7 +1509,8 @@ public class CheckoutService {
         // Set transaction information
         if (tx != null) {
             OrderTransactionDTO transactionDTO = new OrderTransactionDTO();
-            transactionDTO.setOrderTransactionId(tx.getOrderTransactionId() != null ? tx.getOrderTransactionId().toString() : null);
+            transactionDTO.setOrderTransactionId(
+                    tx.getOrderTransactionId() != null ? tx.getOrderTransactionId().toString() : null);
             transactionDTO.setTransactionRef(tx.getTransactionRef());
             transactionDTO.setPaymentMethod(tx.getPaymentMethod() != null ? tx.getPaymentMethod().name() : null);
             transactionDTO.setStatus(tx.getStatus() != null ? tx.getStatus().name() : null);
@@ -1487,7 +1527,8 @@ public class CheckoutService {
 
         // Set order items with product/variant information
         if (order.getAllItems() != null && !order.getAllItems().isEmpty()) {
-            List<OrderResponseDTO.OrderItem> itemDTOs = order.getAllItems().stream().map(this::mapOrderItemToResponseDTO).toList();
+            List<OrderResponseDTO.OrderItem> itemDTOs = order.getAllItems().stream()
+                    .map(this::mapOrderItemToResponseDTO).toList();
             dto.setItems(itemDTOs);
         }
 
@@ -1590,62 +1631,66 @@ public class CheckoutService {
         dto.setQuantity(item.getQuantity());
         dto.setPrice(item.getPrice());
         dto.setTotalPrice(item.getSubtotal());
-        
+
         // Set product info
         if (item.getProduct() != null) {
             OrderResponseDTO.Product product = new OrderResponseDTO.Product();
             product.setId(item.getProduct().getProductId());
             product.setName(item.getProduct().getProductName());
-            
+
             // Add product images if available
             if (item.getProduct().getImages() != null && !item.getProduct().getImages().isEmpty()) {
                 List<String> imageUrls = item.getProduct().getImages().stream()
-                    .sorted((img1, img2) -> {
-                        if (img1.isPrimary() && !img2.isPrimary()) return -1;
-                        if (!img1.isPrimary() && img2.isPrimary()) return 1;
-                        int sortOrder1 = img1.getSortOrder() != null ? img1.getSortOrder() : 0;
-                        int sortOrder2 = img2.getSortOrder() != null ? img2.getSortOrder() : 0;
-                        return Integer.compare(sortOrder1, sortOrder2);
-                    })
-                    .map(img -> img.getImageUrl())
-                    .filter(url -> url != null && !url.trim().isEmpty())
-                    .collect(Collectors.toList());
+                        .sorted((img1, img2) -> {
+                            if (img1.isPrimary() && !img2.isPrimary())
+                                return -1;
+                            if (!img1.isPrimary() && img2.isPrimary())
+                                return 1;
+                            int sortOrder1 = img1.getSortOrder() != null ? img1.getSortOrder() : 0;
+                            int sortOrder2 = img2.getSortOrder() != null ? img2.getSortOrder() : 0;
+                            return Integer.compare(sortOrder1, sortOrder2);
+                        })
+                        .map(img -> img.getImageUrl())
+                        .filter(url -> url != null && !url.trim().isEmpty())
+                        .collect(Collectors.toList());
                 product.setImages(imageUrls);
             }
-            
+
             dto.setProduct(product);
         }
-        
+
         // Set variant info if available
         if (item.getProductVariant() != null) {
             OrderResponseDTO.Variant variant = new OrderResponseDTO.Variant();
             variant.setId(item.getProductVariant().getId());
             variant.setName(item.getProductVariant().getVariantName());
-            
+
             // Add variant images if available
             if (item.getProductVariant().getImages() != null && !item.getProductVariant().getImages().isEmpty()) {
                 List<String> variantImageUrls = item.getProductVariant().getImages().stream()
-                    .sorted((img1, img2) -> {
-                        if (img1.isPrimary() && !img2.isPrimary()) return -1;
-                        if (!img1.isPrimary() && img2.isPrimary()) return 1;
-                        int sortOrder1 = img1.getSortOrder() != null ? img1.getSortOrder() : 0;
-                        int sortOrder2 = img2.getSortOrder() != null ? img2.getSortOrder() : 0;
-                        return Integer.compare(sortOrder1, sortOrder2);
-                    })
-                    .map(img -> img.getImageUrl())
-                    .filter(url -> url != null && !url.trim().isEmpty())
-                    .collect(Collectors.toList());
+                        .sorted((img1, img2) -> {
+                            if (img1.isPrimary() && !img2.isPrimary())
+                                return -1;
+                            if (!img1.isPrimary() && img2.isPrimary())
+                                return 1;
+                            int sortOrder1 = img1.getSortOrder() != null ? img1.getSortOrder() : 0;
+                            int sortOrder2 = img2.getSortOrder() != null ? img2.getSortOrder() : 0;
+                            return Integer.compare(sortOrder1, sortOrder2);
+                        })
+                        .map(img -> img.getImageUrl())
+                        .filter(url -> url != null && !url.trim().isEmpty())
+                        .collect(Collectors.toList());
                 variant.setImages(variantImageUrls);
             }
-            
+
             dto.setVariant(variant);
         }
-        
+
         // Set return eligibility (placeholder)
         dto.setReturnEligible(true);
         dto.setMaxReturnDays(30);
         dto.setDaysRemainingForReturn(25);
-        
+
         return dto;
     }
 
@@ -1919,12 +1964,12 @@ public class CheckoutService {
     private void refundPointsForFailedPayment(Order order) {
         try {
             if (order.getOrderTransaction() == null) {
-                return; 
+                return;
             }
 
             Integer pointsUsed = order.getOrderTransaction().getPointsUsed();
             if (pointsUsed == null || pointsUsed <= 0) {
-                return; 
+                return;
             }
 
             if (order.getUser() == null) {
@@ -1955,25 +2000,25 @@ public class CheckoutService {
     private void recordPaymentInMoneyFlow(Order order, OrderTransaction transaction) {
         try {
             BigDecimal paymentAmount = transaction.getOrderAmount();
-            
+
             // For hybrid payments, only record the actual money paid (not points)
             if (transaction.getPaymentMethod() == OrderTransaction.PaymentMethod.HYBRID) {
-                BigDecimal pointsValue = transaction.getPointsValue() != null ? 
-                        transaction.getPointsValue() : BigDecimal.ZERO;
+                BigDecimal pointsValue = transaction.getPointsValue() != null ? transaction.getPointsValue()
+                        : BigDecimal.ZERO;
                 paymentAmount = paymentAmount.subtract(pointsValue);
             }
-            
+
             // Only record if there's actual money involved
             if (paymentAmount.compareTo(BigDecimal.ZERO) > 0) {
-                String description = String.format("Payment received for Order #%s (%s)", 
+                String description = String.format("Payment received for Order #%s (%s)",
                         order.getOrderCode() != null ? order.getOrderCode() : order.getOrderId().toString(),
                         transaction.getPaymentMethod().name());
-                
+
                 com.ecommerce.dto.CreateMoneyFlowDTO moneyFlowDTO = new com.ecommerce.dto.CreateMoneyFlowDTO();
                 moneyFlowDTO.setDescription(description);
                 moneyFlowDTO.setType(com.ecommerce.enums.MoneyFlowType.IN);
                 moneyFlowDTO.setAmount(paymentAmount);
-                
+
                 moneyFlowService.save(moneyFlowDTO);
                 log.info("Recorded money flow IN: {} for order {}", paymentAmount, order.getOrderId());
             }

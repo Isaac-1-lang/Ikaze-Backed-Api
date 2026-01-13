@@ -9,7 +9,8 @@ import lombok.Getter;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
-import java.util.ArrayList;
+import java.util.Set;
+import java.util.HashSet;
 import java.util.List;
 import java.util.UUID;
 
@@ -48,7 +49,7 @@ public class Order {
     private OrderCustomerInfo orderCustomerInfo;
 
     @OneToMany(mappedBy = "order", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
-    private List<ShopOrder> shopOrders = new ArrayList<>();
+    private Set<ShopOrder> shopOrders = new HashSet<>();
 
     @Column(name = "order_status", nullable = false)
     private String orderStatus = "PENDING";
@@ -160,7 +161,7 @@ public class Order {
         if (orderStatus != null && !orderStatus.isEmpty()) {
             return orderStatus;
         }
-        
+
         // Fallback: calculate from shop orders
         if (shopOrders == null || shopOrders.isEmpty())
             return "PENDING";
@@ -174,7 +175,7 @@ public class Order {
 
         return "PROCESSING"; // simplified
     }
-    
+
     /**
      * Set order status
      */
