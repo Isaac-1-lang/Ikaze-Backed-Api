@@ -447,9 +447,9 @@ public class PointsPaymentServiceImpl implements PointsPaymentService {
 
             orderItems.add(orderItem);
         }
-        shopOrder.setItems(orderItems);
+        shopOrder.setItems(new java.util.HashSet<>(orderItems));
         shopOrders.add(shopOrder);
-        order.setShopOrders(shopOrders);
+        order.setShopOrders(new java.util.HashSet<>(shopOrders));
 
         return order;
     }

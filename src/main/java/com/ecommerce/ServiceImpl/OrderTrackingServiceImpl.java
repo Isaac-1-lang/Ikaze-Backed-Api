@@ -45,66 +45,63 @@ public class OrderTrackingServiceImpl implements OrderTrackingService {
     @Override
     public OrderTrackingResponseDTO requestTrackingAccess(OrderTrackingRequestDTO request) {
         String email = request.getEmail().toLowerCase().trim();
-        
+
         try {
             // Check if there are any orders for this email
             List<Order> orders = orderRepository.findByCustomerInfoEmail(email);
-            
+
             if (orders.isEmpty()) {
                 return new OrderTrackingResponseDTO(
-                    false, 
-                    "No orders found for this email address", 
-                    null, 
-                    null
-                );
+                        false,
+                        "No orders found for this email address",
+                        null,
+                        null);
             }
-            
+
             // Check if there's an existing token record for this email
             Optional<OrderTrackingToken> existingTokenOpt = tokenRepository.findByEmail(email);
-            
+
             if (existingTokenOpt.isPresent()) {
                 OrderTrackingToken existingToken = existingTokenOpt.get();
-                
+
                 // If the token is still valid, return it
                 if (existingToken.isValid()) {
                     log.info("Valid token already exists for email: {}", email);
                     return new OrderTrackingResponseDTO(
-                        true,
-                        "A valid tracking link was already sent to your email. Please check your inbox.",
-                        existingToken.getToken(),
-                        existingToken.getExpiresAt()
-                    );
+                            true,
+                            "A valid tracking link was already sent to your email. Please check your inbox.",
+                            existingToken.getToken(),
+                            existingToken.getExpiresAt());
                 }
-                
+
                 // Token exists but is invalid (expired or used), update it
                 log.info("Updating expired/used token for email: {}", email);
                 String newToken = generateSecureToken();
                 LocalDateTime newExpiresAt = LocalDateTime.now().plusMinutes(TOKEN_EXPIRY_MINUTES);
-                
+
                 existingToken.setToken(newToken);
                 existingToken.setExpiresAt(newExpiresAt);
                 existingToken.setUsed(false);
                 existingToken.setUsedAt(null);
                 existingToken.setCreatedAt(LocalDateTime.now());
-                
+
                 tokenRepository.save(existingToken);
-                
+
                 String trackingUrl = frontendUrl + "/track-order?token=" + newToken;
                 sendTrackingEmail(email, trackingUrl, newExpiresAt, orders.size());
-                
+
                 return new OrderTrackingResponseDTO(
-                    true,
-                    "Tracking link sent to your email successfully!",
-                    newToken,
-                    newExpiresAt
-                );
+                        true,
+                        "Tracking link sent to your email successfully!",
+                        newToken,
+                        newExpiresAt);
             }
-            
+
             // No existing token record, create a new one
             log.info("Creating new token for email: {}", email);
             String token = generateSecureToken();
             LocalDateTime expiresAt = LocalDateTime.now().plusMinutes(TOKEN_EXPIRY_MINUTES);
-            
+
             OrderTrackingToken trackingToken = new OrderTrackingToken();
             trackingToken.setToken(token);
             trackingToken.setEmail(email);
@@ -116,20 +113,18 @@ public class OrderTrackingServiceImpl implements OrderTrackingService {
             sendTrackingEmail(email, trackingUrl, expiresAt, orders.size());
 
             return new OrderTrackingResponseDTO(
-                true,
-                "Tracking link sent to your email successfully!",
-                token,
-                expiresAt
-            );
-            
+                    true,
+                    "Tracking link sent to your email successfully!",
+                    token,
+                    expiresAt);
+
         } catch (Exception e) {
             log.error("Failed to generate tracking access", e);
             return new OrderTrackingResponseDTO(
-                false,
-                "Failed to generate tracking access. Please try again later.",
-                null,
-                null
-            );
+                    false,
+                    "Failed to generate tracking access. Please try again later.",
+                    null,
+                    null);
         }
     }
 
@@ -285,7 +280,7 @@ public class OrderTrackingServiceImpl implements OrderTrackingService {
         }
         // Pickup token is now on ShopOrder, get from first shop order if available
         if (order.getShopOrders() != null && !order.getShopOrders().isEmpty()) {
-            com.ecommerce.entity.ShopOrder firstShopOrder = order.getShopOrders().get(0);
+            com.ecommerce.entity.ShopOrder firstShopOrder = order.getShopOrders().iterator().next();
             dto.setPickupToken(firstShopOrder.getPickupToken());
             dto.setPickupTokenUsed(firstShopOrder.getPickupTokenUsed());
         } else {
@@ -441,7 +436,8 @@ public class OrderTrackingServiceImpl implements OrderTrackingService {
         // delivered/processing
         boolean isReturnEligible = daysRemaining > 0 &&
                 (orderItem.getShopOrder().getStatus() == com.ecommerce.entity.ShopOrder.ShopOrderStatus.DELIVERED ||
-                        orderItem.getShopOrder().getStatus() == com.ecommerce.entity.ShopOrder.ShopOrderStatus.PROCESSING);
+                        orderItem.getShopOrder()
+                                .getStatus() == com.ecommerce.entity.ShopOrder.ShopOrderStatus.PROCESSING);
 
         dto.setReturnEligible(isReturnEligible);
         dto.setDaysRemainingForReturn(Math.max(0, daysRemaining));

@@ -6,6 +6,8 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 import java.time.LocalDateTime;
+import java.util.HashSet;
+import java.util.Set;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -32,7 +34,7 @@ public class ReadyForDeliveryGroup {
     private User deliverer;
 
     @OneToMany(mappedBy = "readyForDeliveryGroup", fetch = FetchType.LAZY)
-    private List<ShopOrder> shopOrders = new ArrayList<>();
+    private Set<ShopOrder> shopOrders = new HashSet<>();
 
     @OneToOne(mappedBy = "readyForDeliveryGroup", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
     private DeliveryAgentLocation deliveryAgentLocation;

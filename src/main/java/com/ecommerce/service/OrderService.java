@@ -44,6 +44,8 @@ public interface OrderService {
 
     Page<AdminOrderDTO> searchOrders(OrderSearchDTO searchRequest, Pageable pageable);
 
+    java.math.BigDecimal calculateTotalAmount(OrderSearchDTO searchRequest);
+
     List<AdminOrderDTO> getOrdersByStatus(String status);
 
     com.ecommerce.entity.ShopOrder updateShopOrderStatus(Long shopOrderId, String status);

@@ -181,7 +181,7 @@ public class OrderServiceImpl implements OrderService {
     @Transactional(readOnly = true)
     public Page<AdminOrderDTO> getAllAdminOrdersPaginated(Pageable pageable) {
         Page<Order> ordersPage = orderRepository.findAllWithDetailsForAdmin(pageable);
-        return ordersPage.map(this::toAdminOrderDTO);
+        return ordersPage.map(order -> toAdminOrderDTO(order, null));
     }
 
     @Override
@@ -190,11 +190,11 @@ public class OrderServiceImpl implements OrderService {
         if (shopId != null) {
             // Filter orders by shop - orders contain products from the shop
             Page<Order> ordersPage = orderRepository.findAllWithDetailsForAdminByShop(shopId, pageable);
-            return ordersPage.map(this::toAdminOrderDTO);
+            return ordersPage.map(order -> toAdminOrderDTO(order, shopId));
         } else {
             // No shop filter, return all orders
             Page<Order> ordersPage = orderRepository.findAllWithDetailsForAdmin(pageable);
-            return ordersPage.map(this::toAdminOrderDTO);
+            return ordersPage.map(order -> toAdminOrderDTO(order, null));
         }
     }
 
@@ -219,7 +219,13 @@ public class OrderServiceImpl implements OrderService {
     public Page<AdminOrderDTO> searchOrders(OrderSearchDTO searchRequest, Pageable pageable) {
         log.info("Searching orders with criteria: {}", searchRequest);
         Page<Order> ordersPage = orderRepository.searchOrders(searchRequest, pageable);
-        return ordersPage.map(this::toAdminOrderDTO);
+        return ordersPage.map(order -> toAdminOrderDTO(order, searchRequest.getShopId()));
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public java.math.BigDecimal calculateTotalAmount(OrderSearchDTO searchRequest) {
+        return orderRepository.calculateTotalAmount(searchRequest);
     }
 
     // Delivery agency methods
@@ -396,7 +402,11 @@ public class OrderServiceImpl implements OrderService {
     }
 
     private AdminOrderDTO toAdminOrderDTO(Order order) {
-        return AdminOrderDTO.builder()
+        return toAdminOrderDTO(order, null);
+    }
+
+    private AdminOrderDTO toAdminOrderDTO(Order order, UUID shopId) {
+        AdminOrderDTO.AdminOrderDTOBuilder builder = AdminOrderDTO.builder()
                 .id(order.getOrderId().toString())
                 .userId(order.getUser() != null ? order.getUser().getId().toString() : null)
                 .customerName(order.getOrderCustomerInfo() != null
@@ -406,24 +416,47 @@ public class OrderServiceImpl implements OrderService {
                 .customerPhone(
                         order.getOrderCustomerInfo() != null ? order.getOrderCustomerInfo().getPhoneNumber() : null)
                 .orderNumber(order.getOrderCode())
-                .status(order.getStatus()) // Use aggregated status
-                .shopOrders(order.getShopOrders().stream()
-                        .map(this::toShopOrderDTO)
-                        .collect(Collectors.toList()))
-                // .items() // Removed as items are now in shopOrders
+                .status(order.getStatus()) // Default to aggregated status
+                .paymentStatus(
+                        order.getOrderTransaction() != null ? order.getOrderTransaction().getStatus().name()
+                                : "PENDING")
                 .subtotal(order.getOrderInfo() != null ? order.getOrderInfo().getSubtotal() : BigDecimal.ZERO)
                 .tax(order.getOrderInfo() != null ? order.getOrderInfo().getTaxAmount() : BigDecimal.ZERO)
-                // .shipping() // Aggregated if needed
-                // .discount() // Aggregated if needed
                 .total(order.getOrderInfo() != null ? order.getOrderInfo().getTotalAmount() : BigDecimal.ZERO)
                 .shippingAddress(toAdminOrderAddressDTO(order.getOrderAddress(), order.getOrderCustomerInfo()))
                 .billingAddress(toAdminOrderAddressDTO(order.getOrderAddress(), order.getOrderCustomerInfo()))
                 .paymentInfo(toAdminPaymentInfoDTO(order.getOrderTransaction()))
                 .notes(order.getOrderInfo() != null ? order.getOrderInfo().getNotes() : null)
                 .createdAt(order.getCreatedAt())
-                .updatedAt(order.getUpdatedAt())
-                // .deliveryGroup() // Moved to ShopOrder level
-                .build();
+                .updatedAt(order.getUpdatedAt());
+
+        if (shopId != null) {
+            // Find specific ShopOrder for the shop
+            ShopOrder shopOrder = order.getShopOrders().stream()
+                    .filter(so -> so.getShop().getShopId().equals(shopId))
+                    .findFirst()
+                    .orElse(null);
+
+            if (shopOrder != null) {
+                builder.status(shopOrder.getStatus().name())
+                        .total(shopOrder.getTotalAmount())
+                        .subtotal(calculateShopOrderSubtotal(shopOrder))
+                        .shipping(shopOrder.getShippingCost())
+                        .discount(shopOrder.getDiscountAmount())
+                        // Only include the vendor's specific shop order
+                        .shopOrders(List.of(toShopOrderDTO(shopOrder)));
+            } else {
+                builder.shopOrders(order.getShopOrders().stream()
+                        .map(this::toShopOrderDTO)
+                        .collect(Collectors.toList()));
+            }
+        } else {
+            builder.shopOrders(order.getShopOrders().stream()
+                    .map(this::toShopOrderDTO)
+                    .collect(Collectors.toList()));
+        }
+
+        return builder.build();
     }
 
     private AdminOrderDTO.AdminOrderItemDTO toAdminOrderItemDTO(OrderItem item) {
@@ -802,7 +835,7 @@ public class OrderServiceImpl implements OrderService {
 
         return readyForDeliveryGroupRepository.findByIdWithOrders(groupId)
                 .map(group -> {
-                    List<com.ecommerce.entity.ShopOrder> orders = group.getShopOrders();
+                    java.util.Set<com.ecommerce.entity.ShopOrder> orders = group.getShopOrders();
                     boolean allDelivered = orders.stream()
                             .allMatch(shopOrder -> shopOrder
                                     .getStatus() == com.ecommerce.entity.ShopOrder.ShopOrderStatus.DELIVERED
@@ -1439,7 +1472,7 @@ public class OrderServiceImpl implements OrderService {
                 .build();
     }
 
-    private String determineOverallStatus(List<ShopOrder> shopOrders) {
+    private String determineOverallStatus(java.util.Collection<ShopOrder> shopOrders) {
         if (shopOrders.isEmpty()) {
             return "PENDING";
         }

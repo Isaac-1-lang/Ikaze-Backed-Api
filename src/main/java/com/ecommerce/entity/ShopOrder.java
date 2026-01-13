@@ -9,8 +9,10 @@ import lombok.ToString;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
-import java.util.ArrayList;
+import java.util.Set;
+import java.util.HashSet;
 import java.util.List;
+import java.util.ArrayList;
 
 @Entity
 @Table(name = "shop_orders")
@@ -39,7 +41,7 @@ public class ShopOrder {
     private Shop shop;
 
     @OneToMany(mappedBy = "shopOrder", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
-    private List<OrderItem> items = new ArrayList<>();
+    private Set<OrderItem> items = new HashSet<>();
 
     @Enumerated(EnumType.STRING)
     @Column(name = "status", nullable = false)
@@ -71,10 +73,10 @@ public class ShopOrder {
     private OrderDeliveryNote deliveryNote;
 
     @OneToMany(mappedBy = "shopOrder", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
-    private List<OrderActivityLog> orderActivityLogs = new ArrayList<>();
+    private Set<OrderActivityLog> orderActivityLogs = new HashSet<>();
 
     @OneToMany(mappedBy = "shopOrder", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
-    private List<OrderTrackingToken> trackingTokens = new ArrayList<>();
+    private Set<OrderTrackingToken> trackingTokens = new HashSet<>();
 
     @OneToOne(mappedBy = "shopOrder", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
     private ShopOrderTransaction shopOrderTransaction;

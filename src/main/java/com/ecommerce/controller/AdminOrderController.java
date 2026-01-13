@@ -46,7 +46,14 @@ public class AdminOrderController {
             @Parameter(description = "Page size", example = "15") @RequestParam(defaultValue = "15") int size,
             @Parameter(description = "Sort by field", example = "createdAt") @RequestParam(defaultValue = "createdAt") String sortBy,
             @Parameter(description = "Sort direction", example = "desc") @RequestParam(defaultValue = "desc") String sortDir,
-            @Parameter(description = "Shop ID to filter orders by shop") @RequestParam(required = false) String shopId) {
+            @Parameter(description = "Shop ID to filter orders by shop") @RequestParam(required = false) String shopId,
+            @Parameter(description = "Order status filter") @RequestParam(required = false) String orderStatus,
+            @Parameter(description = "Payment status filter") @RequestParam(required = false) String paymentStatus,
+            @Parameter(description = "City filter") @RequestParam(required = false) String city,
+            @Parameter(description = "Country filter") @RequestParam(required = false) String country,
+            @Parameter(description = "Start date filter (ISO format)") @RequestParam(required = false) String startDate,
+            @Parameter(description = "End date filter (ISO format)") @RequestParam(required = false) String endDate,
+            @Parameter(description = "Search keyword filter") @RequestParam(required = false) String searchKeyword) {
         try {
             UUID shopUuid = null;
             if (shopId != null && !shopId.trim().isEmpty()) {
@@ -79,12 +86,51 @@ public class AdminOrderController {
             // Create pageable object
             Pageable pageable = PageRequest.of(page, size, sort);
 
-            // Get paginated orders
-            Page<AdminOrderDTO> ordersPage = orderService.getAllAdminOrdersPaginated(pageable, shopUuid);
+            // Create search request DTO
+            OrderSearchDTO.OrderSearchDTOBuilder searchBuilder = OrderSearchDTO.builder()
+                    .shopId(shopUuid)
+                    .orderStatus(orderStatus)
+                    .paymentStatus(paymentStatus)
+                    .city(city)
+                    .country(country)
+                    .searchKeyword(searchKeyword)
+                    .page(page)
+                    .size(size)
+                    .sortBy(sortBy)
+                    .sortDirection(sortDir);
+
+            // Parse dates if provided
+            try {
+                if (startDate != null && !startDate.trim().isEmpty()) {
+                    searchBuilder.startDate(java.time.OffsetDateTime.parse(startDate).toLocalDateTime());
+                }
+                if (endDate != null && !endDate.trim().isEmpty()) {
+                    searchBuilder.endDate(java.time.OffsetDateTime.parse(endDate).toLocalDateTime());
+                }
+            } catch (Exception e) {
+                log.warn("Error parsing date in getAllOrders: {}", e.getMessage());
+                // Fallback to simple date parse if OffsetDateTime fails
+                try {
+                    if (startDate != null && !startDate.trim().isEmpty()) {
+                        searchBuilder.startDate(java.time.LocalDateTime.parse(startDate));
+                    }
+                    if (endDate != null && !endDate.trim().isEmpty()) {
+                        searchBuilder.endDate(java.time.LocalDateTime.parse(endDate));
+                    }
+                } catch (Exception e2) {
+                    log.error("Failed to parse date after fallback: {}", e2.getMessage());
+                }
+            }
+
+            // Get paginated orders using search method
+            OrderSearchDTO searchRequest = searchBuilder.build();
+            Page<AdminOrderDTO> ordersPage = orderService.searchOrders(searchRequest, pageable);
+            java.math.BigDecimal totalPaidAmount = orderService.calculateTotalAmount(searchRequest);
 
             Map<String, Object> response = new HashMap<>();
             response.put("success", true);
             response.put("data", ordersPage.getContent());
+            response.put("totalPaidAmount", totalPaidAmount);
             response.put("pagination", Map.of(
                     "currentPage", ordersPage.getNumber(),
                     "totalPages", ordersPage.getTotalPages(),

@@ -25,6 +25,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
@@ -888,7 +889,7 @@ public class ReadyForDeliveryGroupServiceImpl implements ReadyForDeliveryGroupSe
         }
 
         // Check if shop orders are not delivered
-        List<ShopOrder> shopOrders = group.getShopOrders();
+        Set<ShopOrder> shopOrders = group.getShopOrders();
         long deliveredOrders = shopOrders.stream()
                 .filter(so -> so.getStatus() == ShopOrder.ShopOrderStatus.DELIVERED)
                 .count();
@@ -948,7 +949,7 @@ public class ReadyForDeliveryGroupServiceImpl implements ReadyForDeliveryGroupSe
         }
 
         // Check if all shop orders are delivered and pickup tokens are used
-        List<ShopOrder> shopOrders2 = group.getShopOrders();
+        Set<ShopOrder> shopOrders2 = group.getShopOrders();
         long undeliveredOrders = shopOrders2.stream()
                 .filter(so -> so.getStatus() != ShopOrder.ShopOrderStatus.DELIVERED)
                 .count();
@@ -987,7 +988,7 @@ public class ReadyForDeliveryGroupServiceImpl implements ReadyForDeliveryGroupSe
         // Use async processing to send emails quickly
         CompletableFuture.runAsync(() -> {
             try {
-                List<ShopOrder> shopOrders = group.getShopOrders();
+                Set<ShopOrder> shopOrders = group.getShopOrders();
                 log.info("Sending delivery start notifications for {} shop orders", shopOrders.size());
 
                 for (ShopOrder so : shopOrders) {
