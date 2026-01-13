@@ -5,244 +5,375 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Track Your Order - ShopSphere</title>
     <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
         body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            font-family: 'Inter', Arial, sans-serif;
             line-height: 1.6;
-            color: #333;
+            color: #1f2937;
+            background-color: #f3f4f6;
+            padding: 20px;
+        }
+
+        .email-container {
             max-width: 600px;
             margin: 0 auto;
-            padding: 20px;
-            background-color: #f8f9fa;
-        }
-        .container {
             background-color: #ffffff;
-            border-radius: 10px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            border-radius: 8px;
             overflow: hidden;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
         }
+
+        /* Header */
         .header {
-            background: linear-gradient(135deg, #0066FF 0%, #0052CC 100%);
-            color: white;
-            text-align: center;
+            background-color: #2563eb;
+            color: #ffffff;
             padding: 40px 30px;
+            text-align: center;
         }
+
         .logo {
-            font-size: 32px;
-            font-weight: bold;
-            margin-bottom: 10px;
-            letter-spacing: 1px;
-        }
-        .title {
             font-size: 24px;
-            margin: 15px 0 5px 0;
-            font-weight: 600;
+            font-weight: 700;
+            margin-bottom: 16px;
+            letter-spacing: 0.5px;
         }
-        .subtitle {
-            font-size: 15px;
+
+        .header h1 {
+            font-size: 28px;
+            font-weight: 700;
+            margin-bottom: 8px;
+        }
+
+        .header p {
+            font-size: 16px;
             opacity: 0.95;
         }
+
+        /* Content */
         .content {
             padding: 40px 30px;
         }
+
         .greeting {
             font-size: 18px;
-            margin-bottom: 20px;
-            color: #333;
-            font-weight: 500;
+            font-weight: 600;
+            color: #111827;
+            margin-bottom: 16px;
         }
+
         .message {
             font-size: 16px;
-            margin-bottom: 30px;
-            color: #555;
+            color: #374151;
+            margin-bottom: 32px;
             line-height: 1.7;
         }
+
+        /* Token Section */
         .token-section {
-            background-color: #f0f7ff;
-            padding: 25px;
+            background-color: #eff6ff;
+            border: 2px solid #2563eb;
             border-radius: 8px;
-            border: 2px solid #0066FF;
-            margin: 30px 0;
+            padding: 24px;
+            margin: 32px 0;
         }
+
         .token-label {
             font-weight: 600;
-            color: #0066FF;
+            color: #1e40af;
             margin-bottom: 12px;
-            font-size: 16px;
+            font-size: 15px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
         }
+
+        .token-icon {
+            width: 18px;
+            height: 18px;
+        }
+
         .token-container {
             position: relative;
         }
+
         .token-value {
             background-color: #ffffff;
-            padding: 15px 50px 15px 15px;
-            border-radius: 5px;
+            padding: 14px 60px 14px 14px;
+            border-radius: 6px;
             font-family: 'Courier New', monospace;
             font-size: 14px;
             word-break: break-all;
-            border: 1px solid #cce0ff;
-            color: #0052CC;
+            border: 1px solid #bfdbfe;
+            color: #1e40af;
             font-weight: 500;
         }
+
         .copy-btn {
             position: absolute;
             right: 8px;
             top: 50%;
             transform: translateY(-50%);
-            background-color: #0066FF;
+            background-color: #2563eb;
             color: white;
             border: none;
-            padding: 8px 12px;
+            padding: 8px 14px;
             border-radius: 4px;
             cursor: pointer;
             font-size: 12px;
             font-weight: 600;
-            transition: background-color 0.3s ease;
+            transition: background-color 0.2s;
+            font-family: 'Inter', Arial, sans-serif;
         }
+
         .copy-btn:hover {
-            background-color: #0052CC;
+            background-color: #1d4ed8;
         }
+
         .copy-btn:active {
-            background-color: #003d99;
+            background-color: #1e40af;
         }
+
+        .copy-success {
+            display: none;
+            color: #16a34a;
+            font-size: 13px;
+            margin-top: 8px;
+            font-weight: 600;
+        }
+
         .copy-instruction {
-            font-size: 14px;
-            color: #666;
+            font-size: 13px;
+            color: #1e40af;
             margin-top: 12px;
-            font-style: italic;
+            line-height: 1.5;
         }
+
+        /* Buttons */
         .buttons {
             text-align: center;
-            margin: 35px 0;
+            margin: 32px 0;
+            display: flex;
+            gap: 12px;
+            flex-wrap: wrap;
+            justify-content: center;
         }
+
         .btn {
             display: inline-block;
-            padding: 14px 32px;
-            margin: 8px;
+            padding: 14px 28px;
             text-decoration: none;
             border-radius: 6px;
             font-weight: 600;
-            font-size: 16px;
-            transition: all 0.3s ease;
-            cursor: pointer;
+            font-size: 15px;
+            transition: all 0.2s;
+            border: 2px solid transparent;
         }
+
         .btn-primary {
-            background-color: #0066FF;
+            background-color: #2563eb;
             color: white;
-            border: 2px solid #0066FF;
         }
+
         .btn-primary:hover {
-            background-color: #0052CC;
-            border-color: #0052CC;
-            transform: translateY(-2px);
-            box-shadow: 0 4px 8px rgba(0,102,255,0.3);
+            background-color: #1d4ed8;
         }
+
         .btn-secondary {
-            background-color: white;
-            color: #0066FF;
-            border: 2px solid #0066FF;
+            background-color: #ffffff;
+            color: #2563eb;
+            border: 2px solid #2563eb;
         }
+
         .btn-secondary:hover {
-            background-color: #f0f7ff;
-            transform: translateY(-2px);
-            box-shadow: 0 4px 8px rgba(0,102,255,0.2);
+            background-color: #eff6ff;
         }
+
+        /* Instructions Box */
         .instructions {
-            background-color: #f0f7ff;
-            border-left: 4px solid #0066FF;
-            border-radius: 5px;
-            padding: 25px;
-            margin: 30px 0;
+            background-color: #f9fafb;
+            border-left: 4px solid #2563eb;
+            border-radius: 6px;
+            padding: 24px;
+            margin: 32px 0;
         }
+
         .instructions h3 {
-            color: #0052CC;
-            margin-top: 0;
-            margin-bottom: 15px;
-            font-size: 18px;
+            color: #111827;
+            margin-bottom: 16px;
+            font-size: 17px;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 8px;
         }
+
+        .instructions-icon {
+            width: 20px;
+            height: 20px;
+            color: #2563eb;
+        }
+
         .instructions ol {
             margin: 0;
-            padding-left: 20px;
+            padding-left: 24px;
         }
+
         .instructions li {
             margin-bottom: 10px;
-            color: #333;
+            color: #374151;
             line-height: 1.6;
         }
+
+        .instructions li:last-child {
+            margin-bottom: 0;
+        }
+
         .instructions strong {
-            color: #0066FF;
-        }
-        .footer {
-            background-color: #f8f9fa;
-            text-align: center;
-            padding: 30px;
-            color: #666;
-            font-size: 14px;
-        }
-        .footer a {
-            color: #0066FF;
-            text-decoration: none;
-            font-weight: 500;
-        }
-        .footer a:hover {
-            text-decoration: underline;
-        }
-        .security-note {
-            background-color: #e6f2ff;
-            border: 1px solid #99ccff;
-            border-radius: 5px;
-            padding: 18px;
-            margin: 25px 0;
-            font-size: 14px;
-            color: #0052CC;
-            line-height: 1.6;
-        }
-        .expiry-info {
-            background-color: #fff5e6;
-            border: 1px solid #ffcc80;
-            border-radius: 5px;
-            padding: 18px;
-            margin: 25px 0;
-            font-size: 14px;
-            color: #e65100;
-            text-align: center;
-            font-weight: 500;
-        }
-        .copy-success {
-            display: none;
-            color: #0066FF;
-            font-size: 12px;
-            margin-top: 8px;
+            color: #111827;
             font-weight: 600;
+        }
+
+        /* Alert Boxes */
+        .alert-box {
+            border-radius: 6px;
+            padding: 16px;
+            margin: 24px 0;
+            font-size: 14px;
+            line-height: 1.6;
+            display: flex;
+            gap: 12px;
+        }
+
+        .alert-icon {
+            width: 20px;
+            height: 20px;
+            flex-shrink: 0;
+            margin-top: 2px;
+        }
+
+        .alert-warning {
+            background-color: #fef3c7;
+            border: 1px solid #fbbf24;
+            color: #92400e;
+        }
+
+        .alert-warning .alert-icon {
+            color: #f59e0b;
+        }
+
+        .alert-info {
+            background-color: #dbeafe;
+            border: 1px solid #60a5fa;
+            color: #1e40af;
+        }
+
+        .alert-info .alert-icon {
+            color: #2563eb;
+        }
+
+        .alert-content strong {
+            font-weight: 600;
+            display: block;
+            margin-bottom: 4px;
+        }
+
+        /* Footer */
+        .footer {
+            background-color: #1e293b;
+            color: #cbd5e1;
+            padding: 32px 30px;
+            text-align: center;
+        }
+
+        .footer-brand {
+            font-weight: 700;
+            color: #ffffff;
+            font-size: 16px;
+            margin-bottom: 8px;
+        }
+
+        .footer p {
+            margin: 6px 0;
+            font-size: 14px;
+        }
+
+        .footer-links {
+            margin: 16px 0;
+            padding: 16px 0;
+            border-top: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .footer-links a {
+            color: #93c5fd;
+            text-decoration: none;
+            margin: 0 12px;
+            font-size: 14px;
+        }
+
+        .footer-links a:hover {
+            color: #bfdbfe;
+        }
+
+        .footer-note {
+            margin-top: 16px;
+            padding-top: 16px;
+            border-top: 1px solid rgba(255, 255, 255, 0.1);
+            font-size: 12px;
+            color: #94a3b8;
+        }
+
+        /* Responsive */
+        @media (max-width: 600px) {
+            body {
+                padding: 10px;
+            }
+
+            .header,
+            .content,
+            .footer {
+                padding: 24px 20px;
+            }
+
+            .buttons {
+                flex-direction: column;
+            }
+
+            .btn {
+                width: 100%;
+            }
+
+            .token-value {
+                padding-right: 70px;
+                font-size: 12px;
+            }
         }
     </style>
 </head>
 <body>
-    <div class="container">
+    <div class="email-container">
+        <!-- Header -->
         <div class="header">
             <div class="logo">SHOPSPHERE</div>
-            <h1 class="title">Track Your Order</h1>
-            <p class="subtitle">Secure access to your order information</p>
+            <h1>Track Your Order</h1>
+            <p>Secure access to your order information</p>
         </div>
 
+        <!-- Content -->
         <div class="content">
             <p class="greeting">Hello!</p>
             
             <p class="message">
-                You requested to track your orders. We've generated a secure access token for you to view your order details safely.
+                You requested to track your orders. Click the button below to securely view your order details and track their status.
             </p>
 
-            <div class="token-section">
-                <div class="token-label">Your Secure Access Token:</div>
-                <div class="token-container">
-                    <div class="token-value" id="accessToken">{{token}}</div>
-                    <button class="copy-btn" onclick="copyToken()">Copy</button>
-                </div>
-                <div class="copy-success" id="copySuccess">Token copied to clipboard!</div>
-                <div class="copy-instruction">
-                    <strong>Tip:</strong> You can copy this token and paste it on our website, or click the direct link below.
-                </div>
-            </div>
-
+            <!-- Action Buttons -->
             <div class="buttons">
                 <a th:href="${trackingUrl}" href="{{trackingUrl}}" class="btn btn-primary">
                     Track Orders Directly
@@ -252,64 +383,61 @@
                 </a>
             </div>
 
+            <!-- Instructions -->
             <div class="instructions">
-                <h3>How to Track Your Orders:</h3>
+                <h3>
+                    <svg class="instructions-icon" viewBox="0 0 20 20" fill="currentColor">
+                        <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clip-rule="evenodd"/>
+                    </svg>
+                    What You Can Do:
+                </h3>
                 <ol>
-                    <li><strong>Option 1:</strong> Click the "Track Orders Directly" button above</li>
-                    <li><strong>Option 2:</strong> Visit our website and enter the token manually</li>
-                    <li><strong>Option 3:</strong> Copy the token above and paste it in the tracking form</li>
+                    <li><strong>View Order Status:</strong> See real-time updates on your orders</li>
+                    <li><strong>Check Delivery Details:</strong> Track estimated delivery times</li>
+                    <li><strong>Access Order History:</strong> Review all your past orders</li>
                 </ol>
             </div>
 
-            <div class="expiry-info">
-                <strong>Important:</strong> This access token expires at {{expiryTime}} for your security.
+            <!-- Expiry Warning -->
+            <div class="alert-box alert-warning">
+                <svg class="alert-icon" viewBox="0 0 20 20" fill="currentColor">
+                    <path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd"/>
+                </svg>
+                <div class="alert-content">
+                    <strong>Important:</strong> This access token expires at {{expiryTime}} for your security.
+                </div>
             </div>
 
-            <div class="security-note">
-                <strong>Security Note:</strong> This token provides access to your order information. 
-                Please don't share it with others. If you didn't request this, please ignore this email.
+            <!-- Security Note -->
+            <div class="alert-box alert-info">
+                <svg class="alert-icon" viewBox="0 0 20 20" fill="currentColor">
+                    <path fill-rule="evenodd" d="M2.166 4.999A11.954 11.954 0 0010 1.944 11.954 11.954 0 0017.834 5c.11.65.166 1.32.166 2.001 0 5.225-3.34 9.67-8 11.317C5.34 16.67 2 12.225 2 7c0-.682.057-1.35.166-2.001zm11.541 3.708a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/>
+                </svg>
+                <div class="alert-content">
+                    <strong>Security Note:</strong> This tracking link is secure and personalized for you. If you didn't request this, please ignore this email.
+                </div>
             </div>
         </div>
 
+        <!-- Footer -->
         <div class="footer">
-            <p>
-                <strong>ShopSphere</strong><br>
-                Your trusted online shopping partner<br>
-                <a th:href="${websiteUrl}" href="{{websiteUrl}}">Visit our website</a> | 
+            <div class="footer-brand">ShopSphere</div>
+            <p>Your trusted online shopping partner</p>
+            
+            <div class="footer-links">
+                <a th:href="${websiteUrl}" href="{{websiteUrl}}">Visit our website</a>
                 <a th:href="${supportUrl}" href="{{supportUrl}}">Contact Support</a>
-            </p>
-            <p style="margin-top: 15px; font-size: 12px; color: #999;">
-                This is an automated message. Please do not reply to this email.
-            </p>
+            </div>
+
+            <div class="footer-note">
+                This is an automated message. Please do not reply to this email.<br>
+                © 2025 ShopSphere. All rights reserved.
+            </div>
         </div>
     </div>
 
     <script>
-        function copyToken() {
-            const tokenElement = document.getElementById('accessToken');
-            const tokenText = tokenElement.textContent;
-            const copySuccess = document.getElementById('copySuccess');
-            
-            // Create temporary textarea to copy text
-            const textarea = document.createElement('textarea');
-            textarea.value = tokenText;
-            textarea.style.position = 'fixed';
-            textarea.style.opacity = '0';
-            document.body.appendChild(textarea);
-            textarea.select();
-            
-            try {
-                document.execCommand('copy');
-                copySuccess.style.display = 'block';
-                setTimeout(() => {
-                    copySuccess.style.display = 'none';
-                }, 3000);
-            } catch (err) {
-                console.error('Failed to copy token:', err);
-            }
-            
-            document.body.removeChild(textarea);
-        }
+        // Script removed as token copy functionality is no longer needed
     </script>
 </body>
 </html>
