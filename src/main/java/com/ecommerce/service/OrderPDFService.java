@@ -40,7 +40,7 @@ public class OrderPDFService {
         try {
             ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
             Document document = new Document(PageSize.A4, 50, 50, 50, 50);
-            PdfWriter writer = PdfWriter.getInstance(document, outputStream);
+            PdfWriter.getInstance(document, outputStream);
 
             document.open();
 
@@ -500,10 +500,6 @@ public class OrderPDFService {
 
     private String formatOrderStatus(String status) {
         return status.substring(0, 1).toUpperCase() + status.substring(1).toLowerCase();
-    }
-
-    private String formatPrice(BigDecimal price) {
-        return String.format("%.2f", price);
     }
 
     private DiscountInfo calculateDiscountInfo(OrderItem item) {
