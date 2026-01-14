@@ -30,4 +30,5 @@ public class ShopOrderDTO {
     private LocalDateTime deliveredAt;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
+    private DeliveryGroupInfoDTO deliveryGroup;
 }

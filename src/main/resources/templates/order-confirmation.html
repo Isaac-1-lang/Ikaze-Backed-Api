@@ -1,667 +1,699 @@
 <!DOCTYPE html>
 <html xmlns:th="http://www.thymeleaf.org">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Order Confirmation - ShopSphere</title>
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+      @import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap");
 
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      body {
+        font-family: "Inter", Arial, sans-serif;
+        line-height: 1.6;
+        color: #1f2937;
+        background-color: #f3f4f6;
+        padding: 20px;
+      }
+
+      .email-container {
+        max-width: 600px;
+        margin: 0 auto;
+        background-color: #ffffff;
+        border-radius: 8px;
+        overflow: hidden;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+      }
+
+      /* Header */
+      .header {
+        background-color: #2563eb;
+        color: #ffffff;
+        padding: 40px 30px;
+        text-align: center;
+      }
+
+      .header h1 {
+        font-size: 28px;
+        font-weight: 700;
+        margin-bottom: 8px;
+      }
+
+      .header p {
+        font-size: 16px;
+        opacity: 0.95;
+        margin-bottom: 16px;
+      }
+
+      .success-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        background-color: rgba(255, 255, 255, 0.2);
+        padding: 8px 16px;
+        border-radius: 20px;
+        font-size: 14px;
+        font-weight: 600;
+      }
+
+      /* Content */
+      .content {
+        padding: 40px 30px;
+      }
+
+      .greeting {
+        margin-bottom: 30px;
+      }
+
+      .greeting p {
+        font-size: 16px;
+        color: #374151;
+        margin-bottom: 12px;
+      }
+
+      /* Section */
+      .section {
+        margin-bottom: 32px;
+      }
+
+      .section-title {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        font-size: 18px;
+        font-weight: 600;
+        color: #111827;
+        margin-bottom: 16px;
+      }
+
+      .section-icon {
+        width: 20px;
+        height: 20px;
+        flex-shrink: 0;
+      }
+
+      /* Order Details Box */
+      .info-box {
+        background-color: #f9fafb;
+        border: 1px solid #e5e7eb;
+        border-radius: 8px;
+        padding: 20px;
+      }
+
+      .detail-row {
+        display: flex;
+        justify-content: space-between;
+        padding: 12px 0;
+        border-bottom: 1px solid #e5e7eb;
+      }
+
+      .detail-row:last-child {
+        border-bottom: none;
+      }
+
+      .detail-label {
+        font-weight: 500;
+        color: #6b7280;
+        font-size: 14px;
+      }
+
+      .detail-value {
+        font-weight: 600;
+        color: #111827;
+        font-size: 14px;
+        text-align: right;
+      }
+
+      .status-badge {
+        display: inline-block;
+        padding: 4px 12px;
+        border-radius: 12px;
+        font-size: 12px;
+        font-weight: 600;
+        text-transform: uppercase;
+        background-color: #dbeafe;
+        color: #1e40af;
+      }
+
+      /* Order Items */
+      .item {
+        background-color: #ffffff;
+        border: 1px solid #e5e7eb;
+        border-radius: 8px;
+        padding: 16px;
+        margin-bottom: 12px;
+      }
+
+      .item:last-child {
+        margin-bottom: 0;
+      }
+
+      .item-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: start;
+        margin-bottom: 8px;
+      }
+
+      .item-name {
+        font-weight: 600;
+        color: #111827;
+        font-size: 15px;
+      }
+
+      .item-price {
+        font-weight: 700;
+        color: #2563eb;
+        font-size: 15px;
+        white-space: nowrap;
+        margin-left: 16px;
+      }
+
+      .item-details {
+        margin-bottom: 8px;
+      }
+
+      .variant-tag {
+        display: inline-block;
+        background-color: #f3f4f6;
+        color: #374151;
+        padding: 2px 8px;
+        border-radius: 4px;
+        font-size: 12px;
+        font-weight: 500;
+      }
+
+      .quantity-info {
+        font-size: 13px;
+        color: #6b7280;
+      }
+
+      /* Totals */
+      .totals-table {
+        width: 100%;
+      }
+
+      .totals-table tr {
+        display: flex;
+        justify-content: space-between;
+        padding: 10px 0;
+      }
+
+      .totals-table td {
+        font-size: 14px;
+      }
+
+      .totals-table .total-row {
+        border-top: 2px solid #e5e7eb;
+        padding-top: 16px;
+        margin-top: 8px;
+      }
+
+      .totals-table .total-row td {
+        font-weight: 700;
+        font-size: 18px;
+        color: #2563eb;
+      }
+
+      /* Pickup Section */
+      .pickup-section {
+        background-color: #2563eb;
+        color: #ffffff;
+        border-radius: 8px;
+        padding: 24px;
+        text-align: center;
+      }
+
+      .pickup-section h3 {
+        font-size: 20px;
+        font-weight: 600;
+        margin-bottom: 16px;
+      }
+
+      .pickup-timeline {
+        background-color: rgba(255, 255, 255, 0.15);
+        border-radius: 6px;
+        padding: 16px;
+        margin: 16px 0;
+      }
+
+      .pickup-timeline p {
+        margin: 4px 0;
+        font-size: 14px;
+      }
+
+      .pickup-token {
+        background-color: rgba(255, 255, 255, 0.2);
+        border: 1px solid rgba(255, 255, 255, 0.3);
+        border-radius: 6px;
+        padding: 16px;
+        font-family: "Courier New", monospace;
+        font-size: 16px;
+        font-weight: 700;
+        margin: 16px 0;
+        letter-spacing: 1px;
+      }
+
+      .pickup-note {
+        font-size: 12px;
+        opacity: 0.9;
+      }
+
+      /* CTA Button */
+      .cta-section {
+        text-align: center;
+        margin: 32px 0;
+      }
+
+      .cta-button {
+        display: inline-block;
+        background-color: #2563eb;
+        color: #ffffff;
+        text-decoration: none;
+        padding: 14px 32px;
+        border-radius: 6px;
+        font-weight: 600;
+        font-size: 15px;
+        transition: background-color 0.2s;
+      }
+
+      .cta-button:hover {
+        background-color: #1d4ed8;
+      }
+
+      /* Notice Box */
+      .notice-box {
+        background-color: #eff6ff;
+        border-left: 4px solid #2563eb;
+        border-radius: 6px;
+        padding: 16px 16px 16px 20px;
+        margin: 24px 0;
+      }
+
+      .notice-title {
+        font-weight: 600;
+        color: #1e40af;
+        margin-bottom: 8px;
+        font-size: 15px;
+      }
+
+      .notice-text {
+        color: #1e40af;
+        font-size: 14px;
+        line-height: 1.5;
+      }
+
+      /* Footer */
+      .footer {
+        background-color: #1e293b;
+        color: #cbd5e1;
+        padding: 40px 30px;
+        text-align: center;
+      }
+
+      .footer h4 {
+        color: #ffffff;
+        font-size: 18px;
+        font-weight: 600;
+        margin-bottom: 20px;
+      }
+
+      .contact-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+        gap: 16px;
+        margin: 20px 0;
+      }
+
+      .contact-item {
+        background-color: rgba(255, 255, 255, 0.05);
+        padding: 16px;
+        border-radius: 6px;
+      }
+
+      .contact-item strong {
+        color: #ffffff;
+        display: block;
+        margin-bottom: 4px;
+        font-size: 14px;
+      }
+
+      .contact-item span {
+        font-size: 13px;
+      }
+
+      .footer-links {
+        margin: 24px 0;
+        padding: 20px 0;
+        border-top: 1px solid rgba(255, 255, 255, 0.1);
+      }
+
+      .footer-links a {
+        color: #93c5fd;
+        text-decoration: none;
+        margin: 0 12px;
+        font-size: 14px;
+        display: inline-block;
+        margin-bottom: 8px;
+      }
+
+      .footer-links a:hover {
+        color: #bfdbfe;
+      }
+
+      .footer-brand {
+        margin-top: 20px;
+        padding-top: 20px;
+        border-top: 1px solid rgba(255, 255, 255, 0.1);
+        font-size: 13px;
+        color: #94a3b8;
+      }
+
+      .footer-brand p {
+        margin: 4px 0;
+      }
+
+      /* Responsive */
+      @media (max-width: 600px) {
         body {
-            font-family: 'Inter', 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            line-height: 1.6;
-            color: #1f2937;
-            max-width: 650px;
-            margin: 0 auto;
-            padding: 20px;
-            background: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%);
+          padding: 10px;
         }
 
-        .email-container {
-            background-color: #ffffff;
-            border-radius: 16px;
-            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
-            overflow: hidden;
-            border: 1px solid #e5e7eb;
-        }
-
-        .header {
-            background: linear-gradient(135deg, #1e40af 0%, #3b82f6 100%);
-            color: white;
-            padding: 40px 30px;
-            text-align: center;
-            position: relative;
-        }
-
-        .header::before {
-            content: '';
-            position: absolute;
-            top: 0;
-            left: 0;
-            right: 0;
-            bottom: 0;
-            background: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><defs><pattern id="grain" width="100" height="100" patternUnits="userSpaceOnUse"><circle cx="25" cy="25" r="1" fill="rgba(255,255,255,0.03)"/><circle cx="75" cy="75" r="1" fill="rgba(255,255,255,0.03)"/><circle cx="75" cy="25" r="1" fill="rgba(255,255,255,0.03)"/><circle cx="25" cy="75" r="1" fill="rgba(255,255,255,0.03)"/></pattern></defs><rect width="100" height="100" fill="url(%23grain)"/></svg>');
-            opacity: 0.5;
-        }
-
-        .header-content {
-            position: relative;
-            z-index: 1;
-        }
-
-        .header h1 {
-            margin: 0;
-            font-size: 32px;
-            font-weight: 700;
-            letter-spacing: -0.02em;
-        }
-
-        .header .brand {
-            color: #93c5fd;
-            font-weight: 700;
-        }
-
-        .header p {
-            margin: 15px 0 0 0;
-            font-size: 18px;
-            opacity: 0.9;
-            font-weight: 300;
-        }
-
-        .success-badge {
-            display: inline-block;
-            background: rgba(59, 130, 246, 0.1);
-            color: #1e40af;
-            padding: 8px 16px;
-            border-radius: 50px;
-            font-size: 14px;
-            font-weight: 600;
-            margin-top: 15px;
-            border: 2px solid rgba(59, 130, 246, 0.2);
-        }
-
-        .content {
-            padding: 40px 30px;
-        }
-
-        .greeting {
-            font-size: 18px;
-            margin-bottom: 30px;
-            color: #374151;
-            font-weight: 400;
-        }
-
-        .greeting strong {
-            color: #111827;
-            font-weight: 600;
-        }
-
-        .order-details {
-            background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
-            border: 2px solid #e2e8f0;
-            border-radius: 12px;
-            padding: 25px;
-            margin: 25px 0;
-            position: relative;
-            overflow: hidden;
-        }
-
-        .order-details::before {
-            content: '';
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 4px;
-            height: 100%;
-            background: linear-gradient(135deg, #3b82f6, #60a5fa);
-        }
-
-        .section-title {
-            margin: 0 0 20px 0;
-            color: #1e293b;
-            font-size: 20px;
-            font-weight: 600;
-            display: flex;
-            align-items: center;
-            gap: 10px;
-        }
-
-        .section-icon {
-            width: 24px;
-            height: 24px;
-            background: linear-gradient(135deg, #3b82f6, #60a5fa);
-            border-radius: 6px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            flex-shrink: 0;
-        }
-
-        .section-icon::before {
-            content: '';
-            width: 12px;
-            height: 12px;
-            background: white;
-            border-radius: 2px;
-        }
-
-        .detail-row {
-            margin-bottom: 12px;
-            padding: 12px 0;
-            border-bottom: 1px solid #e5e7eb;
-        }
-
-        .detail-row:last-child {
-            border-bottom: none;
-            margin-bottom: 0;
-        }
-
-        .detail-label {
-            font-weight: 500;
-            color: #6b7280;
-            font-size: 15px;
-        }
-
-        .detail-value {
-            color: #111827;
-            font-weight: 600;
-            font-size: 15px;
-        }
-
-        .status-badge {
-            display: inline-block;
-            padding: 4px 12px;
-            border-radius: 50px;
-            font-size: 12px;
-            font-weight: 600;
-            text-transform: uppercase;
-            letter-spacing: 0.05em;
-            background: rgba(59, 130, 246, 0.1);
-            color: #1e40af;
-            border: 1px solid rgba(59, 130, 246, 0.3);
-        }
-
-        .order-items {
-            margin: 30px 0;
-        }
-
-        .item {
-            background: white;
-            border: 1px solid #e5e7eb;
-            border-radius: 10px;
-            padding: 20px;
-            margin-bottom: 15px;
-            transition: all 0.2s ease;
-            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
-        }
-
-        .item:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
-        }
-
-        .item:last-child {
-            margin-bottom: 0;
-        }
-
-        .item-header {
-            margin-bottom: 10px;
-        }
-
-        .item-name {
-            font-weight: 600;
-            color: #111827;
-            font-size: 16px;
-            margin-right: 15px;
-        }
-
-        .item-price {
-            font-weight: 700;
-            color: #1e40af;
-            font-size: 16px;
-            white-space: nowrap;
-        }
-
-        .item-details {
-            font-size: 14px;
-            color: #6b7280;
-            margin-bottom: 8px;
-        }
-
-        .variant-tag {
-            display: inline-block;
-            background: #f3f4f6;
-            color: #374151;
-            padding: 2px 8px;
-            border-radius: 4px;
-            font-size: 12px;
-            font-weight: 500;
-        }
-
-        .quantity-price {
-            font-size: 14px;
-            color: #6b7280;
-        }
-
-        .totals {
-            background: linear-gradient(135deg, #fefefe 0%, #f8fafc 100%);
-            border: 2px solid #e5e7eb;
-            border-radius: 12px;
-            padding: 25px;
-            margin: 30px 0;
-            position: relative;
-        }
-
-        .totals::before {
-            content: '';
-            position: absolute;
-            top: 0;
-            right: 0;
-            width: 4px;
-            height: 100%;
-            background: linear-gradient(135deg, #3b82f6, #60a5fa);
-        }
-
-        .totals-table {
-            width: 100%;
-            border-collapse: collapse;
-        }
-
-        .totals-table td {
-            padding: 10px 0;
-            font-size: 15px;
-        }
-
-        .totals-table .final td {
-            border-top: 2px solid #e5e7eb;
-            padding-top: 20px;
-            font-weight: 700;
-            font-size: 20px;
-            color: #1e40af;
-        }
-
-        .pickup-section {
-            background: linear-gradient(135deg, #1e40af 0%, #3b82f6 100%);
-            color: white;
-            border-radius: 12px;
-            padding: 30px;
-            text-align: center;
-            margin: 30px 0;
-            position: relative;
-            overflow: hidden;
-        }
-
-        .pickup-section::before {
-            content: '';
-            position: absolute;
-            top: -50%;
-            left: -50%;
-            width: 200%;
-            height: 200%;
-            background: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 60 60"><defs><pattern id="pickup-pattern" width="60" height="60" patternUnits="userSpaceOnUse"><circle cx="30" cy="30" r="1.5" fill="rgba(255,255,255,0.1)"/></pattern></defs><rect width="60" height="60" fill="url(%23pickup-pattern)"/></svg>');
-            animation: float 20s linear infinite;
-        }
-
-        @keyframes float {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
-        }
-
-        .pickup-content {
-            position: relative;
-            z-index: 1;
-        }
-
-        .pickup-section h3 {
-            margin: 0 0 15px 0;
-            font-size: 22px;
-            font-weight: 600;
-        }
-
-        .pickup-timeline {
-            background: rgba(255, 255, 255, 0.1);
-            border-radius: 8px;
-            padding: 15px;
-            margin: 20px 0;
-            backdrop-filter: blur(10px);
-        }
-
-        .pickup-token {
-            background: rgba(255, 255, 255, 0.15);
-            border: 2px solid rgba(255, 255, 255, 0.3);
-            border-radius: 8px;
-            padding: 15px;
-            font-family: 'Courier New', monospace;
-            font-size: 16px;
-            font-weight: 700;
-            margin: 20px 0;
-            letter-spacing: 1px;
-            backdrop-filter: blur(10px);
-        }
-
-        .cta-section {
-            text-align: center;
-            margin: 40px 0;
-        }
-
-        .cta-button {
-            display: inline-block;
-            background: linear-gradient(135deg, #1e40af 0%, #3b82f6 100%);
-            color: white;
-            text-decoration: none;
-            padding: 15px 35px;
-            border-radius: 8px;
-            font-weight: 600;
-            font-size: 16px;
-            transition: all 0.3s ease;
-            box-shadow: 0 4px 15px rgba(59, 130, 246, 0.4);
-        }
-
-        .cta-button:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 8px 25px rgba(59, 130, 246, 0.6);
-        }
-
-        .important-notice {
-            margin: 30px 0;
-            padding: 20px;
-            background: linear-gradient(135deg, #dbeafe 0%, #bfdbfe 100%);
-            border-radius: 10px;
-            border-left: 4px solid #1e40af;
-            position: relative;
-        }
-
-        .notice-icon {
-            position: absolute;
-            top: 20px;
-            left: 20px;
-            width: 20px;
-            height: 20px;
-            background: #1e40af;
-            border-radius: 50%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            color: white;
-            font-weight: bold;
-            font-size: 12px;
-        }
-
-        .notice-content {
-            margin-left: 35px;
-        }
-
-        .notice-title {
-            color: #1e3a8a;
-            margin: 0 0 10px 0;
-            font-weight: 600;
-            font-size: 16px;
-        }
-
-        .notice-text {
-            color: #1e3a8a;
-            margin: 0;
-            font-size: 14px;
-            line-height: 1.5;
-        }
-
+        .header,
+        .content,
         .footer {
-            background: linear-gradient(135deg, #1e3a8a 0%, #3b82f6 100%);
-            padding: 40px 30px;
-            text-align: center;
-            color: #d1d5db;
-        }
-
-        .footer h4 {
-            color: #ffffff;
-            margin: 0 0 20px 0;
-            font-size: 20px;
-            font-weight: 600;
-        }
-
-        .footer p {
-            margin: 8px 0;
-            font-size: 15px;
-        }
-
-        .footer strong {
-            color: #ffffff;
+          padding: 24px 20px;
         }
 
         .contact-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-            gap: 20px;
-            margin: 25px 0;
+          grid-template-columns: 1fr;
         }
 
-        .contact-item {
-            background: rgba(255, 255, 255, 0.05);
-            padding: 15px;
-            border-radius: 8px;
-            border: 1px solid rgba(255, 255, 255, 0.1);
+        .item-header {
+          flex-direction: column;
+          gap: 8px;
         }
 
-        .social-links {
-            margin: 25px 0;
-            padding: 20px 0;
-            border-top: 1px solid rgba(255, 255, 255, 0.1);
+        .item-price {
+          margin-left: 0;
         }
-
-        .social-links a {
-            color: #93c5fd;
-            text-decoration: none;
-            margin: 0 15px;
-            font-weight: 500;
-            transition: color 0.2s ease;
-        }
-
-        .social-links a:hover {
-            color: #bfdbfe;
-        }
-
-        .footer-brand {
-            margin-top: 25px;
-            padding-top: 20px;
-            border-top: 1px solid rgba(255, 255, 255, 0.1);
-            font-size: 13px;
-            color: #9ca3af;
-            font-weight: 300;
-        }
-
-        @media (max-width: 600px) {
-            body {
-                padding: 15px;
-            }
-            .header, .content, .footer {
-                padding: 25px 20px;
-            }
-            .detail-row, .item-header {
-                padding: 10px 0;
-            }
-            .contact-grid {
-                grid-template-columns: 1fr;
-                gap: 15px;
-            }
-            .social-links a {
-                display: inline-block;
-                margin: 5px 10px;
-            }
-        }
+      }
     </style>
-</head>
-<body>
+  </head>
+  <body>
     <div class="email-container">
-        <!-- Header -->
-        <div class="header">
-            <div class="header-content">
-                <h1 style="margin: 0; font-size: 32px; font-weight: 700; letter-spacing: -0.02em;">
-                    Order <span class="brand" style="color: #93c5fd; font-weight: 700;">Confirmed</span>!
-                </h1>
-                <p style="margin: 15px 0 0 0; font-size: 18px; opacity: 0.9; font-weight: 300;">Your purchase is on its way</p>
-                <div class="success-badge" style="display: inline-block; background: rgba(59, 130, 246, 0.1); color: #1e40af; padding: 8px 16px; border-radius: 50px; font-size: 14px; font-weight: 600; margin-top: 15px; border: 2px solid rgba(59, 130, 246, 0.2);">
-                    ✓ Payment Successful
-                </div>
-            </div>
+      <!-- Header -->
+      <div class="header">
+        <h1>Order Confirmed!</h1>
+        <p>Your purchase is on its way</p>
+        <div class="success-badge">
+          <svg class="section-icon" viewBox="0 0 20 20" fill="currentColor">
+            <path
+              fill-rule="evenodd"
+              d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"
+              clip-rule="evenodd"
+            />
+          </svg>
+          Payment Successful
+        </div>
+      </div>
+
+      <!-- Content -->
+      <div class="content">
+        <div class="greeting">
+          <p>Hello <strong th:text="${customerName}">Customer</strong>,</p>
+          <p>
+            We're thrilled to confirm that your order has been successfully
+            placed and payment processed. Your items are now being prepared for
+            pickup!
+          </p>
         </div>
 
-        <!-- Content -->
-        <div class="content">
-            <div class="greeting">
-                <p style="font-size: 18px; margin-bottom: 15px; color: #374151; font-weight: 400;">
-                    Hello <strong th:text="${customerName}" style="color: #111827; font-weight: 600;">Customer</strong>,
-                </p>
-                <p style="font-size: 18px; color: #374151; font-weight: 400;">We're thrilled to confirm that your order has been successfully placed and payment processed. Your items are now being prepared for pickup!</p>
+        <!-- Order Details -->
+        <div class="section">
+          <h3 class="section-title">
+            <svg class="section-icon" viewBox="0 0 20 20" fill="currentColor">
+              <path d="M9 2a1 1 0 000 2h2a1 1 0 100-2H9z" />
+              <path
+                fill-rule="evenodd"
+                d="M4 5a2 2 0 012-2 3 3 0 003 3h2a3 3 0 003-3 2 2 0 012 2v11a2 2 0 01-2 2H6a2 2 0 01-2-2V5zm3 4a1 1 0 000 2h6a1 1 0 100-2H7zm0 4a1 1 0 100 2h6a1 1 0 100-2H7z"
+                clip-rule="evenodd"
+              />
+            </svg>
+            Order Summary
+          </h3>
+          <div class="info-box">
+            <div class="detail-row">
+              <span class="detail-label">Order Number</span>
+              <span class="detail-value" th:text="${orderNumber}"
+                >ORD-123456</span
+              >
             </div>
-
-            <!-- Order Details -->
-            <div class="order-details" style="background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%); border: 2px solid #e2e8f0; border-radius: 12px; padding: 25px; margin: 25px 0; position: relative; overflow: hidden;">
-                <h3 class="section-title" style="margin: 0 0 20px 0; color: #1e293b; font-size: 20px; font-weight: 600; display: flex; align-items: center; gap: 10px;">
-                    <div class="section-icon" style="width: 24px; height: 24px; background: linear-gradient(135deg, #3b82f6, #60a5fa); border-radius: 6px; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
-                        <div style="width: 12px; height: 12px; background: white; border-radius: 2px;"></div>
-                    </div>
-                    Order Summary
-                </h3>
-                <table style="width: 100%; border-collapse: collapse;">
-                    <tr class="detail-row" style="margin-bottom: 12px; padding: 12px 0; border-bottom: 1px solid #e5e7eb;">
-                        <td style="font-weight: 500; color: #6b7280; font-size: 15px; padding-right: 20px;">Order Number</td>
-                        <td style="color: #111827; font-weight: 600; font-size: 15px; text-align: right;" th:text="${orderNumber}">ORD-123456</td>
-                    </tr>
-                    <tr class="detail-row" style="margin-bottom: 12px; padding: 12px 0; border-bottom: 1px solid #e5e7eb;">
-                        <td style="font-weight: 500; color: #6b7280; font-size: 15px; padding-right: 20px;">Order Date</td>
-                        <td style="color: #111827; font-weight: 600; font-size: 15px; text-align: right;" th:text="${orderDate}">January 15, 2025</td>
-                    </tr>
-                    <tr class="detail-row" style="margin-bottom: 12px; padding: 12px 0; border-bottom: 1px solid #e5e7eb;">
-                        <td style="font-weight: 500; color: #6b7280; font-size: 15px; padding-right: 20px;">Status</td>
-                        <td style="text-align: right;">
-                            <span class="status-badge" style="display: inline-block; padding: 4px 12px; border-radius: 50px; font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; background: rgba(59, 130, 246, 0.1); color: #1e40af; border: 1px solid rgba(59, 130, 246, 0.3);" th:text="${orderStatus}">CONFIRMED</span>
-                        </td>
-                    </tr>
-                    <tr class="detail-row" style="margin-bottom: 0; padding: 12px 0;">
-                        <td style="font-weight: 500; color: #6b7280; font-size: 15px; padding-right: 20px;">Email Address</td>
-                        <td style="color: #111827; font-weight: 600; font-size: 15px; text-align: right;" th:text="${customerEmail}">customer@example.com</td>
-                    </tr>
-                </table>
+            <div class="detail-row">
+              <span class="detail-label">Order Date</span>
+              <span class="detail-value" th:text="${orderDate}"
+                >January 15, 2025</span
+              >
             </div>
-
-            <!-- Order Items -->
-            <div class="order-items" style="margin: 30px 0;">
-                <h3 class="section-title" style="margin: 0 0 20px 0; color: #1e293b; font-size: 20px; font-weight: 600; display: flex; align-items: center; gap: 10px;">
-                    <div class="section-icon" style="width: 24px; height: 24px; background: linear-gradient(135deg, #3b82f6, #60a5fa); border-radius: 6px; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
-                        <div style="width: 12px; height: 12px; background: white; border-radius: 2px;"></div>
-                    </div>
-                    Your Items
-                </h3>
-                <div th:each="item : ${orderItems}" class="item" style="background: white; border: 1px solid #e5e7eb; border-radius: 10px; padding: 20px; margin-bottom: 15px; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);">
-                    <table style="width: 100%; border-collapse: collapse;" class="item-header">
-                        <tr>
-                            <td style="font-weight: 600; color: #111827; font-size: 16px; padding-right: 15px;" th:text="${item.productName}">Product Name</td>
-                            <td style="font-weight: 700; color: #1e40af; font-size: 16px; text-align: right; white-space: nowrap;">$<span th:text="${item.totalPrice}">99.99</span></td>
-                        </tr>
-                    </table>
-                    <div class="item-details" th:if="${item.variantName}" style="font-size: 14px; color: #6b7280; margin-bottom: 8px;">
-                        <span class="variant-tag" style="display: inline-block; background: #f3f4f6; color: #374151; padding: 2px 8px; border-radius: 4px; font-size: 12px; font-weight: 500;" th:text="${item.variantName}">Variant</span>
-                    </div>
-                    <div class="quantity-price" style="font-size: 14px; color: #6b7280;">
-                        <span>Quantity: <strong th:text="${item.quantity}" style="font-weight: 600;">1</strong></span>
-                        <span style="margin: 0 10px;">•</span>
-                        <span>Unit Price: <strong style="font-weight: 600;">$<span th:text="${item.unitPrice}">99.99</span></strong></span>
-                    </div>
-                </div>
+            <div class="detail-row">
+              <span class="detail-label">Status</span>
+              <span class="status-badge" th:text="${orderStatus}"
+                >CONFIRMED</span
+              >
             </div>
-
-            <!-- Order Totals -->
-            <div class="totals" style="background: linear-gradient(135deg, #fefefe 0%, #f8fafc 100%); border: 2px solid #e5e7eb; border-radius: 12px; padding: 25px; margin: 30px 0; position: relative;">
-                <h3 class="section-title" style="margin: 0 0 20px 0; color: #1e293b; font-size: 20px; font-weight: 600; display: flex; align-items: center; gap: 10px;">
-                    <div class="section-icon" style="width: 24px; height: 24px; background: linear-gradient(135deg, #3b82f6, #60a5fa); border-radius: 6px; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
-                        <div style="width: 12px; height: 12px; background: white; border-radius: 2px;"></div>
-                    </div>
-                    Order Total
-                </h3>
-                <table class="totals-table" style="width: 100%; border-collapse: collapse;">
-                    <tr style="padding: 10px 0;">
-                        <td style="width: 70%; font-size: 15px; padding-right: 20px;">Subtotal</td>
-                        <td style="width: 30%; text-align: right; font-size: 15px;" th:text="${subtotal}">$99.99</td>
-                    </tr>
-                    <tr th:if="${shippingCost != null and shippingCost != '$0.00'}" style="padding: 10px 0;">
-                        <td style="width: 70%; font-size: 15px; padding-right: 20px;">Shipping & Handling</td>
-                        <td style="width: 30%; text-align: right; font-size: 15px;" th:text="${shippingCost}">$9.99</td>
-                    </tr>
-                    <tr th:if="${taxAmount != null and taxAmount != '$0.00'}" style="padding: 10px 0;">
-                        <td style="width: 70%; font-size: 15px; padding-right: 20px;">Tax</td>
-                        <td style="width: 30%; text-align: right; font-size: 15px;" th:text="${taxAmount}">$8.00</td>
-                    </tr>
-                    <tr th:if="${discountAmount != null and discountAmount != '$0.00'}" style="padding: 10px 0;">
-                        <td style="width: 70%; font-size: 15px; padding-right: 20px;">Discount Applied</td>
-                        <td style="width: 30%; text-align: right; font-size: 15px; color: #1e40af;" th:text="'-' + ${discountAmount}">-$10.00</td>
-                    </tr>
-                    <tr class="final" style="border-top: 2px solid #e5e7eb; padding-top: 20px;">
-                        <td style="width: 70%; font-weight: 700; font-size: 20px; color: #1e40af; padding-right: 20px;">Total Paid</td>
-                        <td style="width: 30%; text-align: right; font-weight: 700; font-size: 20px; color: #1e40af;" th:text="${totalAmount}">$107.98</td>
-                    </tr>
-                </table>
+            <div class="detail-row">
+              <span class="detail-label">Email Address</span>
+              <span class="detail-value" th:text="${customerEmail}"
+                >customer@example.com</span
+              >
             </div>
-
-            <!-- Pickup Information -->
-            <div class="pickup-section" style="background: linear-gradient(135deg, #1e40af 0%, #3b82f6 100%); color: white; border-radius: 12px; padding: 30px; text-align: center; margin: 30px 0; position: relative; overflow: hidden;">
-                <div class="pickup-content" style="position: relative; z-index: 1;">
-                    <h3 style="margin: 0 0 15px 0; font-size: 22px; font-weight: 600;">Ready for Pickup</h3>
-                    <div class="pickup-timeline" style="background: rgba(255, 255, 255, 0.1); border-radius: 8px; padding: 15px; margin: 20px 0; backdrop-filter: blur(10px);">
-                        <p style="margin: 0;"><strong>Estimated Ready Time:</strong> 3-5 business days</p>
-                        <p style="margin: 5px 0 0 0;">We'll notify you when your order is ready for collection</p>
-                    </div>
-                    <p style="margin: 0 0 10px 0;"><strong>Your Pickup Reference:</strong></p>
-                    <div class="pickup-token" style="background: rgba(255, 255, 255, 0.15); border: 2px solid rgba(255, 255, 255, 0.3); border-radius: 8px; padding: 15px; font-family: 'Courier New', monospace; font-size: 16px; font-weight: 700; margin: 20px 0; letter-spacing: 1px; backdrop-filter: blur(10px);" th:text="${pickupToken}">PICKUP-ORD-123456-1234567890</div>
-                    <p style="margin: 0; font-size: 12px;"><small>Present this reference code or scan the QR code from your attached PDF invoice when collecting your order.</small></p>
-                </div>
-            </div>
-
-            <!-- Call to Action -->
-            <div class="cta-section" style="text-align: center; margin: 40px 0;">
-                <a th:href="${trackingUrl}" class="cta-button" style="display: inline-block; background: linear-gradient(135deg, #1e40af 0%, #3b82f6 100%); color: white; text-decoration: none; padding: 15px 35px; border-radius: 8px; font-weight: 600; font-size: 16px; box-shadow: 0 4px 15px rgba(59, 130, 246, 0.4);">Track Your Order Status</a>
-            </div>
-
-            <!-- Important Notice -->
-            <div class="important-notice" style="margin: 30px 0; padding: 20px; background: linear-gradient(135deg, #dbeafe 0%, #bfdbfe 100%); border-radius: 10px; border-left: 4px solid #1e40af; position: relative;">
-                <div class="notice-icon" style="position: absolute; top: 20px; left: 20px; width: 20px; height: 20px; background: #1e40af; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: white; font-weight: bold; font-size: 12px;">!</div>
-                <div class="notice-content" style="margin-left: 35px;">
-                    <h4 class="notice-title" style="color: #1e3a8a; margin: 0 0 10px 0; font-weight: 600; font-size: 16px;">Important Information</h4>
-                    <p class="notice-text" style="color: #1e3a8a; margin: 0; font-size: 14px; line-height: 1.5;">
-                        Your detailed invoice is attached as a PDF document. Please save this for your records and bring it with you during pickup for faster service.
-                    </p>
-                </div>
-            </div>
+          </div>
         </div>
 
-        <!-- Footer -->
-        <div class="footer" style="background: linear-gradient(135deg, #1e3a8a 0%, #3b82f6 100%); padding: 40px 30px; text-align: center; color: #d1d5db;">
-            <h4 style="color: #ffffff; margin: 0 0 20px 0; font-size: 20px; font-weight: 600;">Customer Support</h4>
-            <div class="contact-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 20px; margin: 25px 0;">
-                <div class="contact-item" style="background: rgba(255, 255, 255, 0.05); padding: 15px; border-radius: 8px; border: 1px solid rgba(255, 255, 255, 0.1);">
-                    <strong style="color: #ffffff;">Email Support</strong><br>
-                    support@shopsphere.com
-                </div>
-                <div class="contact-item" style="background: rgba(255, 255, 255, 0.05); padding: 15px; border-radius: 8px; border: 1px solid rgba(255, 255, 255, 0.1);">
-                    <strong style="color: #ffffff;">Phone</strong><br>
-                    +250 788 123 456
-                </div>
-                <div class="contact-item" style="background: rgba(255, 255, 255, 0.05); padding: 15px; border-radius: 8px; border: 1px solid rgba(255, 255, 255, 0.1);">
-                    <strong style="color: #ffffff;">Business Hours</strong><br>
-                    Monday - Friday, 9AM - 6PM
-                </div>
+        <!-- Order Items Grouped by Shop -->
+        <div th:each="shopOrder : ${shopOrders}" class="section">
+          <h3 class="section-title">
+            <svg class="section-icon" viewBox="0 0 20 20" fill="currentColor">
+              <path
+                fill-rule="evenodd"
+                d="M10 2a4 4 0 00-4 4v1H5a1 1 0 00-.994.89l-1 9A1 1 0 004 18h12a1 1 0 00.994-1.11l-1-9A1 1 0 0015 7h-1V6a4 4 0 00-4-4zm2 5V6a2 2 0 10-4 0v1h4zm-6 3a1 1 0 112 0 1 1 0 01-2 0zm7-1a1 1 0 100 2 1 1 0 000-2z"
+                clip-rule="evenodd"
+              />
+            </svg>
+            Items from <span th:text="${shopOrder.shopName}">Shop Name</span>
+          </h3>
+
+          <div th:each="item : ${shopOrder.items}" class="item">
+            <div class="item-header">
+              <span class="item-name" th:text="${item.productName}"
+                >Product Name</span
+              >
+              <span class="item-price" th:text="${item.totalPrice}">0 RWF</span>
             </div>
-            <div class="social-links" style="margin: 25px 0; padding: 20px 0; border-top: 1px solid rgba(255, 255, 255, 0.1);">
-                <a href="#" th:href="${baseUrl}" style="color: #93c5fd; text-decoration: none; margin: 0 15px; font-weight: 500;">Website</a>
-                <a href="#" style="color: #93c5fd; text-decoration: none; margin: 0 15px; font-weight: 500;">Return Policy</a>
-                <a href="#" style="color: #93c5fd; text-decoration: none; margin: 0 15px; font-weight: 500;">Track Order</a>
-                <a href="#" style="color: #93c5fd; text-decoration: none; margin: 0 15px; font-weight: 500;">FAQ</a>
-                <a href="#" style="color: #93c5fd; text-decoration: none; margin: 0 15px; font-weight: 500;">Contact Us</a>
+            <div class="item-details" th:if="${item.variantName}">
+              <span class="variant-tag" th:text="${item.variantName}"
+                >Variant</span
+              >
             </div>
-            <div class="footer-brand" style="margin-top: 25px; padding-top: 20px; border-top: 1px solid rgba(255, 255, 255, 0.1); font-size: 13px; color: #9ca3af; font-weight: 300;">
-                <p style="margin: 8px 0;">Thank you for choosing ShopSphere – Your trusted shopping partner.</p>
-                <p style="margin: 8px 0;">© 2025 ShopSphere. All rights reserved.</p>
+            <div class="quantity-info">
+              Quantity: <strong th:text="${item.quantity}">1</strong> • Unit
+              Price: <strong th:text="${item.unitPrice}">0 RWF</strong>
             </div>
+          </div>
+
+          <!-- Shop Specific Totals & Pickup -->
+          <div
+            class="info-box"
+            style="
+              margin-top: 15px;
+              border-style: dashed;
+              background-color: #fefce8;
+            "
+          >
+            <table class="totals-table">
+              <tr>
+                <td style="font-weight: 500">Shop Subtotal</td>
+                <td th:text="${shopOrder.subtotal}">0 RWF</td>
+              </tr>
+              <tr th:if="${shopOrder.shippingCost != '0 RWF'}">
+                <td>Shipping</td>
+                <td th:text="${shopOrder.shippingCost}">0 RWF</td>
+              </tr>
+              <tr th:if="${shopOrder.discountAmount != '0 RWF'}">
+                <td>Vendor Discount</td>
+                <td
+                  style="color: #16a34a"
+                  th:text="'-' + ${shopOrder.discountAmount}"
+                >
+                  0 RWF
+                </td>
+              </tr>
+              <tr
+                class="total-row"
+                style="border-top-width: 1px; padding-top: 8px"
+              >
+                <td style="font-size: 15px">Shop Total</td>
+                <td style="font-size: 15px" th:text="${shopOrder.totalAmount}">
+                  0 RWF
+                </td>
+              </tr>
+            </table>
+
+            <div
+              style="
+                margin-top: 15px;
+                padding-top: 15px;
+                border-top: 1px solid #e5e7eb;
+              "
+            >
+              <p
+                style="
+                  font-size: 13px;
+                  color: #6b7280;
+                  margin-bottom: 5px;
+                  font-weight: 600;
+                "
+              >
+                PICKUP REFERENCE FOR THIS SHOP:
+              </p>
+              <div
+                class="pickup-token"
+                style="
+                  margin: 5px 0;
+                  padding: 10px;
+                  background-color: #2563eb;
+                  color: white;
+                "
+                th:text="${shopOrder.pickupToken}"
+              >
+                PICKUP-123
+              </div>
+              <p style="font-size: 11px; color: #6b7280">
+                Present this code when collecting items from this vendor.
+              </p>
+            </div>
+          </div>
         </div>
+
+        <!-- Overall Order Totals -->
+        <div class="section">
+          <h3 class="section-title">
+            <svg class="section-icon" viewBox="0 0 20 20" fill="currentColor">
+              <path
+                d="M8.433 7.418c.155-.103.346-.196.567-.267v1.698a2.305 2.305 0 01-.567-.267C8.07 8.34 8 8.114 8 8c0-.114.07-.34.433-.582zM11 12.849v-1.698c.22.071.412.164.567.267.364.243.433.468.433.582 0 .114-.07.34-.433.582a2.305 2.305 0 01-.567.267z"
+              />
+              <path
+                fill-rule="evenodd"
+                d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-13a1 1 0 10-2 0v.092a4.535 4.535 0 00-1.676.662C6.602 6.234 6 7.009 6 8c0 .99.602 1.765 1.324 2.246.48.32 1.054.545 1.676.662v1.941c-.391-.127-.68-.317-.843-.504a1 1 0 10-1.51 1.31c.562.649 1.413 1.076 2.353 1.253V15a1 1 0 102 0v-.092a4.535 4.535 0 001.676-.662C13.398 13.766 14 12.991 14 12c0-.99-.602-1.765-1.324-2.246A4.535 4.535 0 0011 9.092V7.151c.391.127.68.317.843.504a1 1 0 101.511-1.31c-.563-.649-1.413-1.076-2.354-1.253V5z"
+                clip-rule="evenodd"
+              />
+            </svg>
+            Overall Summary
+          </h3>
+          <div class="info-box">
+            <table class="totals-table">
+              <tr>
+                <td>Total Subtotal</td>
+                <td th:text="${subtotal}">0 RWF</td>
+              </tr>
+              <tr>
+                <td>Total Shipping</td>
+                <td th:text="${overallShipping}">0 RWF</td>
+              </tr>
+              <tr th:if="${overallTax != '0 RWF'}">
+                <td>Tax</td>
+                <td th:text="${overallTax}">0 RWF</td>
+              </tr>
+              <tr th:if="${overallDiscount != '0 RWF'}">
+                <td>Total Discount</td>
+                <td style="color: #16a34a" th:text="'-' + ${overallDiscount}">
+                  0 RWF
+                </td>
+              </tr>
+
+              <!-- Points Payment Info -->
+              <th:block th:if="${hasPointsPayment}">
+                <tr style="color: #7c3aed">
+                  <td>
+                    Points Used (<span th:text="${pointsUsed}">0</span> pts)
+                  </td>
+                  <td th:text="'-' + ${pointsValue}">0 RWF</td>
+                </tr>
+                <tr
+                  th:if="${isHybridPayment}"
+                  style="border-top: 1px dashed #e5e7eb"
+                >
+                  <td style="font-size: 13px">
+                    Paid by <span th:text="${paymentMethod}">CARD</span>
+                  </td>
+                  <td style="font-size: 13px" th:text="${remainingAmount}">
+                    0 RWF
+                  </td>
+                </tr>
+              </th:block>
+
+              <tr class="total-row">
+                <td>Amount Paid</td>
+                <td th:text="${overallTotal}">0 RWF</td>
+              </tr>
+            </table>
+          </div>
+        </div>
+
+        <!-- Call to Action -->
+        <div class="cta-section">
+          <a th:href="${trackingUrl}" class="cta-button"
+            >Track Your Order Status</a
+          >
+        </div>
+
+        <!-- Important Notice -->
+        <div class="notice-box">
+          <div class="notice-title">Important Information</div>
+          <p class="notice-text">
+            Your detailed invoice is attached as a PDF document. This invoice
+            contains separate QR codes for each shop's order. Please present the
+            relevant QR code when collecting your items from each vendor.
+          </p>
+        </div>
+      </div>
+
+      <!-- Footer -->
+      <div class="footer">
+        <h4>Customer Support</h4>
+        <div class="contact-grid">
+          <div class="contact-item">
+            <strong>Email Support</strong>
+            <span>support@shopsphere.com</span>
+          </div>
+          <div class="contact-item">
+            <strong>Phone</strong>
+            <span>+250 788 123 456</span>
+          </div>
+          <div class="contact-item">
+            <strong>Business Hours</strong>
+            <span>Mon-Fri, 9AM - 6PM</span>
+          </div>
+        </div>
+        <div class="footer-links">
+          <a href="#" th:href="${baseUrl}">Website</a>
+          <a href="#">Return Policy</a>
+          <a href="#">Track Order</a>
+          <a href="#">FAQ</a>
+          <a href="#">Contact Us</a>
+        </div>
+        <div class="footer-brand">
+          <p>
+            Thank you for choosing ShopSphere – Your trusted shopping partner.
+          </p>
+          <p>© 2025 ShopSphere. All rights reserved.</p>
+        </div>
+      </div>
     </div>
-</body>
+  </body>
 </html>

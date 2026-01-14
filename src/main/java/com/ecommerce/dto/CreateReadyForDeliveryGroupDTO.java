@@ -16,5 +16,6 @@ public class CreateReadyForDeliveryGroupDTO {
     private String deliveryGroupName;
     private String deliveryGroupDescription;
     private UUID delivererId;
+    private UUID shopId;
     private List<Long> orderIds;
 }

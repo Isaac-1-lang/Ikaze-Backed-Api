@@ -33,6 +33,10 @@ public class ReadyForDeliveryGroup {
     @JoinColumn(name = "deliverer_id")
     private User deliverer;
 
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "shop_id", nullable = false)
+    private Shop shop;
+
     @OneToMany(mappedBy = "readyForDeliveryGroup", fetch = FetchType.LAZY)
     private Set<ShopOrder> shopOrders = new HashSet<>();
 

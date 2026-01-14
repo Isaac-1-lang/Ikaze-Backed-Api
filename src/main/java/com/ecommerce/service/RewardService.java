@@ -12,9 +12,10 @@ import java.util.UUID;
 public interface RewardService {
 
     RewardSystemDTO getActiveRewardSystem(UUID shopId);
-    
+
     /**
-     * @deprecated Use getActiveRewardSystem(UUID shopId) instead. This method is kept for backward compatibility.
+     * @deprecated Use getActiveRewardSystem(UUID shopId) instead. This method is
+     *             kept for backward compatibility.
      */
     @Deprecated
     RewardSystemDTO getActiveRewardSystem();
@@ -41,8 +42,6 @@ public interface RewardService {
 
     Integer calculateOrderPoints(Integer productCount, BigDecimal orderAmount);
 
-    void checkRewardableOnOrderAndReward(UUID userId, Long orderId, Integer productCount, BigDecimal orderAmount);
-
     UserPointsDTO awardPointsForOrder(UUID userId, Long orderId, Integer productCount, BigDecimal orderAmount);
 
     UserPointsDTO awardPointsForReview(UUID userId, String description);
@@ -64,4 +63,10 @@ public interface RewardService {
     Integer getPointsRequiredForProduct(BigDecimal productPrice);
 
     Integer getPreviewPointsForOrder(Integer productCount, BigDecimal orderAmount);
+
+    // Shop-aware methods
+    void checkRewardableOnOrderAndReward(com.ecommerce.entity.Order order);
+
+    UserPointsDTO awardPointsForOrder(UUID userId, Long orderId, Integer productCount, BigDecimal orderAmount,
+            com.ecommerce.entity.Shop shop);
 }

@@ -48,6 +48,7 @@ public class OrderPDFService {
             Font titleFont = FontFactory.getFont(FontFactory.HELVETICA_BOLD, 32, BRAND_PRIMARY);
             Font largeHeaderFont = FontFactory.getFont(FontFactory.HELVETICA_BOLD, 18, TEXT_DARK);
             Font headerFont = FontFactory.getFont(FontFactory.HELVETICA_BOLD, 14, TEXT_DARK);
+            Font shopHeaderFont = FontFactory.getFont(FontFactory.HELVETICA_BOLD, 14, BRAND_PRIMARY);
             Font normalFont = FontFactory.getFont(FontFactory.HELVETICA, 11, TEXT_DARK);
             Font boldFont = FontFactory.getFont(FontFactory.HELVETICA_BOLD, 11, TEXT_DARK);
             Font mutedFont = FontFactory.getFont(FontFactory.HELVETICA, 10, TEXT_MUTED);
@@ -69,16 +70,15 @@ public class OrderPDFService {
                 addPickupAddress(document, order.getOrderAddress(), headerFont, boldFont, normalFont);
             }
 
-            // Order items with enhanced table
-            addOrderItems(document, order, headerFont, boldFont, normalFont);
-
-            // Order summary/totals
-            if (order.getOrderInfo() != null) {
-                addOrderSummary(document, order, headerFont, boldFont, normalFont, totalFont);
+            // Group by Shop Sections
+            for (com.ecommerce.entity.ShopOrder shopOrder : order.getShopOrders()) {
+                addShopSpecificSection(document, shopOrder, shopHeaderFont, boldFont, normalFont);
             }
 
-            // QR Code and pickup information
-            addPickupInformation(document, order, headerFont, boldFont, normalFont);
+            // Global order summary/totals
+            if (order.getOrderInfo() != null) {
+                addGlobalOrderSummary(document, order, headerFont, boldFont, normalFont, totalFont);
+            }
 
             // Footer
             addFooter(document, normalFont, mutedFont);
@@ -227,42 +227,38 @@ public class OrderPDFService {
         document.add(addressTable);
     }
 
-    private void addOrderItems(Document document, Order order, Font headerFont, Font boldFont, Font normalFont)
-            throws DocumentException {
-        Paragraph itemsHeader = new Paragraph("Order Items", headerFont);
-        itemsHeader.setSpacingBefore(20);
-        itemsHeader.setSpacingAfter(10);
-        document.add(itemsHeader);
+    private void addShopSpecificSection(Document document, com.ecommerce.entity.ShopOrder shopOrder,
+            Font shopHeaderFont, Font boldFont, Font normalFont) throws DocumentException {
+        // Shop Name Header
+        Paragraph shopHeader = new Paragraph("From Shop: " + shopOrder.getShop().getName().toUpperCase(),
+                shopHeaderFont);
+        shopHeader.setSpacingBefore(20);
+        shopHeader.setSpacingAfter(10);
+        document.add(shopHeader);
 
+        // Items Table for this Shop
         PdfPTable itemsTable = new PdfPTable(6);
         itemsTable.setWidthPercentage(100);
         itemsTable.setWidths(new float[] { 3.5f, 1, 1.2f, 1.2f, 1f, 1.1f });
-        itemsTable.setSpacingAfter(20);
 
-        // Enhanced table headers
         itemsTable.addCell(createStyledHeaderCell("Product", boldFont));
         itemsTable.addCell(createStyledHeaderCell("Qty", boldFont));
-        itemsTable.addCell(createStyledHeaderCell("Original Price", boldFont));
-        itemsTable.addCell(createStyledHeaderCell("Paid Price", boldFont));
+        itemsTable.addCell(createStyledHeaderCell("Unit Price", boldFont));
+        itemsTable.addCell(createStyledHeaderCell("Original", boldFont));
         itemsTable.addCell(createStyledHeaderCell("Discount", boldFont));
         itemsTable.addCell(createStyledHeaderCell("Total", boldFont));
 
-        // Add items with alternating row colors
         boolean isAlternate = false;
-        for (OrderItem item : order.getAllItems()) { // Use getAllItems() method
+        for (OrderItem item : shopOrder.getItems()) {
             String productName = getProductDisplayName(item);
             BaseColor rowColor = isAlternate ? new BaseColor(249, 249, 249) : BaseColor.WHITE;
-
-            // Calculate discount information
             DiscountInfo discountInfo = calculateDiscountInfo(item);
 
             itemsTable.addCell(createStyledDataCell(productName, normalFont, rowColor));
             itemsTable.addCell(createStyledDataCell(String.valueOf(item.getQuantity()), normalFont, rowColor));
-            itemsTable
-                    .addCell(createStyledDataCell("$" + formatPrice(discountInfo.originalPrice), normalFont, rowColor));
-            itemsTable.addCell(createStyledDataCell("$" + formatPrice(item.getPrice()), normalFont, rowColor));
+            itemsTable.addCell(createStyledDataCell(formatCurrency(item.getPrice()), normalFont, rowColor));
+            itemsTable.addCell(createStyledDataCell(formatCurrency(discountInfo.originalPrice), normalFont, rowColor));
 
-            // Discount column
             if (discountInfo.hasDiscount) {
                 Font discountFont = new Font(boldFont.getBaseFont(), boldFont.getSize(), Font.BOLD, SUCCESS_GREEN);
                 itemsTable.addCell(createStyledDataCell(discountInfo.discountText, discountFont, rowColor));
@@ -270,144 +266,149 @@ public class OrderPDFService {
                 itemsTable.addCell(createStyledDataCell("-", normalFont, rowColor));
             }
 
-            itemsTable.addCell(createStyledDataCell("$" + formatPrice(item.getSubtotal()), boldFont, rowColor));
-
+            itemsTable.addCell(createStyledDataCell(formatCurrency(item.getSubtotal()), boldFont, rowColor));
             isAlternate = !isAlternate;
         }
-
         document.add(itemsTable);
-    }
 
-    private void addOrderSummary(Document document, Order order, Font headerFont, Font boldFont,
-            Font normalFont, Font totalFont) throws DocumentException {
-        OrderInfo orderInfo = order.getOrderInfo();
+        // Shop Summary and QR Code Section
+        PdfPTable summaryAndQrTable = new PdfPTable(2);
+        summaryAndQrTable.setWidthPercentage(100);
+        summaryAndQrTable.setWidths(new float[] { 1.5f, 1f });
+        summaryAndQrTable.setSpacingBefore(10);
+        summaryAndQrTable.setSpacingAfter(20);
 
-        // Calculate subtotal
-        BigDecimal subtotal = order.getAllItems().stream() // Use getAllItems() method
+        // Summary Side (Left)
+        PdfPCell summaryCell = new PdfPCell();
+        summaryCell.setBorder(Rectangle.NO_BORDER);
+        PdfPTable shopSummary = new PdfPTable(2);
+        shopSummary.setWidthPercentage(100);
+
+        BigDecimal subtotal = shopOrder.getItems().stream()
                 .map(OrderItem::getSubtotal)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
 
+        shopSummary.addCell(createSummaryCell("Shop Subtotal:", normalFont, false));
+        shopSummary.addCell(createSummaryCell(formatCurrency(subtotal), normalFont, true));
+
+        if (shopOrder.getShippingCost() != null && shopOrder.getShippingCost().compareTo(BigDecimal.ZERO) > 0) {
+            shopSummary.addCell(createSummaryCell("Shipping:", normalFont, false));
+            shopSummary.addCell(createSummaryCell(formatCurrency(shopOrder.getShippingCost()), normalFont, true));
+        }
+
+        if (shopOrder.getDiscountAmount() != null && shopOrder.getDiscountAmount().compareTo(BigDecimal.ZERO) > 0) {
+            shopSummary.addCell(createSummaryCell("Vendor Discount:", normalFont, false));
+            shopSummary.addCell(createSummaryCell("-" + formatCurrency(shopOrder.getDiscountAmount()),
+                    new Font(normalFont.getBaseFont(), normalFont.getSize(), Font.NORMAL, SUCCESS_GREEN), true));
+        }
+
+        PdfPCell lineCell = new PdfPCell();
+        lineCell.setBorder(Rectangle.TOP);
+        lineCell.setBorderColor(TABLE_BORDER);
+        lineCell.setColspan(2);
+        lineCell.setPhrase(new Phrase(""));
+        shopSummary.addCell(lineCell);
+
+        shopSummary.addCell(createSummaryCell("Shop Total:", boldFont, false));
+        shopSummary.addCell(createSummaryCell(formatCurrency(shopOrder.getTotalAmount()), boldFont, true));
+
+        summaryCell.addElement(shopSummary);
+        summaryAndQrTable.addCell(summaryCell);
+
+        // QR Code Side (Right)
+        PdfPCell qrCell = new PdfPCell();
+        qrCell.setBorder(Rectangle.BOX);
+        qrCell.setBorderColor(TABLE_BORDER);
+        qrCell.setPadding(10);
+        qrCell.setBackgroundColor(new BaseColor(250, 251, 252));
+        qrCell.setHorizontalAlignment(Element.ALIGN_CENTER);
+
+        try {
+            String token = shopOrder.getPickupToken();
+            byte[] qrBytes = qrCodeService.generateOrderTrackingQR(shopOrder.getShopOrderCode(), token);
+            Image qrImage = Image.getInstance(qrBytes);
+            qrImage.scaleToFit(80, 80);
+            qrImage.setAlignment(Element.ALIGN_CENTER);
+            qrCell.addElement(qrImage);
+
+            Paragraph tokenPara = new Paragraph(token, new Font(normalFont.getBaseFont(), 8, Font.BOLD));
+            tokenPara.setAlignment(Element.ALIGN_CENTER);
+            qrCell.addElement(tokenPara);
+
+            Paragraph instr = new Paragraph("PICKUP TOKEN", new Font(normalFont.getBaseFont(), 7));
+            instr.setAlignment(Element.ALIGN_CENTER);
+            qrCell.addElement(instr);
+        } catch (Exception e) {
+            qrCell.addElement(new Paragraph("QR Error", normalFont));
+        }
+
+        summaryAndQrTable.addCell(qrCell);
+        document.add(summaryAndQrTable);
+
+        // Add a line between shops
+        addSeparatorLine(document);
+    }
+
+    private void addGlobalOrderSummary(Document document, Order order, Font headerFont, Font boldFont,
+            Font normalFont, Font totalFont) throws DocumentException {
+        Paragraph summaryHeader = new Paragraph("Final Order Summary", headerFont);
+        summaryHeader.setSpacingBefore(20);
+        summaryHeader.setSpacingAfter(10);
+        document.add(summaryHeader);
+
+        OrderInfo orderInfo = order.getOrderInfo();
         PdfPTable summaryTable = new PdfPTable(2);
         summaryTable.setWidthPercentage(50);
         summaryTable.setHorizontalAlignment(Element.ALIGN_RIGHT);
         summaryTable.setWidths(new float[] { 2, 1 });
-        summaryTable.setSpacingAfter(30);
 
-        // Subtotal
-        summaryTable.addCell(createSummaryCell("Subtotal:", normalFont, false));
-        summaryTable.addCell(createSummaryCell("$" + formatPrice(subtotal), normalFont, true));
+        BigDecimal totalSubtotal = order.getAllItems().stream()
+                .map(OrderItem::getSubtotal)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
 
-        // Shipping
-        if (orderInfo.getShippingCost() != null && orderInfo.getShippingCost().compareTo(BigDecimal.ZERO) > 0) {
-            summaryTable.addCell(createSummaryCell("Shipping & Handling:", normalFont, false));
-            summaryTable.addCell(createSummaryCell("$" + formatPrice(orderInfo.getShippingCost()), normalFont, true));
-        }
+        summaryTable.addCell(createSummaryCell("Total Subtotal:", normalFont, false));
+        summaryTable.addCell(createSummaryCell(formatCurrency(totalSubtotal), normalFont, true));
 
-        // Tax
+        summaryTable.addCell(createSummaryCell("Overall Shipping:", normalFont, false));
+        summaryTable.addCell(createSummaryCell(formatCurrency(orderInfo.getShippingCost()), normalFont, true));
+
         if (orderInfo.getTaxAmount() != null && orderInfo.getTaxAmount().compareTo(BigDecimal.ZERO) > 0) {
             summaryTable.addCell(createSummaryCell("Tax:", normalFont, false));
-            summaryTable.addCell(createSummaryCell("$" + formatPrice(orderInfo.getTaxAmount()), normalFont, true));
+            summaryTable.addCell(createSummaryCell(formatCurrency(orderInfo.getTaxAmount()), normalFont, true));
         }
 
-        // Discount
         if (orderInfo.getDiscountAmount() != null && orderInfo.getDiscountAmount().compareTo(BigDecimal.ZERO) > 0) {
-            summaryTable.addCell(createSummaryCell("Discount:", normalFont, false));
-            summaryTable.addCell(createSummaryCell("-$" + formatPrice(orderInfo.getDiscountAmount()),
+            summaryTable.addCell(createSummaryCell("Total Discount:", normalFont, false));
+            summaryTable.addCell(createSummaryCell("-" + formatCurrency(orderInfo.getDiscountAmount()),
                     new Font(normalFont.getBaseFont(), normalFont.getSize(), Font.NORMAL, SUCCESS_GREEN), true));
         }
 
-        // Points information for points and hybrid payments
         if (order.getOrderTransaction() != null) {
             Integer pointsUsed = order.getOrderTransaction().getPointsUsed();
             BigDecimal pointsValue = order.getOrderTransaction().getPointsValue();
-
             if (pointsUsed != null && pointsUsed > 0) {
                 summaryTable.addCell(createSummaryCell("Points Used (" + pointsUsed + " pts):", normalFont, false));
-                summaryTable.addCell(createSummaryCell("-$" + formatPrice(pointsValue),
+                summaryTable.addCell(createSummaryCell("-" + formatCurrency(pointsValue),
                         new Font(normalFont.getBaseFont(), normalFont.getSize(), Font.NORMAL, SUCCESS_GREEN), true));
             }
         }
 
-        // Add separator line
-        PdfPCell separatorLeft = new PdfPCell();
-        separatorLeft.setBorder(Rectangle.TOP);
-        separatorLeft.setBorderColor(TABLE_BORDER);
-        separatorLeft.setBorderWidth(1);
-        separatorLeft.setPadding(5);
-        separatorLeft.setPhrase(new Phrase(""));
+        PdfPCell separator = new PdfPCell();
+        separator.setBorder(Rectangle.TOP);
+        separator.setBorderColor(TABLE_BORDER);
+        separator.setColspan(2);
+        summaryTable.addCell(separator);
 
-        PdfPCell separatorRight = new PdfPCell();
-        separatorRight.setBorder(Rectangle.TOP);
-        separatorRight.setBorderColor(TABLE_BORDER);
-        separatorRight.setBorderWidth(1);
-        separatorRight.setPadding(5);
-        separatorRight.setPhrase(new Phrase(""));
-
-        summaryTable.addCell(separatorLeft);
-        summaryTable.addCell(separatorRight);
-
-        // Total
-        summaryTable.addCell(createSummaryCell("Order Total:", totalFont, false));
-        summaryTable.addCell(createSummaryCell("$" + formatPrice(orderInfo.getTotalAmount()), totalFont, true));
+        summaryTable.addCell(createSummaryCell("Final Total Paid:", totalFont, false));
+        summaryTable.addCell(createSummaryCell(formatCurrency(orderInfo.getTotalAmount()), totalFont, true));
 
         document.add(summaryTable);
     }
 
-    private void addPickupInformation(Document document, Order order, Font headerFont, Font boldFont, Font normalFont)
-            throws DocumentException {
-        // Generate pickup token since Order doesn't have one
-        String pickupToken = "PICKUP-" + order.getOrderCode() + "-" + System.currentTimeMillis();
-
-        Paragraph qrHeader = new Paragraph("Pickup Information", headerFont);
-        qrHeader.setSpacingBefore(30);
-        qrHeader.setSpacingAfter(15);
-        document.add(qrHeader);
-
-        // Create a bordered section for pickup info
-        PdfPTable pickupTable = new PdfPTable(1);
-        pickupTable.setWidthPercentage(60);
-        pickupTable.setHorizontalAlignment(Element.ALIGN_CENTER);
-        pickupTable.setSpacingAfter(20);
-
-        PdfPCell pickupCell = new PdfPCell();
-        pickupCell.setBorderColor(TABLE_BORDER);
-        pickupCell.setBorderWidth(1);
-        pickupCell.setPadding(20);
-        pickupCell.setBackgroundColor(new BaseColor(248, 249, 250));
-        pickupCell.setHorizontalAlignment(Element.ALIGN_CENTER);
-
-        // Add QR code
-        try {
-            byte[] qrCodeBytes = qrCodeService.generateOrderTrackingQR(order.getOrderCode(), pickupToken);
-            Image qrImage = Image.getInstance(qrCodeBytes);
-            qrImage.setAlignment(Element.ALIGN_CENTER);
-            qrImage.scaleToFit(120, 120);
-            pickupCell.addElement(qrImage);
-
-            Paragraph spacer = new Paragraph(" ");
-            spacer.setSpacingAfter(10);
-            pickupCell.addElement(spacer);
-        } catch (Exception e) {
-            log.warn("Failed to add QR code to PDF: {}", e.getMessage());
-        }
-
-        // Token information
-        Paragraph tokenLabel = new Paragraph("Pickup Token:", normalFont);
-        tokenLabel.setAlignment(Element.ALIGN_CENTER);
-        pickupCell.addElement(tokenLabel);
-
-        Paragraph tokenValue = new Paragraph(pickupToken, boldFont);
-        tokenValue.setAlignment(Element.ALIGN_CENTER);
-        tokenValue.setSpacingAfter(10);
-        pickupCell.addElement(tokenValue);
-
-        Paragraph instructions = new Paragraph("Present this code or scan the QR code when collecting your order.",
-                normalFont);
-        instructions.setAlignment(Element.ALIGN_CENTER);
-        pickupCell.addElement(instructions);
-
-        pickupTable.addCell(pickupCell);
-        document.add(pickupTable);
+    private String formatCurrency(BigDecimal amount) {
+        if (amount == null)
+            return "0 RWF";
+        return String.format("%,.0f RWF", amount);
     }
 
     private void addFooter(Document document, Font normalFont, Font mutedFont) throws DocumentException {

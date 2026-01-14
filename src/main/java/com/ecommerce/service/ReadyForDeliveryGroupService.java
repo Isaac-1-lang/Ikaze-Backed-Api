@@ -25,14 +25,14 @@ public interface ReadyForDeliveryGroupService {
 
     ReadyForDeliveryGroupDTO getGroupById(Long groupId);
 
-    Page<ReadyForDeliveryGroupDTO> getAllGroups(Pageable pageable);
+    Page<ReadyForDeliveryGroupDTO> getAllGroups(java.util.UUID shopId, Pageable pageable);
 
-    List<ReadyForDeliveryGroupDTO> getAllGroups();
+    List<ReadyForDeliveryGroupDTO> getAllGroups(java.util.UUID shopId);
 
     // New methods for enhanced workflow
-    Page<DeliveryGroupDto> listAvailableGroups(Pageable pageable);
-    
-    Page<DeliveryGroupDto> listAvailableGroups(String search, Pageable pageable);
+    Page<DeliveryGroupDto> listAvailableGroups(java.util.UUID shopId, Pageable pageable);
+
+    Page<DeliveryGroupDto> listAvailableGroups(java.util.UUID shopId, String search, Pageable pageable);
 
     DeliveryGroupDto createGroupEnhanced(CreateReadyForDeliveryGroupDTO request);
 
@@ -40,9 +40,9 @@ public interface ReadyForDeliveryGroupService {
 
     void removeOrderFromGroup(Long groupId, Long orderId);
 
-    Page<AgentDto> listAvailableAgents(Pageable pageable, Sort sort);
-    
-    Page<AgentDto> listAvailableAgents(String search, Pageable pageable, Sort sort);
+    Page<AgentDto> listAvailableAgents(java.util.UUID shopId, Pageable pageable, Sort sort);
+
+    Page<AgentDto> listAvailableAgents(java.util.UUID shopId, String search, Pageable pageable, Sort sort);
 
     Optional<DeliveryGroupDto> findGroupByOrder(Long orderId);
 
@@ -65,17 +65,21 @@ public interface ReadyForDeliveryGroupService {
     DeliveryGroupDto changeOrderGroup(Long orderId, Long newGroupId);
 
     /**
-     * Get ALL delivery groups without any exclusions (includes started, finished, and pending groups)
+     * Get ALL delivery groups without any exclusions (includes started, finished,
+     * and pending groups)
      * Supports optional search by name, description, or deliverer name
-     * @param search Optional search term (can be null or empty)
+     * 
+     * @param search   Optional search term (can be null or empty)
      * @param pageable Pagination parameters
      * @return Page of all delivery groups
      */
-    Page<ReadyForDeliveryGroupDTO> getAllGroupsWithoutExclusions(String search, Pageable pageable);
+    Page<ReadyForDeliveryGroupDTO> getAllGroupsWithoutExclusions(java.util.UUID shopId, String search,
+            Pageable pageable);
 
     /**
      * Get orders for a specific delivery group with pagination
-     * @param groupId Delivery group ID
+     * 
+     * @param groupId  Delivery group ID
      * @param pageable Pagination parameters
      * @return Page of orders in the group
      */

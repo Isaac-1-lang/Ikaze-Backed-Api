@@ -17,6 +17,7 @@ public class DeliveryGroupDto {
     private String deliveryGroupName;
     private String deliveryGroupDescription;
     private java.util.UUID delivererId;
+    private java.util.UUID shopId;
     private String delivererName;
     private List<Long> orderIds;
     private Integer memberCount;

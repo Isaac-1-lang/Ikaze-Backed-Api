@@ -123,7 +123,7 @@ public class OrderEmailService {
         // Order details
         context.setVariable("orderNumber", order.getOrderCode());
         context.setVariable("orderDate", order.getCreatedAt().format(DateTimeFormatter.ofPattern("MMMM dd, yyyy")));
-        context.setVariable("orderStatus", order.getStatus()); // Use the getStatus() method from Order entity
+        context.setVariable("orderStatus", convertOrderStatus(order.getStatus()));
 
         // Customer info
         OrderCustomerInfo customerInfo = order.getOrderCustomerInfo();
@@ -135,18 +135,17 @@ public class OrderEmailService {
             context.setVariable("customerEmail", order.getUser().getUserEmail());
         }
 
-        // Order totals
+        // Global Totals
         if (order.getOrderInfo() != null) {
-            // Calculate subtotal from all items across shop orders
             BigDecimal subtotal = order.getAllItems().stream()
                     .map(OrderItem::getSubtotal)
                     .reduce(BigDecimal.ZERO, BigDecimal::add);
 
             context.setVariable("subtotal", formatCurrency(subtotal));
-            context.setVariable("shippingCost", formatCurrency(order.getOrderInfo().getShippingCost()));
-            context.setVariable("taxAmount", formatCurrency(order.getOrderInfo().getTaxAmount()));
-            context.setVariable("discountAmount", formatCurrency(order.getOrderInfo().getDiscountAmount()));
-            context.setVariable("totalAmount", formatCurrency(order.getOrderInfo().getTotalAmount()));
+            context.setVariable("overallShipping", formatCurrency(order.getOrderInfo().getShippingCost()));
+            context.setVariable("overallTax", formatCurrency(order.getOrderInfo().getTaxAmount()));
+            context.setVariable("overallDiscount", formatCurrency(order.getOrderInfo().getDiscountAmount()));
+            context.setVariable("overallTotal", formatCurrency(order.getOrderInfo().getTotalAmount()));
         }
 
         // Points information for points and hybrid payments
@@ -179,14 +178,30 @@ public class OrderEmailService {
             context.setVariable("hasPointsPayment", false);
         }
 
-        List<OrderItemEmailDTO> emailItems = order.getAllItems().stream()
-                .map(this::convertToEmailDTO)
-                .collect(java.util.stream.Collectors.toList());
-        context.setVariable("orderItems", emailItems);
+        // Grouping by Shop
+        List<ShopOrderEmailDTO> shopOrders = order.getShopOrders().stream().map(so -> {
+            ShopOrderEmailDTO dto = new ShopOrderEmailDTO();
+            dto.setShopName(so.getShop().getName());
+            // dto.setShopLogo(so.getShop().getLogo()); // If shop logo exists
 
-        // Pickup token - generate if not exists
-        String pickupToken = "PICKUP-" + order.getOrderCode() + "-" + System.currentTimeMillis();
-        context.setVariable("pickupToken", pickupToken);
+            List<OrderItemEmailDTO> items = so.getItems().stream()
+                    .map(this::convertToEmailDTO)
+                    .collect(java.util.stream.Collectors.toList());
+            dto.setItems(items);
+
+            dto.setSubtotal(formatCurrency(so.getItems().stream()
+                    .map(OrderItem::getSubtotal)
+                    .reduce(BigDecimal.ZERO, BigDecimal::add)));
+            dto.setShippingCost(formatCurrency(so.getShippingCost()));
+            dto.setDiscountAmount(formatCurrency(so.getDiscountAmount()));
+            dto.setTotalAmount(formatCurrency(so.getTotalAmount()));
+            dto.setPickupToken(so.getPickupToken());
+            dto.setStatus(convertOrderStatus(so.getStatus().name()));
+
+            return dto;
+        }).collect(java.util.stream.Collectors.toList());
+
+        context.setVariable("shopOrders", shopOrders);
 
         // URLs
         context.setVariable("baseUrl", baseUrl);
@@ -199,7 +214,7 @@ public class OrderEmailService {
         Context context = new Context();
 
         context.setVariable("orderNumber", order.getOrderCode());
-        context.setVariable("orderStatus", order.getStatus()); // Use the getStatus() method from Order entity
+        context.setVariable("orderStatus", convertOrderStatus(order.getStatus()));
         context.setVariable("statusMessage", statusMessage);
         context.setVariable("baseUrl", baseUrl);
         context.setVariable("trackingUrl", baseUrl + "/orders/" + order.getOrderCode());
@@ -215,11 +230,17 @@ public class OrderEmailService {
         return templateEngine.process("order-status-update", context);
     }
 
+    private String convertOrderStatus(String status) {
+        if (status == null)
+            return "Pending";
+        return status.substring(0, 1).toUpperCase() + status.substring(1).toLowerCase().replace("_", " ");
+    }
+
     private String formatCurrency(BigDecimal amount) {
         if (amount == null) {
-            return "$0.00";
+            return "0 RWF";
         }
-        return String.format("$%.2f", amount);
+        return String.format("%,.0f RWF", amount);
     }
 
     private OrderItemEmailDTO convertToEmailDTO(OrderItem item) {
@@ -244,7 +265,101 @@ public class OrderEmailService {
         return dto;
     }
 
-    // DTO class for email template
+    // DTO classes for email template
+    public static class ShopOrderEmailDTO {
+        private String shopName;
+        private String shopLogo;
+        private List<OrderItemEmailDTO> items;
+        private String subtotal;
+        private String shippingCost;
+        private String taxAmount;
+        private String discountAmount;
+        private String totalAmount;
+        private String pickupToken;
+        private String status;
+
+        // Getters and Setters
+        public String getShopName() {
+            return shopName;
+        }
+
+        public void setShopName(String shopName) {
+            this.shopName = shopName;
+        }
+
+        public String getShopLogo() {
+            return shopLogo;
+        }
+
+        public void setShopLogo(String shopLogo) {
+            this.shopLogo = shopLogo;
+        }
+
+        public List<OrderItemEmailDTO> getItems() {
+            return items;
+        }
+
+        public void setItems(List<OrderItemEmailDTO> items) {
+            this.items = items;
+        }
+
+        public String getSubtotal() {
+            return subtotal;
+        }
+
+        public void setSubtotal(String subtotal) {
+            this.subtotal = subtotal;
+        }
+
+        public String getShippingCost() {
+            return shippingCost;
+        }
+
+        public void setShippingCost(String shippingCost) {
+            this.shippingCost = shippingCost;
+        }
+
+        public String getTaxAmount() {
+            return taxAmount;
+        }
+
+        public void setTaxAmount(String taxAmount) {
+            this.taxAmount = taxAmount;
+        }
+
+        public String getDiscountAmount() {
+            return discountAmount;
+        }
+
+        public void setDiscountAmount(String discountAmount) {
+            this.discountAmount = discountAmount;
+        }
+
+        public String getTotalAmount() {
+            return totalAmount;
+        }
+
+        public void setTotalAmount(String totalAmount) {
+            this.totalAmount = totalAmount;
+        }
+
+        public String getPickupToken() {
+            return pickupToken;
+        }
+
+        public void setPickupToken(String pickupToken) {
+            this.pickupToken = pickupToken;
+        }
+
+        public String getStatus() {
+            return status;
+        }
+
+        public void setStatus(String status) {
+            this.status = status;
+        }
+    }
+
     public static class OrderItemEmailDTO {
         private String productName;
         private String variantName;

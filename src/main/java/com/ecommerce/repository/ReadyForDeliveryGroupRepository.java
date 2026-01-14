@@ -28,6 +28,20 @@ public interface ReadyForDeliveryGroupRepository extends JpaRepository<ReadyForD
         @Query("SELECT g FROM ReadyForDeliveryGroup g WHERE g.hasDeliveryStarted = false")
         Page<ReadyForDeliveryGroup> findAllWithOrdersAndDeliverer(Pageable pageable);
 
+        @EntityGraph(attributePaths = { "shopOrders", "deliverer" })
+        @Query("SELECT g FROM ReadyForDeliveryGroup g WHERE g.shop.shopId = :shopId AND g.hasDeliveryStarted = false")
+        Page<ReadyForDeliveryGroup> findAllWithOrdersAndDelivererByShop(@Param("shopId") java.util.UUID shopId,
+                        Pageable pageable);
+
+        @EntityGraph(attributePaths = { "shopOrders", "deliverer" })
+        @Query("SELECT g FROM ReadyForDeliveryGroup g WHERE g.shop.shopId = :shopId AND g.hasDeliveryStarted = false AND "
+                        +
+                        "(LOWER(g.deliveryGroupName) LIKE LOWER(CONCAT('%', :search, '%')) OR " +
+                        "LOWER(g.deliveryGroupDescription) LIKE LOWER(CONCAT('%', :search, '%')) OR " +
+                        "LOWER(CONCAT(g.deliverer.firstName, ' ', g.deliverer.lastName)) LIKE LOWER(CONCAT('%', :search, '%')))")
+        Page<ReadyForDeliveryGroup> searchAvailableGroupsByShop(@Param("shopId") java.util.UUID shopId,
+                        @Param("search") String search, Pageable pageable);
+
         @Query("SELECT g FROM ReadyForDeliveryGroup g LEFT JOIN FETCH g.shopOrders LEFT JOIN FETCH g.deliverer WHERE g.deliveryGroupId = :id")
         Optional<ReadyForDeliveryGroup> findByIdWithOrdersAndDeliverer(@Param("id") Long id);
 
@@ -93,4 +107,24 @@ public interface ReadyForDeliveryGroupRepository extends JpaRepository<ReadyForD
                         "LOWER(g.deliveryGroupDescription) LIKE LOWER(CONCAT('%', :search, '%')) OR " +
                         "LOWER(CONCAT(g.deliverer.firstName, ' ', g.deliverer.lastName)) LIKE LOWER(CONCAT('%', :search, '%'))")
         Page<ReadyForDeliveryGroup> searchAllGroupsWithoutExclusions(@Param("search") String search, Pageable pageable);
+
+        /**
+         * Find ALL delivery groups for a specific shop - NO EXCLUSIONS
+         */
+        @EntityGraph(attributePaths = { "shopOrders", "deliverer" })
+        @Query("SELECT g FROM ReadyForDeliveryGroup g WHERE g.shop.shopId = :shopId")
+        Page<ReadyForDeliveryGroup> findAllGroupsWithoutExclusionsByShop(@Param("shopId") java.util.UUID shopId,
+                        Pageable pageable);
+
+        /**
+         * Search ALL delivery groups for a specific shop by name, description, or
+         * deliverer name - NO EXCLUSIONS
+         */
+        @EntityGraph(attributePaths = { "shopOrders", "deliverer" })
+        @Query("SELECT g FROM ReadyForDeliveryGroup g WHERE g.shop.shopId = :shopId AND (" +
+                        "LOWER(g.deliveryGroupName) LIKE LOWER(CONCAT('%', :search, '%')) OR " +
+                        "LOWER(g.deliveryGroupDescription) LIKE LOWER(CONCAT('%', :search, '%')) OR " +
+                        "LOWER(CONCAT(g.deliverer.firstName, ' ', g.deliverer.lastName)) LIKE LOWER(CONCAT('%', :search, '%')))")
+        Page<ReadyForDeliveryGroup> searchAllGroupsWithoutExclusionsByShop(@Param("shopId") java.util.UUID shopId,
+                        @Param("search") String search, Pageable pageable);
 }

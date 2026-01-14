@@ -20,6 +20,7 @@ public class DeliveryGroupInfoDTO {
     private String deliveryGroupDescription;
     private String delivererId;
     private String delivererName;
+    private String shopId;
     private String delivererEmail;
     private String delivererPhone;
     private Integer memberCount;

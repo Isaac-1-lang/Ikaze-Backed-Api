@@ -315,6 +315,7 @@ public class OrderServiceImpl implements OrderService {
                 .deliveredAt(shopOrder.getDeliveredAt())
                 .createdAt(shopOrder.getCreatedAt())
                 .updatedAt(shopOrder.getUpdatedAt())
+                .deliveryGroup(toDeliveryGroupInfoDTO(shopOrder.getReadyForDeliveryGroup()))
                 .build();
     }
 
@@ -445,15 +446,43 @@ public class OrderServiceImpl implements OrderService {
                         .discount(shopOrder.getDiscountAmount())
                         // Only include the vendor's specific shop order
                         .shopOrders(List.of(toShopOrderDTO(shopOrder)));
+
+                // Populate items for this shop
+                builder.items(shopOrder.getItems().stream()
+                        .map(this::toAdminOrderItemDTO)
+                        .collect(Collectors.toList()));
+
+                // Populate delivery group if assigned
+                if (shopOrder.getReadyForDeliveryGroup() != null) {
+                    builder.deliveryGroup(toDeliveryGroupInfoDTO(shopOrder.getReadyForDeliveryGroup()));
+                }
             } else {
+                // If shopId provided but no shopOrder found, return all (fallback)
                 builder.shopOrders(order.getShopOrders().stream()
                         .map(this::toShopOrderDTO)
                         .collect(Collectors.toList()));
+                builder.items(order.getAllItems().stream()
+                        .map(this::toAdminOrderItemDTO)
+                        .collect(Collectors.toList()));
             }
         } else {
+            // General admin view: all shop orders and all items
             builder.shopOrders(order.getShopOrders().stream()
                     .map(this::toShopOrderDTO)
                     .collect(Collectors.toList()));
+
+            builder.items(order.getAllItems().stream()
+                    .map(this::toAdminOrderItemDTO)
+                    .collect(Collectors.toList()));
+
+            // For general admin, if there's only one shop order (most common)
+            // and it has a group, show it
+            if (order.getShopOrders().size() == 1) {
+                ShopOrder singleShopOrder = order.getShopOrders().iterator().next();
+                if (singleShopOrder.getReadyForDeliveryGroup() != null) {
+                    builder.deliveryGroup(toDeliveryGroupInfoDTO(singleShopOrder.getReadyForDeliveryGroup()));
+                }
+            }
         }
 
         return builder.build();
@@ -893,6 +922,7 @@ public class OrderServiceImpl implements OrderService {
                 .deliveryGroupDescription(group.getDeliveryGroupDescription())
                 .delivererId(deliverer != null ? deliverer.getId().toString() : null)
                 .delivererName(delivererName)
+                .shopId(group.getShop() != null ? group.getShop().getShopId().toString() : null)
                 .delivererEmail(deliverer != null ? deliverer.getUserEmail() : null)
                 .delivererPhone(deliverer != null ? deliverer.getPhoneNumber() : null)
                 .memberCount(group.getShopOrders() != null ? group.getShopOrders().size() : 0)

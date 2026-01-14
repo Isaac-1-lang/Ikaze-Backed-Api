@@ -259,39 +259,117 @@ public class RewardServiceImpl implements RewardService {
         return activeSystem.calculatePurchasePoints(productCount, orderAmount);
     }
 
-    @Override
-    public void checkRewardableOnOrderAndReward(UUID userId, Long orderId, Integer productCount,
-            BigDecimal orderAmount) {
+    private void logDebugToFile(String message) {
         try {
-            log.info("Checking if order {} is rewardable for user {}", orderId, userId);
-
-            RewardSystem activeSystem = getActiveRewardSystemEntity();
-            if (activeSystem == null || !activeSystem.getIsSystemEnabled()) {
-                log.info("No active reward system or system disabled, skipping points calculation");
-                return;
-            }
-
-            Integer pointsEarned = activeSystem.calculatePurchasePoints(productCount, orderAmount);
-
-            if (pointsEarned <= 0) {
-                log.info("Order {} does not meet reward criteria. Products: {}, Amount: {}. No points awarded.",
-                        orderId, productCount, orderAmount);
-                return;
-            }
-
-            log.info("Order {} meets reward criteria. Awarding {} points to user {}",
-                    orderId, pointsEarned, userId);
-
-            awardPointsForOrder(userId, orderId, productCount, orderAmount);
-
+            java.nio.file.Path path = java.nio.file.Paths.get("checkout_debug_logs.txt");
+            String timestamp = java.time.LocalDateTime.now()
+                    .format(java.time.format.DateTimeFormatter.ISO_LOCAL_DATE_TIME);
+            String logLine = timestamp + " - " + message + "\n";
+            java.nio.file.Files.write(path, logLine.getBytes(),
+                    java.nio.file.StandardOpenOption.CREATE, java.nio.file.StandardOpenOption.APPEND);
         } catch (Exception e) {
-            log.error("Error checking and rewarding points for order {}: {}", orderId, e.getMessage(), e);
+            log.error("Failed to write to debug file: " + e.getMessage());
         }
     }
 
     @Override
+    public void checkRewardableOnOrderAndReward(com.ecommerce.entity.Order order) {
+        log.info("Starting the rewarding services and checking correctly");
+        try {
+            if (order == null || order.getUser() == null)
+                return;
+            UUID userId = order.getUser().getId();
+            Long orderId = order.getOrderId();
+
+            log.info("Checking if order {} is rewardable for user {}", orderId, userId);
+
+            if (order.getShopOrders() != null) {
+                for (com.ecommerce.entity.ShopOrder shopOrder : order.getShopOrders()) {
+                    Integer productCount = shopOrder.getItems() != null ? shopOrder.getItems().size() : 0;
+                    BigDecimal orderAmount = shopOrder.getTotalAmount();
+                    Shop shop = shopOrder.getShop();
+                    logDebugToFile("Checking rewardable for shop order");
+                    if (shop != null) {
+                        logDebugToFile("Shop not null");
+                        checkRewardableForShopOrder(userId, orderId, productCount, orderAmount, shop);
+                    }
+                }
+            }
+        } catch (Exception e) {
+            log.error("Error checking and rewarding points for order {}: {}",
+                    order == null ? "null" : order.getOrderId(), e.getMessage(), e);
+        }
+    }
+
+    private void checkRewardableForShopOrder(UUID userId, Long orderId, Integer productCount, BigDecimal orderAmount,
+            Shop shop) {
+        logDebugToFile("Checkin rewardable for shop order");
+        logDebugToFile("Shop ID: " + shop.getShopId() + ", Shop Name: " + shop.getName());
+        logDebugToFile("Product Count: " + productCount + ", Order Amount: " + orderAmount);
+
+        try {
+            RewardSystem activeSystem = getActiveRewardSystemEntity(shop.getShopId());
+            if (activeSystem == null) {
+                logDebugToFile("No active reward system found for shop " + shop.getName());
+                return;
+            }
+
+            logDebugToFile("Found reward system - isSystemEnabled: " + activeSystem.getIsSystemEnabled());
+            logDebugToFile("isPurchasePointsEnabled: " + activeSystem.getIsPurchasePointsEnabled());
+            logDebugToFile("isQuantityBasedEnabled: " + activeSystem.getIsQuantityBasedEnabled());
+            logDebugToFile("isAmountBasedEnabled: " + activeSystem.getIsAmountBasedEnabled());
+
+            if (!activeSystem.getIsSystemEnabled()) {
+                logDebugToFile("Reward system disabled for shop " + shop.getName());
+                return;
+            }
+
+            Integer pointsEarned = activeSystem.calculatePurchasePoints(productCount, orderAmount);
+            logDebugToFile("Points calculated: " + pointsEarned + " for shop " + shop.getName());
+
+            if (pointsEarned <= 0) {
+                logDebugToFile(
+                        "ShopOrder from " + shop.getName() + " in Order " + orderId
+                                + " does not meet reward criteria. Products: " + productCount + ", Amount: "
+                                + orderAmount + ". No points awarded.");
+                return;
+            }
+
+            logDebugToFile("ShopOrder from " + shop.getName() + " in Order " + orderId
+                    + " meets reward criteria. Awarding " + pointsEarned + " points to user " + userId);
+
+            awardPointsForOrder(userId, orderId, productCount, orderAmount, shop);
+        } catch (Exception e) {
+            log.error("Error processing shop order rewards for shop {} in order {}: {}", shop.getShopId(), orderId,
+                    e.getMessage(), e);
+        }
+    }
+
+    private RewardSystem getActiveRewardSystemEntity(UUID shopId) {
+        logDebugToFile("Getting active reward system for shop");
+        return rewardSystemRepository.findByShopShopIdAndIsActiveTrue(shopId).orElse(null);
+    }
+
+    @Override
     public UserPointsDTO awardPointsForOrder(UUID userId, Long orderId, Integer productCount, BigDecimal orderAmount) {
-        Integer pointsEarned = calculateOrderPoints(productCount, orderAmount);
+        // Legacy method
+        return null;
+    }
+
+    @Override
+    public UserPointsDTO awardPointsForOrder(UUID userId, Long orderId, Integer productCount, BigDecimal orderAmount,
+            Shop shop) {
+        log.info("award points for the order");
+        RewardSystem activeSystem = getActiveRewardSystemEntity(shop.getShopId());
+        if (activeSystem == null) {
+            // Should verify via system if needed, but if we are here via
+            // checkRewardableForShopOrder, it's likely fine.
+            // But calculation below depends on it? Actually we can re-calculate or just use
+            // the system to get point value.
+            return null;
+        }
+
+        Integer pointsEarned = activeSystem.calculatePurchasePoints(productCount, orderAmount);
         if (pointsEarned <= 0) {
             return null;
         }
@@ -299,8 +377,8 @@ public class RewardServiceImpl implements RewardService {
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new RuntimeException("User not found"));
 
-        // Calculate current balance from UserPoints records
-        Integer currentBalance = userPointsRepository.calculateCurrentBalance(userId);
+        // Calculate current balance for THIS shop
+        Integer currentBalance = userPointsRepository.calculateCurrentBalanceByShop(userId, shop.getShopId());
         if (currentBalance == null) {
             currentBalance = 0;
         }
@@ -309,22 +387,19 @@ public class RewardServiceImpl implements RewardService {
         // Create audit trail record
         UserPoints userPoints = new UserPoints();
         userPoints.setUser(user);
+        userPoints.setShop(shop);
         userPoints.setPoints(pointsEarned); // Positive for earning
         userPoints.setPointsType(UserPoints.PointsType.EARNED_PURCHASE);
-        userPoints.setDescription("Points earned from order #" + orderId);
+        userPoints.setDescription("Points earned from order #" + orderId + " at " + shop.getName());
         userPoints.setOrderId(orderId);
         userPoints.setBalanceAfter(newBalance);
         userPoints.setCreatedAt(LocalDateTime.now());
-
-        RewardSystem activeSystem = getActiveRewardSystemEntity();
-        if (activeSystem != null) {
-            userPoints.setPointsValue(activeSystem.calculatePointsValue(pointsEarned));
-        }
+        userPoints.setPointsValue(activeSystem.calculatePointsValue(pointsEarned));
 
         UserPoints saved = userPointsRepository.save(userPoints);
 
-        log.info("Awarded {} points to user {} for order {}. New balance: {}",
-                pointsEarned, userId, orderId, newBalance);
+        log.info("Awarded {} points to user {} for order {} at shop {}. New shop balance: {}",
+                pointsEarned, userId, orderId, shop.getName(), newBalance);
 
         return convertToDTO(saved);
     }

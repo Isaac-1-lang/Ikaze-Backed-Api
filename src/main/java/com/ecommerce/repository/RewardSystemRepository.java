@@ -47,6 +47,7 @@ public interface RewardSystemRepository extends JpaRepository<RewardSystem, Long
 
     /**
      * Find the active reward system configuration (for backward compatibility)
+     * 
      * @deprecated Use findByShopShopIdAndIsActiveTrue instead
      */
     @Deprecated
