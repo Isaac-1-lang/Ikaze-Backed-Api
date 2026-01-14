@@ -44,7 +44,6 @@ public class OrderResponseDTO {
     @Data
     @NoArgsConstructor
     @AllArgsConstructor
-    @Builder
     public static class ShopOrderResponse {
         private Long id;
         private String shopOrderCode;
@@ -54,6 +53,7 @@ public class OrderResponseDTO {
         private String status;
         private List<OrderItem> items;
         private BigDecimal shippingCost;
+        private BigDecimal subtotal;
         private BigDecimal totalAmount;
     }
 

@@ -285,8 +285,15 @@ public class RewardServiceImpl implements RewardService {
 
             if (order.getShopOrders() != null) {
                 for (com.ecommerce.entity.ShopOrder shopOrder : order.getShopOrders()) {
-                    Integer productCount = shopOrder.getItems() != null ? shopOrder.getItems().size() : 0;
-                    BigDecimal orderAmount = shopOrder.getTotalAmount();
+                    // Calculate total product quantity (sum of all item quantities)
+                    Integer productCount = shopOrder.getItems() != null
+                            ? shopOrder.getItems().stream().mapToInt(com.ecommerce.entity.OrderItem::getQuantity).sum()
+                            : 0;
+
+                    // Use the persisted subtotal for rewards
+                    BigDecimal orderAmount = shopOrder.getSubtotal() != null ? shopOrder.getSubtotal()
+                            : BigDecimal.ZERO;
+
                     Shop shop = shopOrder.getShop();
                     logDebugToFile("Checking rewardable for shop order");
                     if (shop != null) {
@@ -371,6 +378,12 @@ public class RewardServiceImpl implements RewardService {
 
         Integer pointsEarned = activeSystem.calculatePurchasePoints(productCount, orderAmount);
         if (pointsEarned <= 0) {
+            return null;
+        }
+
+        // Check for double-awarding (idempotency)
+        if (userPointsRepository.existsByOrderIdAndShopId(orderId, shop.getShopId())) {
+            log.info("Points already awarded for order {} and shop {}. Skipping.", orderId, shop.getName());
             return null;
         }
 

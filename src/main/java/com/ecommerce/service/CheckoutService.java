@@ -260,6 +260,7 @@ public class CheckoutService {
                 }
 
                 shopOrder.setShippingCost(shopShippingCost);
+                shopOrder.setSubtotal(shopSubtotal);
                 shopOrder.setTotalAmount(shopSubtotal.add(shopShippingCost));
 
                 // Create ShopOrderTransaction and link to global transaction
@@ -1474,23 +1475,28 @@ public class CheckoutService {
 
         // Set shop orders grouped by shop
         if (order.getShopOrders() != null && !order.getShopOrders().isEmpty()) {
-            List<OrderResponseDTO.ShopOrderResponse> shopOrderDTOs = order.getShopOrders().stream()
-                    .map(so -> {
-                        return OrderResponseDTO.ShopOrderResponse.builder()
-                                .id(so.getId())
-                                .shopOrderCode(so.getShopOrderCode())
-                                .shopName(so.getShop() != null ? so.getShop().getName() : "Unknown Shop")
-                                .pickupToken(so.getPickupToken())
-                                .pickupTokenUsed(so.getPickupTokenUsed())
-                                .status(so.getStatus().name())
-                                .shippingCost(so.getShippingCost())
-                                .totalAmount(so.getTotalAmount())
-                                .items(so.getItems().stream()
-                                        .map(this::mapOrderItemToResponseDTO)
-                                        .collect(Collectors.toList()))
-                                .build();
-                    })
-                    .collect(Collectors.toList());
+            List<OrderResponseDTO.ShopOrderResponse> shopOrderDTOs = new ArrayList<>();
+            for (com.ecommerce.entity.ShopOrder so : order.getShopOrders()) {
+                OrderResponseDTO.ShopOrderResponse shopOrderDTO = new OrderResponseDTO.ShopOrderResponse();
+                shopOrderDTO.setId(so.getId());
+                shopOrderDTO.setShopOrderCode(so.getShopOrderCode());
+                shopOrderDTO.setShopName(so.getShop() != null ? so.getShop().getName() : "Unknown Shop");
+                shopOrderDTO.setPickupToken(so.getPickupToken());
+                shopOrderDTO.setPickupTokenUsed(so.getPickupTokenUsed());
+                shopOrderDTO.setStatus(so.getStatus().name());
+                shopOrderDTO.setShippingCost(so.getShippingCost());
+                shopOrderDTO.setSubtotal(so.getSubtotal());
+                shopOrderDTO.setTotalAmount(so.getTotalAmount());
+
+                if (so.getItems() != null) {
+                    List<OrderResponseDTO.OrderItem> itemDTOs = new ArrayList<>();
+                    for (com.ecommerce.entity.OrderItem item : so.getItems()) {
+                        itemDTOs.add(mapOrderItemToResponseDTO(item));
+                    }
+                    shopOrderDTO.setItems(itemDTOs);
+                }
+                shopOrderDTOs.add(shopOrderDTO);
+            }
             dto.setShopOrders(shopOrderDTOs);
         }
 

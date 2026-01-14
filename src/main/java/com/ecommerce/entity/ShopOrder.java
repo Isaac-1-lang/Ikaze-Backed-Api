@@ -63,6 +63,9 @@ public class ShopOrder {
     @Column(name = "shipping_cost", precision = 10, scale = 2)
     private BigDecimal shippingCost = BigDecimal.ZERO;
 
+    @Column(name = "subtotal", precision = 10, scale = 2)
+    private BigDecimal subtotal = BigDecimal.ZERO;
+
     @Column(name = "discount_amount", precision = 10, scale = 2)
     private BigDecimal discountAmount = BigDecimal.ZERO;
 

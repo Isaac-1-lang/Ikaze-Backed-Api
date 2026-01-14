@@ -37,6 +37,12 @@ public interface UserPointsRepository extends JpaRepository<UserPoints, Long> {
     List<UserPoints> findByOrderId(Long orderId);
 
     /**
+     * Check if points were already awarded for an order at a specific shop
+     */
+    @Query("SELECT COUNT(up) > 0 FROM UserPoints up WHERE up.orderId = :orderId AND up.shop.shopId = :shopId AND up.pointsType = 'EARNED_PURCHASE'")
+    boolean existsByOrderIdAndShopId(@Param("orderId") Long orderId, @Param("shopId") UUID shopId);
+
+    /**
      * Calculate total points earned by a user
      */
     @Query("SELECT COALESCE(SUM(up.points), 0) FROM UserPoints up WHERE up.user.id = :userId AND up.points > 0")
