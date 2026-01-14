@@ -39,6 +39,23 @@ public class OrderResponseDTO {
     private String trackingNumber;
     private OrderTransactionDTO transaction;
     private ReturnRequestInfo returnRequest;
+    private List<ShopOrderResponse> shopOrders;
+
+    @Data
+    @NoArgsConstructor
+    @AllArgsConstructor
+    @Builder
+    public static class ShopOrderResponse {
+        private Long id;
+        private String shopOrderCode;
+        private String shopName;
+        private String pickupToken;
+        private Boolean pickupTokenUsed;
+        private String status;
+        private List<OrderItem> items;
+        private BigDecimal shippingCost;
+        private BigDecimal totalAmount;
+    }
 
     @Data
     @NoArgsConstructor

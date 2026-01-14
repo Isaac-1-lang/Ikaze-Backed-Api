@@ -620,7 +620,7 @@ public class CheckoutService {
 
         if (order.getUser() != null) {
             log.info("User is not null");
-             logDebugToFile("Proceeding to check rewardable and reward");
+            logDebugToFile("Proceeding to check rewardable and reward");
             rewardService.checkRewardableOnOrderAndReward(order);
         }
 
@@ -656,13 +656,7 @@ public class CheckoutService {
      * Helper method to build verification result for already completed transactions
      */
     private CheckoutVerificationResult buildVerificationResult(Session session, Order order, OrderTransaction tx) {
-        OrderResponseDTO orderResponse = OrderResponseDTO.builder()
-                .id(order.getOrderId())
-                .orderNumber(order.getOrderCode())
-                .status(order.getStatus() != null ? order.getStatus() : "PENDING")
-                .total(order.getTotalAmount())
-                .createdAt(order.getCreatedAt())
-                .build();
+        OrderResponseDTO orderResponse = convertOrderToResponseDTO(order);
 
         return new CheckoutVerificationResult(
                 session.getPaymentStatus(),
@@ -1476,6 +1470,28 @@ public class CheckoutService {
             List<OrderResponseDTO.OrderItem> itemDTOs = order.getAllItems().stream()
                     .map(this::mapOrderItemToResponseDTO).toList();
             dto.setItems(itemDTOs);
+        }
+
+        // Set shop orders grouped by shop
+        if (order.getShopOrders() != null && !order.getShopOrders().isEmpty()) {
+            List<OrderResponseDTO.ShopOrderResponse> shopOrderDTOs = order.getShopOrders().stream()
+                    .map(so -> {
+                        return OrderResponseDTO.ShopOrderResponse.builder()
+                                .id(so.getId())
+                                .shopOrderCode(so.getShopOrderCode())
+                                .shopName(so.getShop() != null ? so.getShop().getName() : "Unknown Shop")
+                                .pickupToken(so.getPickupToken())
+                                .pickupTokenUsed(so.getPickupTokenUsed())
+                                .status(so.getStatus().name())
+                                .shippingCost(so.getShippingCost())
+                                .totalAmount(so.getTotalAmount())
+                                .items(so.getItems().stream()
+                                        .map(this::mapOrderItemToResponseDTO)
+                                        .collect(Collectors.toList()))
+                                .build();
+                    })
+                    .collect(Collectors.toList());
+            dto.setShopOrders(shopOrderDTOs);
         }
 
         return dto;
