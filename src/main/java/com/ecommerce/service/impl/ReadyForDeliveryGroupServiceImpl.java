@@ -10,6 +10,7 @@ import com.ecommerce.entity.ShopOrder;
 import com.ecommerce.repository.ShopOrderRepository;
 import com.ecommerce.repository.ReadyForDeliveryGroupRepository;
 import com.ecommerce.repository.UserRepository;
+import com.ecommerce.repository.ShopRepository;
 import com.ecommerce.service.ReadyForDeliveryGroupService;
 import jakarta.persistence.EntityNotFoundException;
 import jakarta.transaction.Transactional;
@@ -39,6 +40,7 @@ public class ReadyForDeliveryGroupServiceImpl implements ReadyForDeliveryGroupSe
     private final ReadyForDeliveryGroupRepository groupRepository;
     private final ShopOrderRepository shopOrderRepository;
     private final UserRepository userRepository;
+    private final ShopRepository shopRepository;
     private final com.ecommerce.service.OrderActivityLogService activityLogService;
 
     @Override
@@ -49,6 +51,9 @@ public class ReadyForDeliveryGroupServiceImpl implements ReadyForDeliveryGroupSe
         User deliverer = userRepository.findById(request.getDelivererId())
                 .orElseThrow(
                         () -> new EntityNotFoundException("Deliverer not found with ID: " + request.getDelivererId()));
+
+        com.ecommerce.entity.Shop shop = shopRepository.findById(request.getShopId())
+                .orElseThrow(() -> new EntityNotFoundException("Shop not found with ID: " + request.getShopId()));
 
         // Check if the deliverer already has 5 or more active groups
         Long activeGroupCount = groupRepository.countActiveGroupsByDelivererId(deliverer.getId());
@@ -62,6 +67,7 @@ public class ReadyForDeliveryGroupServiceImpl implements ReadyForDeliveryGroupSe
         group.setDeliveryGroupName(request.getDeliveryGroupName());
         group.setDeliveryGroupDescription(request.getDeliveryGroupDescription());
         group.setDeliverer(deliverer);
+        group.setShop(shop);
         group.setHasDeliveryStarted(false);
 
         ReadyForDeliveryGroup savedGroup = groupRepository.save(group);
@@ -140,9 +146,15 @@ public class ReadyForDeliveryGroupServiceImpl implements ReadyForDeliveryGroupSe
                     .orElseThrow(() -> new EntityNotFoundException(
                             "Deliverer not found with ID: " + request.getDelivererId()));
 
+            // Check if the new deliverer belongs to the same shop as the group
+            if (deliverer.getShop() != null && group.getShop() != null &&
+                    !deliverer.getShop().getShopId().equals(group.getShop().getShopId())) {
+                throw new IllegalStateException("Deliverer belongs to a different shop than the group");
+            }
+
             // Check if the new deliverer already has 5 or more active groups
             // Only check if we're actually changing the deliverer
-            if (!deliverer.getId().equals(group.getDeliverer().getId())) {
+            if (group.getDeliverer() == null || !deliverer.getId().equals(group.getDeliverer().getId())) {
                 Long activeGroupCount = groupRepository.countActiveGroupsByDelivererId(deliverer.getId());
                 if (activeGroupCount >= 5) {
                     throw new IllegalStateException(
@@ -210,37 +222,40 @@ public class ReadyForDeliveryGroupServiceImpl implements ReadyForDeliveryGroupSe
     }
 
     @Override
-    public Page<ReadyForDeliveryGroupDTO> getAllGroups(Pageable pageable) {
-        log.info("Getting all groups with pagination: page={}, size={}", pageable.getPageNumber(),
+    public Page<ReadyForDeliveryGroupDTO> getAllGroups(java.util.UUID shopId, Pageable pageable) {
+        log.info("Getting all groups for shop {} with pagination: page={}, size={}", shopId, pageable.getPageNumber(),
                 pageable.getPageSize());
 
-        Page<ReadyForDeliveryGroup> groups = groupRepository.findAllWithOrdersAndDeliverer(pageable);
+        Page<ReadyForDeliveryGroup> groups = groupRepository.findAllGroupsWithoutExclusionsByShop(shopId, pageable);
         return groups.map(this::mapToDTO);
     }
 
     @Override
-    public List<ReadyForDeliveryGroupDTO> getAllGroups() {
-        log.info("Getting all groups");
+    public List<ReadyForDeliveryGroupDTO> getAllGroups(java.util.UUID shopId) {
+        log.info("Getting all groups for shop {}", shopId);
 
-        List<ReadyForDeliveryGroup> groups = groupRepository.findAllWithOrdersAndDeliverer();
+        List<ReadyForDeliveryGroup> groups = groupRepository
+                .findAllGroupsWithoutExclusionsByShop(shopId, Pageable.unpaged()).getContent();
         return groups.stream().map(this::mapToDTO).collect(Collectors.toList());
     }
 
     @Override
-    public Page<ReadyForDeliveryGroupDTO> getAllGroupsWithoutExclusions(String search, Pageable pageable) {
-        log.info("Getting all groups without exclusions with pagination: page={}, size={}, search={}",
-                pageable.getPageNumber(), pageable.getPageSize(), search);
+    public Page<ReadyForDeliveryGroupDTO> getAllGroupsWithoutExclusions(java.util.UUID shopId, String search,
+            Pageable pageable) {
+        log.info("Getting all groups for shop {} without exclusions with pagination: page={}, size={}, search={}",
+                shopId, pageable.getPageNumber(), pageable.getPageSize(), search);
 
         Page<ReadyForDeliveryGroup> groups;
 
         if (search != null && !search.trim().isEmpty()) {
-            // Search across all groups (no exclusions)
-            groups = groupRepository.searchAllGroupsWithoutExclusions(search.trim(), pageable);
-            log.info("Found {} groups matching search term: '{}'", groups.getTotalElements(), search);
+            // Search across all groups for a specific shop (no exclusions)
+            groups = groupRepository.searchAllGroupsWithoutExclusionsByShop(shopId, search.trim(), pageable);
+            log.info("Found {} groups for shop {} matching search term: '{}'", groups.getTotalElements(), shopId,
+                    search);
         } else {
-            // Get all groups (no exclusions)
-            groups = groupRepository.findAllGroupsWithoutExclusions(pageable);
-            log.info("Found {} total groups", groups.getTotalElements());
+            // Get all groups for a specific shop (no exclusions)
+            groups = groupRepository.findAllGroupsWithoutExclusionsByShop(shopId, pageable);
+            log.info("Found {} total groups for shop {}", groups.getTotalElements(), shopId);
         }
 
         return groups.map(this::mapToDTO);
@@ -283,6 +298,12 @@ public class ReadyForDeliveryGroupServiceImpl implements ReadyForDeliveryGroupSe
                         "Shop order " + orderId + " is already assigned to another delivery group");
             }
 
+            if (group.getShop() != null && shopOrder.getShop() != null &&
+                    !group.getShop().getShopId().equals(shopOrder.getShop().getShopId())) {
+                throw new IllegalStateException(
+                        "Shop order " + orderId + " belongs to a different shop than the delivery group");
+            }
+
             group.addShopOrder(shopOrder);
 
             // LOG ACTIVITY: Added to Delivery Group
@@ -313,6 +334,7 @@ public class ReadyForDeliveryGroupServiceImpl implements ReadyForDeliveryGroupSe
                 .deliveryGroupName(group.getDeliveryGroupName())
                 .deliveryGroupDescription(group.getDeliveryGroupDescription())
                 .delivererId(group.getDeliverer() != null ? group.getDeliverer().getId() : null)
+                .shopId(group.getShop() != null ? group.getShop().getShopId() : null)
                 .delivererName(delivererName)
                 .orderIds(orderIds)
                 .orderCount(ordersCount)
@@ -325,24 +347,26 @@ public class ReadyForDeliveryGroupServiceImpl implements ReadyForDeliveryGroupSe
     }
 
     @Override
-    public Page<DeliveryGroupDto> listAvailableGroups(Pageable pageable) {
-        log.info("Listing available groups with pagination: page={}, size={}", pageable.getPageNumber(),
+    public Page<DeliveryGroupDto> listAvailableGroups(java.util.UUID shopId, Pageable pageable) {
+        log.info("Listing available groups for shop {} with pagination: page={}, size={}", shopId,
+                pageable.getPageNumber(),
                 pageable.getPageSize());
 
-        Page<ReadyForDeliveryGroup> groups = groupRepository.findAllWithOrdersAndDeliverer(pageable);
+        Page<ReadyForDeliveryGroup> groups = groupRepository.findAllWithOrdersAndDelivererByShop(shopId, pageable);
         return groups.map(this::mapToDeliveryGroupDto);
     }
 
     @Override
-    public Page<DeliveryGroupDto> listAvailableGroups(String search, Pageable pageable) {
-        log.info("Listing available groups with search='{}', page={}, size={}",
-                search, pageable.getPageNumber(), pageable.getPageSize());
+    public Page<DeliveryGroupDto> listAvailableGroups(java.util.UUID shopId, String search, Pageable pageable) {
+        log.info("Listing available groups for shop {} with search='{}', page={}, size={}",
+                shopId, search, pageable.getPageNumber(), pageable.getPageSize());
 
         if (search == null || search.trim().isEmpty()) {
-            return listAvailableGroups(pageable);
+            return listAvailableGroups(shopId, pageable);
         }
 
-        Page<ReadyForDeliveryGroup> groups = groupRepository.searchAvailableGroups(search.trim(), pageable);
+        Page<ReadyForDeliveryGroup> groups = groupRepository.searchAvailableGroupsByShop(shopId, search.trim(),
+                pageable);
         return groups.map(this::mapToDeliveryGroupDto);
     }
 
@@ -382,6 +406,12 @@ public class ReadyForDeliveryGroupServiceImpl implements ReadyForDeliveryGroupSe
                             .reason("already_in_group")
                             .details("Shop order is already assigned to group: "
                                     + shopOrder.getReadyForDeliveryGroup().getDeliveryGroupName())
+                            .build());
+                } else if (!group.getShop().getShopId().equals(shopOrder.getShop().getShopId())) {
+                    skippedOrders.add(BulkAddResult.SkippedOrder.builder()
+                            .orderId(orderId)
+                            .reason("wrong_shop")
+                            .details("Shop order belongs to a different shop than the delivery group")
                             .build());
                 } else {
                     group.addShopOrder(shopOrder);
@@ -436,22 +466,26 @@ public class ReadyForDeliveryGroupServiceImpl implements ReadyForDeliveryGroupSe
     }
 
     @Override
-    public Page<AgentDto> listAvailableAgents(Pageable pageable, Sort sort) {
-        Page<User> users = userRepository.findByRole(UserRole.DELIVERY_AGENT, pageable);
+    public Page<AgentDto> listAvailableAgents(java.util.UUID shopId, Pageable pageable, Sort sort) {
+        log.info("Listing available agents for shop {} with pagination: page={}, size={}", shopId,
+                pageable.getPageNumber(),
+                pageable.getPageSize());
+        Page<User> users = userRepository.findByRoleAndShop(UserRole.DELIVERY_AGENT, shopId, pageable);
         return users.map(this::mapToAgentDto);
     }
 
     @Override
-    public Page<AgentDto> listAvailableAgents(String search, Pageable pageable, Sort sort) {
-        log.info("Listing available agents with search='{}', page={}, size={}",
-                search, pageable.getPageNumber(), pageable.getPageSize());
+    public Page<AgentDto> listAvailableAgents(java.util.UUID shopId, String search, Pageable pageable, Sort sort) {
+        log.info("Listing available agents for shop {} with search='{}', page={}, size={}",
+                shopId, search, pageable.getPageNumber(), pageable.getPageSize());
 
         if (search == null || search.trim().isEmpty()) {
-            return listAvailableAgents(pageable, sort);
+            return listAvailableAgents(shopId, pageable, sort);
         }
 
-        Page<User> users = userRepository.findByRoleAndSearchTerm(
+        Page<User> users = userRepository.findByRoleAndShopAndSearchTerm(
                 UserRole.DELIVERY_AGENT,
+                shopId,
                 search.trim().toLowerCase(),
                 pageable);
         return users.map(this::mapToAgentDto);
@@ -498,6 +532,7 @@ public class ReadyForDeliveryGroupServiceImpl implements ReadyForDeliveryGroupSe
                 .deliveryGroupName(group.getDeliveryGroupName())
                 .deliveryGroupDescription(group.getDeliveryGroupDescription())
                 .delivererId(group.getDeliverer() != null ? group.getDeliverer().getId() : null)
+                .shopId(group.getShop() != null ? group.getShop().getShopId() : null)
                 .delivererName(delivererName)
                 .orderIds(orderIds)
                 .memberCount(group.getShopOrders().size())
@@ -1081,6 +1116,11 @@ public class ReadyForDeliveryGroupServiceImpl implements ReadyForDeliveryGroupSe
         // Validate that the new group hasn't started delivery
         if (newGroup.getHasDeliveryStarted()) {
             throw new IllegalStateException("Cannot assign order to a group that has already started delivery");
+        }
+
+        // Validate that the order and group belong to the same shop
+        if (!newGroup.getShop().getShopId().equals(shopOrder.getShop().getShopId())) {
+            throw new IllegalStateException("Cannot assign order to a group belonging to a different shop");
         }
 
         // Get the old group if exists

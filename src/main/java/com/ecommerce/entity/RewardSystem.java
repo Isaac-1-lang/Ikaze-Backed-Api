@@ -6,12 +6,15 @@ import jakarta.validation.constraints.NotNull;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+
 import com.fasterxml.jackson.annotation.JsonBackReference;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
 
+@Slf4j
 @Entity
 @Table(name = "reward_system")
 @Data
@@ -91,35 +94,81 @@ public class RewardSystem {
         return reviewPointsAmount;
     }
 
+    private void logDebugToFile(String message) {
+        try {
+            java.nio.file.Path path = java.nio.file.Paths.get("checkout_debug_logs.txt");
+            String timestamp = java.time.LocalDateTime.now()
+                    .format(java.time.format.DateTimeFormatter.ISO_LOCAL_DATE_TIME);
+            String logLine = timestamp + " - " + message + "\n";
+            java.nio.file.Files.write(path, logLine.getBytes(),
+                    java.nio.file.StandardOpenOption.CREATE, java.nio.file.StandardOpenOption.APPEND);
+        } catch (Exception e) {
+            log.error("Failed to write to debug file: " + e.getMessage());
+        }
+    }
+
     public Integer calculatePurchasePoints(Integer productCount, BigDecimal orderAmount) {
         if (!isSystemEnabled || !isPurchasePointsEnabled) {
+            logDebugToFile("system disabled or purchase points disabled");
+            logDebugToFile(isSystemEnabled.toString());
+            logDebugToFile(isPurchasePointsEnabled.toString());
             return 0;
         }
 
         Integer totalPoints = 0;
+        logDebugToFile("passed system disabled");
 
         if (isQuantityBasedEnabled && rewardRanges != null) {
+            logDebugToFile("passed quantity based enabled");
             totalPoints += calculateQuantityBasedPoints(productCount);
         }
 
         if (isAmountBasedEnabled && rewardRanges != null) {
+            logDebugToFile("passed amount based enabled");
             totalPoints += calculateAmountBasedPoints(orderAmount);
         }
 
         if (isPercentageBasedEnabled && percentageRate != null) {
+            logDebugToFile("passed percentage based enabled");
             totalPoints += calculatePercentageBasedPoints(orderAmount);
         }
+
+        logDebugToFile("total points: " + totalPoints);
 
         return totalPoints;
     }
 
     private Integer calculateQuantityBasedPoints(Integer productCount) {
-        return rewardRanges.stream()
-                .filter(range -> range.getRangeType() == RewardRange.RangeType.QUANTITY)
-                .filter(range -> range.getMinValue() <= productCount
-                        && (range.getMaxValue() == null || productCount <= range.getMaxValue()))
+        logDebugToFile("calculateQuantityBasedPoints - productCount: " + productCount);
+        logDebugToFile("Total reward ranges: " + (rewardRanges != null ? rewardRanges.size() : "null"));
+
+        if (rewardRanges != null) {
+            rewardRanges.forEach(range -> {
+                logDebugToFile("Range: type=" + range.getRangeType() +
+                        ", min=" + range.getMinValue() +
+                        ", max=" + range.getMaxValue() +
+                        ", points=" + range.getPoints());
+            });
+        }
+
+        int points = rewardRanges.stream()
+                .filter(range -> {
+                    boolean isQuantity = range.getRangeType() == RewardRange.RangeType.QUANTITY;
+                    logDebugToFile("Range type QUANTITY? " + isQuantity + " (actual: " + range.getRangeType() + ")");
+                    return isQuantity;
+                })
+                .filter(range -> {
+                    boolean inRange = range.getMinValue() <= productCount
+                            && (range.getMaxValue() == null || productCount <= range.getMaxValue());
+                    logDebugToFile("Product count " + productCount + " in range [" + range.getMinValue() + "-"
+                            + range.getMaxValue() + "]? " + inRange);
+                    return inRange;
+                })
                 .mapToInt(RewardRange::getPoints)
                 .sum();
+
+        logDebugToFile("Quantity-based points calculated: " + points);
+        return points;
     }
 
     private Integer calculateAmountBasedPoints(BigDecimal orderAmount) {

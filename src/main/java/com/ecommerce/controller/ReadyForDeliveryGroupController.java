@@ -30,6 +30,11 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import com.ecommerce.ServiceImpl.CustomUserDetails;
+import com.ecommerce.Enum.UserRole;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.core.userdetails.UserDetails;
 
 @RestController
 @RequestMapping("/api/v1/delivery-groups")
@@ -39,13 +44,23 @@ import java.util.Optional;
 public class ReadyForDeliveryGroupController {
 
     private final ReadyForDeliveryGroupService deliveryGroupService;
+    private final com.ecommerce.service.ShopAuthorizationService shopAuthorizationService;
+    private final com.ecommerce.repository.UserRepository userRepository;
+    private final com.ecommerce.repository.ReadyForDeliveryGroupRepository groupRepository;
 
-    public ReadyForDeliveryGroupController(ReadyForDeliveryGroupService deliveryGroupService) {
+    public ReadyForDeliveryGroupController(
+            ReadyForDeliveryGroupService deliveryGroupService,
+            com.ecommerce.service.ShopAuthorizationService shopAuthorizationService,
+            com.ecommerce.repository.UserRepository userRepository,
+            com.ecommerce.repository.ReadyForDeliveryGroupRepository groupRepository) {
         this.deliveryGroupService = deliveryGroupService;
+        this.shopAuthorizationService = shopAuthorizationService;
+        this.userRepository = userRepository;
+        this.groupRepository = groupRepository;
     }
 
     @PostMapping
-    @PreAuthorize("hasAnyRole('ADMIN', 'EMPLOYEE')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'EMPLOYEE', 'VENDOR')")
     @Operation(summary = "Create ready for delivery group", description = "Create a new ready for delivery group", responses = {
             @ApiResponse(responseCode = "200", description = "Group created successfully", content = @Content(schema = @Schema(implementation = ReadyForDeliveryGroupDTO.class))),
             @ApiResponse(responseCode = "400", description = "Invalid input data"),
@@ -55,7 +70,18 @@ public class ReadyForDeliveryGroupController {
     })
     public ResponseEntity<?> createGroup(@Valid @RequestBody CreateReadyForDeliveryGroupDTO request) {
         try {
-            log.info("Creating ready for delivery group: {}", request.getDeliveryGroupName());
+            log.info("Creating ready for delivery group: {} for shop: {}",
+                    request.getDeliveryGroupName(), request.getShopId());
+
+            // Validate shop access
+            if (request.getShopId() != null) {
+                shopAuthorizationService.assertCanManageShop(getCurrentUserId(), request.getShopId());
+            } else {
+                return ResponseEntity.badRequest().body(Map.of(
+                        "success", false,
+                        "message", "shopId is required"));
+            }
+
             ReadyForDeliveryGroupDTO group = deliveryGroupService.createGroup(request);
 
             Map<String, Object> response = new HashMap<>();
@@ -96,16 +122,18 @@ public class ReadyForDeliveryGroupController {
     }
 
     @PostMapping("/{groupId}/orders")
-    @PreAuthorize("hasAnyRole('ADMIN', 'EMPLOYEE')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'EMPLOYEE', 'VENDOR')")
     @Operation(summary = "Add orders to group", description = "Add orders to an existing ready for delivery group", responses = {
             @ApiResponse(responseCode = "200", description = "Orders added successfully", content = @Content(schema = @Schema(implementation = ReadyForDeliveryGroupDTO.class))),
             @ApiResponse(responseCode = "400", description = "Invalid input data"),
+            @ApiResponse(responseCode = "403", description = "Forbidden"),
             @ApiResponse(responseCode = "404", description = "Group not found"),
             @ApiResponse(responseCode = "500", description = "Internal server error")
     })
     public ResponseEntity<?> addOrdersToGroup(@PathVariable Long groupId,
             @Valid @RequestBody AddOrdersToGroupDTO request) {
         try {
+            validateShopAccessForGroup(groupId);
             log.info("Adding orders to group: {}", groupId);
             ReadyForDeliveryGroupDTO group = deliveryGroupService.addOrdersToGroup(groupId, request);
 
@@ -147,14 +175,16 @@ public class ReadyForDeliveryGroupController {
     }
 
     @DeleteMapping("/{groupId}/orders")
-    @PreAuthorize("hasAnyRole('ADMIN', 'EMPLOYEE')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'EMPLOYEE', 'VENDOR')")
     @Operation(summary = "Remove orders from group", description = "Remove orders from a ready for delivery group", responses = {
             @ApiResponse(responseCode = "200", description = "Orders removed successfully"),
+            @ApiResponse(responseCode = "403", description = "Forbidden"),
             @ApiResponse(responseCode = "404", description = "Group not found"),
             @ApiResponse(responseCode = "500", description = "Internal server error")
     })
     public ResponseEntity<?> removeOrdersFromGroup(@PathVariable Long groupId, @RequestBody List<Long> orderIds) {
         try {
+            validateShopAccessForGroup(groupId);
             log.info("Removing orders from group: {}", groupId);
             deliveryGroupService.removeOrdersFromGroup(groupId, orderIds);
 
@@ -195,16 +225,18 @@ public class ReadyForDeliveryGroupController {
     }
 
     @PutMapping("/{groupId}")
-    @PreAuthorize("hasAnyRole('ADMIN', 'EMPLOYEE')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'EMPLOYEE', 'VENDOR')")
     @Operation(summary = "Update group", description = "Update a ready for delivery group", responses = {
             @ApiResponse(responseCode = "200", description = "Group updated successfully", content = @Content(schema = @Schema(implementation = ReadyForDeliveryGroupDTO.class))),
             @ApiResponse(responseCode = "400", description = "Invalid input data"),
+            @ApiResponse(responseCode = "403", description = "Forbidden"),
             @ApiResponse(responseCode = "404", description = "Group not found"),
             @ApiResponse(responseCode = "500", description = "Internal server error")
     })
     public ResponseEntity<?> updateGroup(@PathVariable Long groupId,
             @Valid @RequestBody UpdateReadyForDeliveryGroupDTO request) {
         try {
+            validateShopAccessForGroup(groupId);
             log.info("Updating group: {}", groupId);
             ReadyForDeliveryGroupDTO group = deliveryGroupService.updateGroup(groupId, request);
 
@@ -237,14 +269,16 @@ public class ReadyForDeliveryGroupController {
     }
 
     @DeleteMapping("/{groupId}")
-    @PreAuthorize("hasAnyRole('ADMIN', 'EMPLOYEE')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'EMPLOYEE', 'VENDOR')")
     @Operation(summary = "Delete group", description = "Delete a ready for delivery group", responses = {
             @ApiResponse(responseCode = "200", description = "Group deleted successfully"),
+            @ApiResponse(responseCode = "403", description = "Forbidden"),
             @ApiResponse(responseCode = "404", description = "Group not found"),
             @ApiResponse(responseCode = "500", description = "Internal server error")
     })
     public ResponseEntity<?> deleteGroup(@PathVariable Long groupId) {
         try {
+            validateShopAccessForGroup(groupId);
             log.info("Deleting group: {}", groupId);
             deliveryGroupService.deleteGroup(groupId);
 
@@ -285,14 +319,16 @@ public class ReadyForDeliveryGroupController {
     }
 
     @GetMapping("/{groupId}")
-    @PreAuthorize("hasAnyRole('ADMIN', 'EMPLOYEE')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'EMPLOYEE', 'VENDOR')")
     @Operation(summary = "Get group by ID", description = "Get a ready for delivery group by ID", responses = {
             @ApiResponse(responseCode = "200", description = "Group retrieved successfully", content = @Content(schema = @Schema(implementation = ReadyForDeliveryGroupDTO.class))),
+            @ApiResponse(responseCode = "403", description = "Forbidden"),
             @ApiResponse(responseCode = "404", description = "Group not found"),
             @ApiResponse(responseCode = "500", description = "Internal server error")
     })
     public ResponseEntity<?> getGroupById(@PathVariable Long groupId) {
         try {
+            validateShopAccessForGroup(groupId);
             log.info("Getting group by ID: {}", groupId);
             ReadyForDeliveryGroupDTO group = deliveryGroupService.getGroupById(groupId);
 
@@ -325,16 +361,24 @@ public class ReadyForDeliveryGroupController {
     }
 
     @GetMapping
-    @PreAuthorize("hasAnyRole('ADMIN', 'EMPLOYEE')")
-    @Operation(summary = "Get all groups", description = "Get all ready for delivery groups with pagination", responses = {
+    @PreAuthorize("hasAnyRole('ADMIN', 'EMPLOYEE', 'VENDOR')")
+    @Operation(summary = "Get all groups", description = "Get all ready for delivery groups with pagination for a specific shop", responses = {
             @ApiResponse(responseCode = "200", description = "Groups retrieved successfully"),
+            @ApiResponse(responseCode = "400", description = "Invalid shop ID"),
+            @ApiResponse(responseCode = "403", description = "Forbidden"),
             @ApiResponse(responseCode = "500", description = "Internal server error")
     })
-    public ResponseEntity<?> getAllGroups(Pageable pageable) {
+    public ResponseEntity<?> getAllGroups(
+            @RequestParam java.util.UUID shopId,
+            Pageable pageable) {
         try {
-            log.info("Getting all groups with pagination: page={}, size={}", pageable.getPageNumber(),
+            // Validate shop access
+            shopAuthorizationService.assertCanManageShop(getCurrentUserId(), shopId);
+
+            log.info("Getting all groups for shop {} with pagination: page={}, size={}", shopId,
+                    pageable.getPageNumber(),
                     pageable.getPageSize());
-            Page<ReadyForDeliveryGroupDTO> groups = deliveryGroupService.getAllGroups(pageable);
+            Page<ReadyForDeliveryGroupDTO> groups = deliveryGroupService.getAllGroups(shopId, pageable);
 
             Map<String, Object> response = new HashMap<>();
             response.put("success", true);
@@ -363,15 +407,20 @@ public class ReadyForDeliveryGroupController {
     }
 
     @GetMapping("/all")
-    @PreAuthorize("hasAnyRole('ADMIN', 'EMPLOYEE')")
-    @Operation(summary = "Get all groups without pagination", description = "Get all ready for delivery groups without pagination", responses = {
+    @PreAuthorize("hasAnyRole('ADMIN', 'EMPLOYEE', 'VENDOR')")
+    @Operation(summary = "Get all groups without pagination", description = "Get all ready for delivery groups without pagination for a specific shop", responses = {
             @ApiResponse(responseCode = "200", description = "Groups retrieved successfully"),
+            @ApiResponse(responseCode = "400", description = "Invalid shop ID"),
+            @ApiResponse(responseCode = "403", description = "Forbidden"),
             @ApiResponse(responseCode = "500", description = "Internal server error")
     })
-    public ResponseEntity<?> getAllGroupsWithoutPagination() {
+    public ResponseEntity<?> getAllGroupsWithoutPagination(@RequestParam java.util.UUID shopId) {
         try {
-            log.info("Getting all groups without pagination");
-            List<ReadyForDeliveryGroupDTO> groups = deliveryGroupService.getAllGroups();
+            // Validate shop access
+            shopAuthorizationService.assertCanManageShop(getCurrentUserId(), shopId);
+
+            log.info("Getting all groups without pagination for shop {}", shopId);
+            List<ReadyForDeliveryGroupDTO> groups = deliveryGroupService.getAllGroups(shopId);
 
             Map<String, Object> response = new HashMap<>();
             response.put("success", true);
@@ -393,9 +442,10 @@ public class ReadyForDeliveryGroupController {
     }
 
     @GetMapping("/{groupId}/orders")
-    @PreAuthorize("hasAnyRole('ADMIN', 'EMPLOYEE')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'EMPLOYEE', 'VENDOR')")
     @Operation(summary = "Get orders for group", description = "Get paginated list of orders in a delivery group", responses = {
             @ApiResponse(responseCode = "200", description = "Orders retrieved successfully"),
+            @ApiResponse(responseCode = "403", description = "Forbidden"),
             @ApiResponse(responseCode = "404", description = "Group not found"),
             @ApiResponse(responseCode = "500", description = "Internal server error")
     })
@@ -403,6 +453,7 @@ public class ReadyForDeliveryGroupController {
             @PathVariable Long groupId,
             Pageable pageable) {
         try {
+            validateShopAccessForGroup(groupId);
             log.info("Getting orders for group {} with pagination: page={}, size={}",
                     groupId, pageable.getPageNumber(), pageable.getPageSize());
             Page<OrderDTO> orders = deliveryGroupService.getOrdersForGroupWithPagination(groupId, pageable);
@@ -443,18 +494,25 @@ public class ReadyForDeliveryGroupController {
     }
 
     @GetMapping("/admin/all")
-    @PreAuthorize("hasAnyRole('ADMIN', 'EMPLOYEE')")
-    @Operation(summary = "Get all groups for admin", description = "Get ALL delivery groups without any exclusions (includes started, finished, and pending groups) with pagination and optional search", responses = {
+    @PreAuthorize("hasAnyRole('ADMIN', 'EMPLOYEE', 'VENDOR')")
+    @Operation(summary = "Get all groups for admin view", description = "Get all delivery groups (including started and finished) for a specific shop with pagination and search", responses = {
             @ApiResponse(responseCode = "200", description = "Groups retrieved successfully"),
+            @ApiResponse(responseCode = "400", description = "Invalid shop ID"),
+            @ApiResponse(responseCode = "403", description = "Forbidden"),
             @ApiResponse(responseCode = "500", description = "Internal server error")
     })
     public ResponseEntity<?> getAllGroupsForAdmin(
+            @RequestParam java.util.UUID shopId,
             @RequestParam(required = false) String search,
             Pageable pageable) {
         try {
-            log.info("Getting all groups for admin with pagination: page={}, size={}, search={}", 
-                    pageable.getPageNumber(), pageable.getPageSize(), search);
-            Page<ReadyForDeliveryGroupDTO> groups = deliveryGroupService.getAllGroupsWithoutExclusions(search, pageable);
+            // Validate shop access
+            shopAuthorizationService.assertCanManageShop(getCurrentUserId(), shopId);
+
+            log.info("Getting all groups for shop {} for admin with pagination: page={}, size={}, search={}",
+                    shopId, pageable.getPageNumber(), pageable.getPageSize(), search);
+            Page<ReadyForDeliveryGroupDTO> groups = deliveryGroupService.getAllGroupsWithoutExclusions(shopId, search,
+                    pageable);
 
             Map<String, Object> response = new HashMap<>();
             response.put("success", true);
@@ -483,18 +541,24 @@ public class ReadyForDeliveryGroupController {
     }
 
     @GetMapping("/available")
-    @PreAuthorize("hasAnyRole('ADMIN', 'EMPLOYEE')")
-    @Operation(summary = "List available groups", description = "Get paginated list of available delivery groups with optional search", responses = {
+    @PreAuthorize("hasAnyRole('ADMIN', 'EMPLOYEE', 'VENDOR')")
+    @Operation(summary = "List available groups", description = "Get paginated list of available delivery groups for a specific shop with optional search", responses = {
             @ApiResponse(responseCode = "200", description = "Groups retrieved successfully"),
+            @ApiResponse(responseCode = "400", description = "Invalid shop ID"),
+            @ApiResponse(responseCode = "403", description = "Forbidden"),
             @ApiResponse(responseCode = "500", description = "Internal server error")
     })
     public ResponseEntity<?> listAvailableGroups(
+            @RequestParam java.util.UUID shopId,
             @RequestParam(required = false) String search,
             Pageable pageable) {
         try {
-            log.info("Getting available groups with pagination: page={}, size={}, search={}", 
-                    pageable.getPageNumber(), pageable.getPageSize(), search);
-            Page<DeliveryGroupDto> groups = deliveryGroupService.listAvailableGroups(search, pageable);
+            // Validate shop access
+            shopAuthorizationService.assertCanManageShop(getCurrentUserId(), shopId);
+
+            log.info("Getting available groups for shop {} with pagination: page={}, size={}, search={}",
+                    shopId, pageable.getPageNumber(), pageable.getPageSize(), search);
+            Page<DeliveryGroupDto> groups = deliveryGroupService.listAvailableGroups(shopId, search, pageable);
 
             Map<String, Object> response = new HashMap<>();
             response.put("success", true);
@@ -523,7 +587,7 @@ public class ReadyForDeliveryGroupController {
     }
 
     @PostMapping("/bulk-add/{groupId}")
-    @PreAuthorize("hasAnyRole('ADMIN', 'EMPLOYEE')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'EMPLOYEE', 'VENDOR')")
     @Operation(summary = "Bulk add orders to group", description = "Add multiple orders to a delivery group", responses = {
             @ApiResponse(responseCode = "200", description = "Orders added successfully"),
             @ApiResponse(responseCode = "400", description = "Invalid input data"),
@@ -532,6 +596,9 @@ public class ReadyForDeliveryGroupController {
     })
     public ResponseEntity<?> bulkAddOrdersToGroup(@PathVariable Long groupId, @RequestBody List<Long> orderIds) {
         try {
+            // Validate shop access
+            validateShopAccessForGroup(groupId);
+
             log.info("Bulk adding {} orders to group: {}", orderIds.size(), groupId);
             BulkAddResult result = deliveryGroupService.addOrdersToGroupBulk(groupId, orderIds);
 
@@ -621,23 +688,29 @@ public class ReadyForDeliveryGroupController {
     }
 
     @GetMapping("/agents")
-    @PreAuthorize("hasAnyRole('ADMIN', 'EMPLOYEE')")
-    @Operation(summary = "List available agents", description = "Get paginated list of available delivery agents with optional search", responses = {
+    @PreAuthorize("hasAnyRole('ADMIN', 'EMPLOYEE', 'VENDOR')")
+    @Operation(summary = "List available delivery agents", description = "Get paginated list of available delivery agents for a specific shop with optional search", responses = {
             @ApiResponse(responseCode = "200", description = "Agents retrieved successfully"),
+            @ApiResponse(responseCode = "400", description = "Invalid shop ID"),
+            @ApiResponse(responseCode = "403", description = "Forbidden"),
             @ApiResponse(responseCode = "500", description = "Internal server error")
     })
     public ResponseEntity<?> listAvailableAgents(
+            @RequestParam java.util.UUID shopId,
             @RequestParam(required = false) String search,
-            Pageable pageable, 
+            Pageable pageable,
             Sort sort) {
         try {
-            log.info("Getting available agents with pagination: page={}, size={}, search={}", 
-                    pageable.getPageNumber(), pageable.getPageSize(), search);
-            Page<AgentDto> agents = deliveryGroupService.listAvailableAgents(search, pageable, sort);
+            // Validate shop access
+            shopAuthorizationService.assertCanManageShop(getCurrentUserId(), shopId);
+
+            log.info("Getting available delivery agents for shop {} with pagination: page={}, size={}, search={}",
+                    shopId, pageable.getPageNumber(), pageable.getPageSize(), search);
+            Page<AgentDto> agents = deliveryGroupService.listAvailableAgents(shopId, search, pageable, sort);
 
             Map<String, Object> response = new HashMap<>();
             response.put("success", true);
-            response.put("message", "Available agents retrieved successfully");
+            response.put("message", "Available delivery agents retrieved successfully");
             response.put("data", agents.getContent());
             response.put("pagination", Map.of(
                     "page", agents.getNumber(),
@@ -647,14 +720,14 @@ public class ReadyForDeliveryGroupController {
                     "hasNext", agents.hasNext(),
                     "hasPrevious", agents.hasPrevious()));
 
-            log.info("Available agents retrieved successfully: {} agents found", agents.getTotalElements());
+            log.info("Available delivery agents retrieved successfully: {} agents found", agents.getTotalElements());
             return ResponseEntity.ok(response);
 
         } catch (Exception e) {
-            log.error("Error getting available agents: {}", e.getMessage(), e);
+            log.error("Error getting available delivery agents: {}", e.getMessage(), e);
             Map<String, Object> response = new HashMap<>();
             response.put("success", false);
-            response.put("message", "An unexpected error occurred while getting available agents.");
+            response.put("message", "An unexpected error occurred while getting available delivery agents.");
             response.put("errorCode", "INTERNAL_ERROR");
             response.put("details", e.getMessage());
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(response);
@@ -709,15 +782,17 @@ public class ReadyForDeliveryGroupController {
     }
 
     @PostMapping("/{groupId}/start-delivery")
-    @PreAuthorize("hasRole('DELIVERY_AGENT')")
+    @PreAuthorize("hasAnyRole('DELIVERY_AGENT', 'ADMIN', 'EMPLOYEE', 'VENDOR')")
     @Operation(summary = "Start delivery group", description = "Start delivery for a group and notify customers", responses = {
             @ApiResponse(responseCode = "200", description = "Delivery started successfully"),
             @ApiResponse(responseCode = "400", description = "Invalid request or group already started"),
+            @ApiResponse(responseCode = "403", description = "Forbidden"),
             @ApiResponse(responseCode = "404", description = "Group not found"),
             @ApiResponse(responseCode = "500", description = "Internal server error")
     })
     public ResponseEntity<?> startDelivery(@PathVariable Long groupId) {
         try {
+            validateShopAccessForGroup(groupId);
             log.info("Starting delivery for group: {}", groupId);
             Map<String, Object> result = deliveryGroupService.startDelivery(groupId);
 
@@ -757,15 +832,17 @@ public class ReadyForDeliveryGroupController {
     }
 
     @PostMapping("/{groupId}/finish-delivery")
-    @PreAuthorize("hasRole('DELIVERY_AGENT')")
+    @PreAuthorize("hasAnyRole('DELIVERY_AGENT', 'ADMIN', 'EMPLOYEE', 'VENDOR')")
     @Operation(summary = "Finish delivery group", description = "Finish delivery for a group after all orders are delivered", responses = {
             @ApiResponse(responseCode = "200", description = "Delivery finished successfully"),
             @ApiResponse(responseCode = "400", description = "Invalid request or not all orders delivered"),
+            @ApiResponse(responseCode = "403", description = "Forbidden"),
             @ApiResponse(responseCode = "404", description = "Group not found"),
             @ApiResponse(responseCode = "500", description = "Internal server error")
     })
     public ResponseEntity<?> finishDelivery(@PathVariable Long groupId) {
         try {
+            validateShopAccessForGroup(groupId);
             log.info("Finishing delivery for group: {}", groupId);
             Map<String, Object> result = deliveryGroupService.finishDelivery(groupId);
 
@@ -805,24 +882,25 @@ public class ReadyForDeliveryGroupController {
     }
 
     @PutMapping("/order/{orderId}/change-group/{newGroupId}")
-    @PreAuthorize("hasAnyRole('ADMIN', 'EMPLOYEE')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'EMPLOYEE', 'VENDOR')")
     @Operation(summary = "Change order's delivery group", description = "Move an order from its current group to a new group")
     public ResponseEntity<Map<String, Object>> changeTheOrderGroup(
             @PathVariable Long orderId,
             @PathVariable Long newGroupId) {
         try {
+            validateShopAccessForGroup(newGroupId);
             log.info("Changing order {} to group {}", orderId, newGroupId);
-            
+
             DeliveryGroupDto updatedGroup = deliveryGroupService.changeOrderGroup(orderId, newGroupId);
-            
+
             Map<String, Object> response = new HashMap<>();
             response.put("success", true);
             response.put("message", "Order successfully moved to new delivery group");
             response.put("data", updatedGroup);
-            
+
             log.info("Order {} successfully changed to group {}", orderId, newGroupId);
             return ResponseEntity.ok(response);
-            
+
         } catch (EntityNotFoundException e) {
             log.warn("Entity not found: {}", e.getMessage());
             Map<String, Object> response = new HashMap<>();
@@ -830,7 +908,7 @@ public class ReadyForDeliveryGroupController {
             response.put("message", e.getMessage());
             response.put("errorCode", "NOT_FOUND");
             return ResponseEntity.status(HttpStatus.NOT_FOUND).body(response);
-            
+
         } catch (IllegalStateException e) {
             log.warn("Cannot change order group: {}", e.getMessage());
             Map<String, Object> response = new HashMap<>();
@@ -838,7 +916,7 @@ public class ReadyForDeliveryGroupController {
             response.put("message", e.getMessage());
             response.put("errorCode", "INVALID_STATE");
             return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(response);
-            
+
         } catch (Exception e) {
             log.error("Error changing order {} to group {}: {}", orderId, newGroupId, e.getMessage(), e);
             Map<String, Object> response = new HashMap<>();
@@ -847,6 +925,82 @@ public class ReadyForDeliveryGroupController {
             response.put("errorCode", "INTERNAL_ERROR");
             response.put("details", e.getMessage());
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(response);
+        }
+    }
+
+    private java.util.UUID getCurrentUserId() {
+        try {
+            Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+            if (auth == null || !auth.isAuthenticated()) {
+                throw new RuntimeException("User not authenticated");
+            }
+
+            Object principal = auth.getPrincipal();
+
+            if (principal instanceof CustomUserDetails customUserDetails) {
+                String email = customUserDetails.getUsername();
+                return userRepository.findByUserEmail(email)
+                        .map(com.ecommerce.entity.User::getId)
+                        .orElseThrow(() -> new RuntimeException("User not found with email: " + email));
+            }
+
+            if (principal instanceof com.ecommerce.entity.User user && user.getId() != null) {
+                return user.getId();
+            }
+
+            if (principal instanceof UserDetails userDetails) {
+                String email = userDetails.getUsername();
+                return userRepository.findByUserEmail(email)
+                        .map(com.ecommerce.entity.User::getId)
+                        .orElseThrow(() -> new RuntimeException("User not found with email: " + email));
+            }
+
+            String name = auth.getName();
+            if (name != null && !name.isBlank()) {
+                return userRepository.findByUserEmail(name)
+                        .map(com.ecommerce.entity.User::getId)
+                        .orElseThrow(() -> new RuntimeException("User not found with email: " + name));
+            }
+        } catch (Exception e) {
+            log.error("Error getting current user ID: {}", e.getMessage(), e);
+            throw new RuntimeException("Unable to get current user ID: " + e.getMessage());
+        }
+        throw new RuntimeException("Unable to get current user ID");
+    }
+
+    private UserRole getCurrentUserRole() {
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        if (auth != null && auth.getAuthorities() != null) {
+            return auth.getAuthorities().stream()
+                    .map(a -> a.getAuthority().replace("ROLE_", ""))
+                    .map(UserRole::valueOf)
+                    .findFirst()
+                    .orElse(UserRole.CUSTOMER);
+        }
+        return UserRole.CUSTOMER;
+    }
+
+    private void validateShopAccessForGroup(Long groupId) {
+        UserRole userRole = getCurrentUserRole();
+        // ADMIN can access all groups
+        if (userRole == UserRole.ADMIN) {
+            return;
+        }
+
+        com.ecommerce.entity.ReadyForDeliveryGroup group = groupRepository.findById(groupId)
+                .orElseThrow(() -> new EntityNotFoundException("Delivery group not found with ID: " + groupId));
+
+        // If it's a delivery agent, check if they are the assigned deliverer
+        if (userRole == UserRole.DELIVERY_AGENT) {
+            if (group.getDeliverer() == null || !group.getDeliverer().getId().equals(getCurrentUserId())) {
+                throw new RuntimeException("You are not the assigned agent for this group");
+            }
+            return;
+        }
+
+        // For VENDOR and EMPLOYEE, check shop access
+        if (group.getShop() != null) {
+            shopAuthorizationService.assertCanManageShop(getCurrentUserId(), group.getShop().getShopId());
         }
     }
 }

@@ -89,272 +89,218 @@ public class CheckoutService {
     private final RoadValidationService roadValidationService;
     private final OrderActivityLogService activityLogService;
 
-    @Transactional
-    public String createCheckoutSession(CheckoutRequest req) throws Exception {
-        if (req.getShippingAddress() == null || req.getShippingAddress().getCountry() == null) {
-            throw new IllegalArgumentException("Shipping address and country are required");
-        }
-
-        // Road validation disabled - Google Maps API key expired
-        // if (req.getShippingAddress().getLatitude() != null &&
-        // req.getShippingAddress().getLongitude() != null) {
-        // roadValidationService.validateRoadLocation(
-        // req.getShippingAddress().getLatitude(),
-        // req.getShippingAddress().getLongitude()
-        // );
-        // }
-
-        UUID userId;
+    // Helper for persistent debug logging
+    private void logDebugToFile(String message) {
         try {
-            userId = getCurrentUserId();
+            java.nio.file.Path path = java.nio.file.Paths.get("checkout_debug_logs.txt");
+            String timestamp = java.time.LocalDateTime.now()
+                    .format(java.time.format.DateTimeFormatter.ISO_LOCAL_DATE_TIME);
+            String logLine = timestamp + " - " + message + "\n";
+            java.nio.file.Files.write(path, logLine.getBytes(),
+                    java.nio.file.StandardOpenOption.CREATE, java.nio.file.StandardOpenOption.APPEND);
         } catch (Exception e) {
-            log.error("Failed to get current user ID: {}", e.getMessage());
-            throw new IllegalStateException("Authentication required. Please log in to create a checkout session. " +
-                    "For guest checkout, use the guest checkout endpoint instead.", e);
+            log.error("Failed to write to debug file: " + e.getMessage());
+        }
+    }
+
+    private User getAuthenticatedUser() {
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+        if (authentication == null || !authentication.isAuthenticated()) {
+            throw new RuntimeException("User not authenticated");
         }
 
-        User user = userRepository.findById(userId)
-                .orElseThrow(() -> new EntityNotFoundException("User not found with ID: " + userId));
-
-        validateCartItems(req.getItems());
-
-        Map<CartItemDTO, List<FEFOStockAllocationService.BatchAllocation>> fefoAllocations = enhancedWarehouseAllocator
-                .allocateStockWithFEFO(req.getItems(), req.getShippingAddress());
-
-        // Calculate payment summary (validates shops and warehouses)
-        com.ecommerce.dto.PaymentSummaryDTO paymentSummary = calculatePaymentSummary(req.getShippingAddress(),
-                req.getItems(), user.getId());
-
-        // Create main Order entity
-        Order order = new Order();
-        order.setUser(user);
-        order.setStatus("PENDING"); // Set initial status
-
-        OrderCustomerInfo customerInfo = new OrderCustomerInfo();
-        customerInfo.setFirstName(user.getFirstName());
-        customerInfo.setLastName(user.getLastName());
-        customerInfo.setEmail(user.getUserEmail());
-        customerInfo.setPhoneNumber(user.getPhoneNumber());
-        if (req.getShippingAddress() != null) {
-            customerInfo.setStreetAddress(req.getShippingAddress().getStreetAddress());
-            customerInfo.setCity(req.getShippingAddress().getCity());
-            customerInfo.setState(req.getShippingAddress().getState());
-            customerInfo.setCountry(req.getShippingAddress().getCountry());
-        }
-        order.setOrderCustomerInfo(customerInfo);
-
-        OrderInfo orderInfo = new OrderInfo();
-        orderInfo.setSubtotal(paymentSummary.getSubtotal());
-        orderInfo.setTotalAmount(paymentSummary.getTotalAmount());
-        orderInfo.setTaxAmount(paymentSummary.getTaxAmount());
-        orderInfo.setShippingCost(paymentSummary.getShippingCost());
-        orderInfo.setDiscountAmount(paymentSummary.getDiscountAmount());
-        order.setOrderInfo(orderInfo);
-
-        if (req.getShippingAddress() != null) {
-            OrderAddress orderAddress = new OrderAddress();
-            orderAddress.setStreet(req.getShippingAddress().getStreetAddress());
-            orderAddress.setCountry(req.getShippingAddress().getCountry());
-            orderAddress.setRegions(req.getShippingAddress().getCity() + "," + req.getShippingAddress().getState());
-            orderAddress.setLatitude(req.getShippingAddress().getLatitude());
-            orderAddress.setLongitude(req.getShippingAddress().getLongitude());
-            orderAddress.setRoadName(req.getShippingAddress().getStreetAddress());
-            order.setOrderAddress(orderAddress);
+        Object principal = authentication.getPrincipal();
+        if (principal instanceof UserDetails) {
+            String username = ((UserDetails) principal).getUsername();
+            return userRepository.findByUserEmail(username)
+                    .orElseThrow(() -> new EntityNotFoundException("User not found with email: " + username));
         }
 
-        // Create mock transaction (COMPLETED immediately)
-        String mockSessionId = "mock_session_" + System.currentTimeMillis() + "_"
-                + UUID.randomUUID().toString().substring(0, 8);
-        String mockPaymentIntentId = "pi_mock_" + System.currentTimeMillis() + "_"
-                + UUID.randomUUID().toString().substring(0, 8);
+        throw new RuntimeException("Invalid authentication principal");
+    }
 
-        OrderTransaction tx = new OrderTransaction();
-        tx.setOrderAmount(paymentSummary.getTotalAmount());
-        tx.setPaymentMethod(OrderTransaction.PaymentMethod.CREDIT_CARD);
-        tx.setStatus(OrderTransaction.TransactionStatus.COMPLETED); // Mark as completed immediately
-        tx.setStripeSessionId(mockSessionId);
-        tx.setStripePaymentIntentId(mockPaymentIntentId);
-        tx.setPaymentDate(LocalDateTime.now());
-        tx.setReceiptUrl("/receipt/" + mockSessionId);
-        order.setOrderTransaction(tx);
+    // @Transactional
+    public String createCheckoutSession(CheckoutRequest req) throws Exception {
+        logDebugToFile("START: createCheckoutSession");
 
-        // Save order first to get orderId
-        Order saved = orderRepository.save(order);
-        log.info("Order created with ID: {}", saved.getOrderId());
-
-        // Group items by shop and create ShopOrders
-        Map<Shop, List<CartItemDTO>> itemsByShop = new HashMap<>();
-        for (CartItemDTO item : req.getItems()) {
-            Shop shop = getShopForCartItem(item);
-            if (shop == null) {
-                throw new EntityNotFoundException("Product or variant not found or has no associated shop");
+        try {
+            if (req.getShippingAddress() == null || req.getShippingAddress().getCountry() == null) {
+                logDebugToFile("ERROR: Missing shipping address or country");
+                throw new IllegalArgumentException("Shipping address and country are required");
             }
-            itemsByShop.computeIfAbsent(shop, k -> new ArrayList<>()).add(item);
-        }
+            logDebugToFile("Validated shipping address present");
 
-        // Create ShopOrder for each shop
-        for (Map.Entry<Shop, List<CartItemDTO>> entry : itemsByShop.entrySet()) {
-            Shop shop = entry.getKey();
-            List<CartItemDTO> shopItems = entry.getValue();
+            // Validate cart items
+            logDebugToFile("Validating cart items...");
+            validateCartItems(req.getItems());
+            logDebugToFile("Cart validation complete. Items count: " + req.getItems().size());
 
-            // Calculate shop-specific totals first
-            BigDecimal shopSubtotal = BigDecimal.ZERO;
-            BigDecimal shopDiscountAmount = BigDecimal.ZERO;
+            // Get authenticated user
+            User user = getAuthenticatedUser();
+            logDebugToFile("User found: " + user.getId());
 
-            // Create ShopOrder
-            ShopOrder shopOrder = new ShopOrder();
-            shopOrder.setOrder(saved);
-            shopOrder.setShop(shop);
-            shopOrder.setStatus(ShopOrder.ShopOrderStatus.PROCESSING); // Mark as processing (payment completed)
+            // Allocate stock using FEFO across warehouses
+            logDebugToFile("Starting FEFO stock allocation...");
+            Map<CartItemDTO, List<FEFOStockAllocationService.BatchAllocation>> fefoAllocations = enhancedWarehouseAllocator
+                    .allocateStockWithFEFO(req.getItems(), req.getShippingAddress());
+            logDebugToFile("FEFO allocation complete");
 
-            // Calculate shop totals and create OrderItems
-            for (CartItemDTO ci : shopItems) {
-                OrderItem oi = new OrderItem();
-                BigDecimal itemPrice;
-                BigDecimal originalPrice;
+            // Calculate payment summary (validates shops and warehouses)
+            logDebugToFile("Calculating payment summary...");
+            com.ecommerce.dto.PaymentSummaryDTO paymentSummary = calculatePaymentSummary(req.getShippingAddress(),
+                    req.getItems(), user.getId());
+            logDebugToFile("Payment summary calculated - Total: " + paymentSummary.getTotalAmount());
 
-                if (ci.getVariantId() != null) {
-                    ProductVariant variant = variantRepository.findById(ci.getVariantId())
-                            .orElseThrow(() -> new EntityNotFoundException(
-                                    "Variant not found with ID: " + ci.getVariantId()));
-                    oi.setProductVariant(variant);
-                    originalPrice = variant.getPrice();
-                    itemPrice = calculateDiscountedPrice(variant);
+            // Create main Order entity
+            Order order = new Order();
+            order.setUser(user);
+            order.setStatus("PENDING");
+            logDebugToFile("Initialized Order entity");
+
+            OrderInfo orderInfo = new OrderInfo();
+            orderInfo.setSubtotal(paymentSummary.getSubtotal());
+            orderInfo.setShippingCost(paymentSummary.getShippingCost());
+            orderInfo.setTaxAmount(paymentSummary.getTaxAmount());
+            orderInfo.setTotalAmount(paymentSummary.getTotalAmount());
+            orderInfo.setDiscountAmount(paymentSummary.getDiscountAmount());
+            order.setOrderInfo(orderInfo);
+
+            OrderAddress address = new OrderAddress();
+            address.setStreet(req.getShippingAddress().getStreetAddress());
+            address.setRegions(req.getShippingAddress().getCity() + ", " + req.getShippingAddress().getState());
+            address.setCountry(req.getShippingAddress().getCountry());
+            address.setLatitude(req.getShippingAddress().getLatitude());
+            address.setLongitude(req.getShippingAddress().getLongitude());
+            address.setRoadName(req.getShippingAddress().getStreetAddress());
+            order.setOrderAddress(address);
+
+            OrderCustomerInfo customerInfo = new OrderCustomerInfo();
+            customerInfo.setFirstName(user.getFirstName());
+            customerInfo.setLastName(user.getLastName());
+            customerInfo.setEmail(user.getUserEmail());
+            customerInfo.setPhoneNumber(user.getPhoneNumber());
+            order.setOrderCustomerInfo(customerInfo);
+            logDebugToFile("Order details (Info, Address, Customer) set");
+
+            // Save initial order to get ID
+            Order saved = orderRepository.save(order);
+            logDebugToFile("Initial order saved with ID: " + saved.getOrderId());
+
+            // Create main Transaction Record FIRST (before shop loop)
+            logDebugToFile("Creating OrderTransaction record...");
+            OrderTransaction tx = new OrderTransaction();
+            tx.setOrder(saved);
+            tx.setOrderAmount(orderInfo.getTotalAmount());
+            tx.setPaymentMethod(OrderTransaction.PaymentMethod.CREDIT_CARD);
+            tx.setStatus(OrderTransaction.TransactionStatus.PENDING);
+            tx.setCreatedAt(LocalDateTime.now());
+            transactionRepository.save(tx);
+            logDebugToFile("OrderTransaction saved with ID: " + tx.getOrderTransactionId());
+
+            // Group items by shop and create ShopOrders
+            Map<Shop, List<CartItemDTO>> itemsByShop = new HashMap<>();
+            for (CartItemDTO item : req.getItems()) {
+                Shop shop = getShopForCartItem(item);
+                if (shop == null) {
+                    throw new EntityNotFoundException("Product or variant not found or has no associated shop");
+                }
+                itemsByShop.computeIfAbsent(shop, k -> new ArrayList<>()).add(item);
+            }
+            logDebugToFile("Shop count: " + itemsByShop.size());
+
+            // Create ShopOrder for each shop
+            for (Map.Entry<Shop, List<CartItemDTO>> entry : itemsByShop.entrySet()) {
+                Shop shop = entry.getKey();
+                List<CartItemDTO> shopItems = entry.getValue();
+                logDebugToFile("Creating ShopOrder for shop: " + shop.getName());
+
+                BigDecimal shopSubtotal = BigDecimal.ZERO;
+
+                ShopOrder shopOrder = new ShopOrder();
+                shopOrder.setOrder(saved);
+                shopOrder.setShop(shop);
+                shopOrder.setStatus(ShopOrder.ShopOrderStatus.PENDING);
+
+                // Create OrderItems
+                for (CartItemDTO ci : shopItems) {
+                    OrderItem oi = new OrderItem();
+                    BigDecimal itemPrice;
+
+                    if (ci.getVariantId() != null) {
+                        ProductVariant variant = variantRepository.findById(ci.getVariantId())
+                                .orElseThrow(() -> new EntityNotFoundException(
+                                        "Variant not found with ID: " + ci.getVariantId()));
+                        oi.setProductVariant(variant);
+                        oi.setProduct(variant.getProduct());
+                        itemPrice = variant.getPrice();
+                    } else {
+                        Product product = productRepository.findById(ci.getProductId())
+                                .orElseThrow(() -> new EntityNotFoundException(
+                                        "Product not found with ID: " + ci.getProductId()));
+                        oi.setProduct(product);
+                        itemPrice = product.getPrice();
+                    }
+
+                    oi.setShopOrder(shopOrder);
+                    oi.setQuantity(ci.getQuantity());
+                    oi.setPrice(itemPrice);
+                    shopOrder.getItems().add(oi);
+
                     shopSubtotal = shopSubtotal.add(itemPrice.multiply(BigDecimal.valueOf(ci.getQuantity())));
-                    shopDiscountAmount = shopDiscountAmount.add(
-                            originalPrice.subtract(itemPrice).multiply(BigDecimal.valueOf(ci.getQuantity())));
-                } else if (ci.getProductId() != null) {
-                    Product product = productRepository.findById(ci.getProductId())
-                            .orElseThrow(() -> new EntityNotFoundException(
-                                    "Product not found with ID: " + ci.getProductId()));
-                    oi.setProduct(product);
-                    originalPrice = product.getPrice();
-                    itemPrice = calculateDiscountedPrice(product);
-                    shopSubtotal = shopSubtotal.add(itemPrice.multiply(BigDecimal.valueOf(ci.getQuantity())));
-                    shopDiscountAmount = shopDiscountAmount.add(
-                            originalPrice.subtract(itemPrice).multiply(BigDecimal.valueOf(ci.getQuantity())));
-                } else {
-                    throw new IllegalArgumentException("Cart item must have either productId or variantId");
                 }
 
-                oi.setQuantity(ci.getQuantity());
-                oi.setPrice(itemPrice);
-                oi.setShopOrder(shopOrder); // Link to ShopOrder, not Order
-                shopOrder.getItems().add(oi);
+                // Calculate shop-specific shipping
+                BigDecimal shopShippingCost = BigDecimal.ZERO;
+                try {
+                    com.ecommerce.dto.ShippingDetailsDTO details = shippingCostService.calculateEnhancedShippingDetails(
+                            req.getShippingAddress(), shopItems, shopSubtotal, shop.getShopId());
+                    shopShippingCost = details.getShippingCost();
+                } catch (Exception e) {
+                    logDebugToFile("Error calculating shipping for shop " + shop.getShopId() + ": " + e.getMessage());
+                }
+
+                shopOrder.setShippingCost(shopShippingCost);
+                shopOrder.setTotalAmount(shopSubtotal.add(shopShippingCost));
+
+                // Create ShopOrderTransaction and link to global transaction
+                ShopOrderTransaction shopTx = new ShopOrderTransaction();
+                shopTx.setShopOrder(shopOrder);
+                shopTx.setGlobalTransaction(tx); // Link to main transaction
+                shopTx.setAmount(shopOrder.getTotalAmount());
+                shopOrder.setShopOrderTransaction(shopTx);
+
+                shopOrderRepository.save(shopOrder);
+                logDebugToFile("ShopOrder saved for shop " + shop.getShopId());
             }
 
-            // Calculate shipping for this shop (after we have shopSubtotal)
-            BigDecimal shopShippingCost = BigDecimal.ZERO;
-            try {
-                com.ecommerce.dto.ShippingDetailsDTO shopShippingDetails = shippingCostService
-                        .calculateEnhancedShippingDetails(
-                                req.getShippingAddress(), shopItems, shopSubtotal, shop.getShopId());
-                shopShippingCost = shopShippingDetails.getShippingCost();
-            } catch (Exception e) {
-                log.error("Error calculating shipping for shop {}: {}", shop.getShopId(), e.getMessage());
-                shopShippingCost = BigDecimal.ZERO;
+            // Create Stripe Session
+            logDebugToFile("Creating Stripe Session...");
+            String sessionUrl = stripeService.createCheckoutSessionForOrder(saved, req.getCurrency(),
+                    req.getPlatform() != null ? req.getPlatform() : "web");
+            logDebugToFile("Stripe Session URL created: " + sessionUrl);
+
+            // Retrieve session ID from updated transaction
+            OrderTransaction updatedTx = transactionRepository.findById(tx.getOrderTransactionId()).orElseThrow();
+            String sessionId = updatedTx.getStripeSessionId();
+
+            // Lock stock
+            logDebugToFile("Locking stock...");
+            if (!lockStockWithFEFOAllocation(sessionId, req.getItems(), req.getShippingAddress())) {
+                logDebugToFile("ERROR: Failed to lock stock");
+                throw new IllegalStateException("Unable to secure stock");
             }
+            logDebugToFile("Stock locked successfully");
 
-            shopOrder.setShippingCost(shopShippingCost);
-            shopOrder.setDiscountAmount(shopDiscountAmount);
-            shopOrder.setTotalAmount(shopSubtotal.add(shopShippingCost).subtract(shopDiscountAmount));
+            logDebugToFile("SUCCESS: Checkout session created: " + sessionUrl);
+            return sessionUrl;
 
-            // Create ShopOrderTransaction
-            ShopOrderTransaction shopTx = new ShopOrderTransaction();
-            shopTx.setShopOrder(shopOrder);
-            shopTx.setGlobalTransaction(tx);
-            shopTx.setAmount(shopOrder.getTotalAmount());
-            shopOrder.setShopOrderTransaction(shopTx);
-
-            saved.addShopOrder(shopOrder);
-            shopOrderRepository.save(shopOrder);
-
-            log.info("Created ShopOrder {} for shop {}", shopOrder.getShopOrderCode(), shop.getName());
-        }
-
-        // Create order item batches (non-critical - wrap in try-catch to prevent
-        // transaction rollback)
-        try {
-            for (Map.Entry<CartItemDTO, List<FEFOStockAllocationService.BatchAllocation>> entry : fefoAllocations
-                    .entrySet()) {
-                createOrderItemBatchesForShopOrder(saved, entry.getKey(), entry.getValue());
+        } catch (Exception e) {
+            logDebugToFile("FATAL ERROR in createCheckoutSession: " + e.getMessage());
+            for (StackTraceElement ste : e.getStackTrace()) {
+                logDebugToFile("\t" + ste.toString());
             }
-        } catch (Exception e) {
-            log.error("Failed to create order item batches for order {}: {}", saved.getOrderId(), e.getMessage(), e);
+            throw e;
         }
-
-        // Lock stock
-        String sessionId = mockSessionId;
-        if (!lockStockWithFEFOAllocation(sessionId, req.getItems(), req.getShippingAddress())) {
-            log.error("Failed to lock stock for checkout: {}", saved.getOrderId());
-            orderRepository.delete(saved);
-            throw new IllegalStateException("Unable to secure stock for your order. Please try again.");
-        }
-
-        // Confirm stock locks
-        enhancedStockLockService.confirmBatchLocks(sessionId);
-        stockLockService.confirmStock(sessionId);
-
-        // Update discount usage (non-critical - wrap in try-catch to prevent
-        // transaction rollback)
-        try {
-            updateDiscountUsage(saved);
-        } catch (Exception e) {
-            log.error("Failed to update discount usage for order {}: {}", saved.getOrderId(), e.getMessage(), e);
-        }
-
-        // Award reward points if user is logged in (non-critical)
-        if (user != null) {
-            try {
-                int totalProductCount = saved.getAllItems().size();
-                rewardService.checkRewardableOnOrderAndReward(user.getId(), saved.getOrderId(),
-                        totalProductCount, paymentSummary.getTotalAmount());
-            } catch (Exception e) {
-                log.error("Failed to award reward points for order {}: {}", saved.getOrderId(), e.getMessage(), e);
-            }
-        }
-
-        // Send order confirmation email (non-critical)
-        try {
-            orderEmailService.sendOrderConfirmationEmail(saved);
-        } catch (Exception e) {
-            log.error("Failed to send order confirmation email for order {}: {}", saved.getOrderId(), e.getMessage(),
-                    e);
-        }
-
-        // Clear cart (non-critical)
-        try {
-            cartService.clearCart(user.getId());
-            log.info("Successfully cleared cart for user: {}", user.getId());
-        } catch (Exception e) {
-            log.error("Failed to clear cart for user {}: {}", user.getId(), e.getMessage(), e);
-        }
-
-        // LOG ACTIVITY: Order Placed and Payment Completed (non-critical - wrap in
-        // try-catch)
-        String customerName = user.getFirstName() + " " + user.getLastName();
-        try {
-            activityLogService.logOrderPlaced(saved.getOrderId(), customerName);
-        } catch (Exception e) {
-            log.error("Failed to log order placed activity for order {}: {}", saved.getOrderId(), e.getMessage(), e);
-        }
-
-        try {
-            activityLogService.logPaymentCompleted(saved.getOrderId(),
-                    tx.getPaymentMethod().toString(), tx.getOrderAmount().doubleValue());
-        } catch (Exception e) {
-            log.error("Failed to log payment completed activity for order {}: {}", saved.getOrderId(), e.getMessage(),
-                    e);
-        }
-
-        // Record payment in money flow (non-critical - already has try-catch)
-        recordPaymentInMoneyFlow(saved, tx);
-
-        log.info("Mock checkout session created successfully. Order ID: {}, Session ID: {}", saved.getOrderId(),
-                mockSessionId);
-
-        // Return success URL instead of Stripe session URL
-        return "/payment-success?sessionId=" + mockSessionId + "&orderId=" + saved.getOrderId();
     }
 
     // @Transactional
@@ -673,9 +619,9 @@ public class CheckoutService {
         updateDiscountUsage(order);
 
         if (order.getUser() != null) {
-            int totalProductCount = orderRepository.getTotalQuantityByOrderId(order.getOrderId());
-            rewardService.checkRewardableOnOrderAndReward(order.getUser().getId(), order.getOrderId(),
-                    totalProductCount, order.getOrderInfo().getTotalAmount());
+            log.info("User is not null");
+             logDebugToFile("Proceeding to check rewardable and reward");
+            rewardService.checkRewardableOnOrderAndReward(order);
         }
 
         try {

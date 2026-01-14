@@ -135,4 +135,20 @@ public class PointsPaymentController {
             return ResponseEntity.badRequest().body(errorResult);
         }
     }
+
+    @PostMapping("/check-eligibility")
+    @PreAuthorize("hasAnyRole('CUSTOMER','DELIVERY_AGENT','ADMIN')")
+    public ResponseEntity<?> checkPointsEligibility(@RequestBody com.ecommerce.dto.PointsEligibilityRequest request) {
+        try {
+            log.info("Checking points eligibility for user: {}", request.getUserId());
+            com.ecommerce.dto.PointsEligibilityResponse response = pointsPaymentService.checkPointsEligibility(request);
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            log.error("Error checking points eligibility: {}", e.getMessage(), e);
+            Map<String, Object> error = new HashMap<>();
+            error.put("success", false);
+            error.put("message", e.getMessage());
+            return ResponseEntity.badRequest().body(error);
+        }
+    }
 }

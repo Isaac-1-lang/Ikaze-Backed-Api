@@ -129,8 +129,9 @@ public class User implements UserDetails {
     @JsonBackReference
     private Shop shop;
 
-    // Points are now handled by UserPoints entity per shop
-    // private Integer points;
+    @Column(name = "points", nullable = false)
+    @Builder.Default
+    private Integer points = 0;
 
     @PrePersist
     protected void onCreate() {

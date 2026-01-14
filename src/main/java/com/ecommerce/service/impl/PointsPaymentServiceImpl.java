@@ -41,6 +41,7 @@ public class PointsPaymentServiceImpl implements PointsPaymentService {
     private final MoneyFlowService moneyFlowService;
     private final UserPointsRepository userPointsRepository;
     private final ShopRepository shopRepository;
+    private final RewardSystemRepository rewardSystemRepository;
 
     @Override
     public PointsPaymentPreviewDTO previewPointsPayment(PointsPaymentRequest request) {
@@ -799,5 +800,128 @@ public class PointsPaymentServiceImpl implements PointsPaymentService {
                     e);
             // Don't throw exception - payment already succeeded, this is just tracking
         }
+    }
+
+    @Override
+    public com.ecommerce.dto.PointsEligibilityResponse checkPointsEligibility(
+            com.ecommerce.dto.PointsEligibilityRequest request) {
+
+        if (request.getUserId() == null) {
+            throw new IllegalArgumentException("User ID is required");
+        }
+
+        userRepository.findById(request.getUserId())
+                .orElseThrow(() -> new RuntimeException("User not found"));
+
+        if (request.getItems() == null || request.getItems().isEmpty()) {
+            return com.ecommerce.dto.PointsEligibilityResponse.builder()
+                    .shopEligibilities(java.util.Collections.emptyList())
+                    .build();
+        }
+
+        // Group items by Shop
+        Map<UUID, List<CartItemDTO>> shopItemsMap = new java.util.HashMap<>();
+        Map<UUID, String> shopNamesMap = new java.util.HashMap<>();
+
+        for (CartItemDTO item : request.getItems()) {
+            Shop shop = null;
+            if (item.getVariantId() != null) {
+                ProductVariant variant = productVariantRepository.findById(item.getVariantId()).orElse(null);
+                if (variant != null && variant.getProduct() != null) {
+                    shop = variant.getProduct().getShop();
+                }
+            } else if (item.getProductId() != null) {
+                Product product = productRepository.findById(item.getProductId()).orElse(null);
+                if (product != null) {
+                    shop = product.getShop();
+                }
+            }
+
+            if (shop != null) {
+                shopItemsMap.computeIfAbsent(shop.getShopId(), k -> new ArrayList<>()).add(item);
+                shopNamesMap.putIfAbsent(shop.getShopId(), shop.getName());
+            }
+        }
+
+        List<com.ecommerce.dto.ShopPointsEligibilityDTO> summaries = new ArrayList<>();
+
+        for (Map.Entry<UUID, List<CartItemDTO>> entry : shopItemsMap.entrySet()) {
+            UUID shopId = entry.getKey();
+            List<CartItemDTO> shopItems = entry.getValue();
+            String shopName = shopNamesMap.get(shopId);
+
+            BigDecimal totalAmount = BigDecimal.ZERO;
+            int totalProductCount = 0;
+
+            for (CartItemDTO item : shopItems) {
+                BigDecimal itemPrice = BigDecimal.ZERO;
+                if (item.getVariantId() != null) {
+                    ProductVariant v = productVariantRepository.findById(item.getVariantId()).orElse(null);
+                    if (v != null)
+                        itemPrice = calculateDiscountedPrice(v);
+                } else {
+                    Product p = productRepository.findById(item.getProductId()).orElse(null);
+                    if (p != null)
+                        itemPrice = calculateDiscountedPrice(p);
+                }
+
+                totalAmount = totalAmount.add(itemPrice.multiply(BigDecimal.valueOf(item.getQuantity())));
+                totalProductCount += item.getQuantity();
+            }
+
+            // Get Reward System
+            RewardSystem rewardSystem = rewardSystemRepository.findByShopShopIdAndIsActiveTrue(shopId).orElse(null);
+
+            boolean isRewardingEnabled = false;
+            Integer potentialPoints = 0;
+            BigDecimal pointValue = BigDecimal.ZERO;
+
+            if (rewardSystem != null && Boolean.TRUE.equals(rewardSystem.getIsSystemEnabled())) {
+                isRewardingEnabled = true;
+                pointValue = rewardSystem.getPointValue();
+                potentialPoints = rewardSystem.calculatePurchasePoints(totalProductCount, totalAmount);
+            }
+
+            // Get User Balance
+            Integer currentPoints = 0;
+            try {
+                Integer balance = userPointsRepository.calculateCurrentBalanceByShop(request.getUserId(), shopId);
+                if (balance != null)
+                    currentPoints = balance;
+            } catch (Exception e) {
+                log.warn("Error getting points balance for checking eligibility: {}", e.getMessage());
+            }
+
+            BigDecimal currentPointsValue = pointValue.multiply(BigDecimal.valueOf(currentPoints));
+
+            boolean canPay = isRewardingEnabled && currentPoints > 0;
+            BigDecimal maxPayable = currentPointsValue.min(totalAmount);
+
+            String message = "";
+            if (!isRewardingEnabled) {
+                message = "Rewarding system not active for this shop.";
+            } else if (currentPoints <= 0) {
+                message = "No points available.";
+            } else {
+                message = "Available points applied.";
+            }
+
+            summaries.add(com.ecommerce.dto.ShopPointsEligibilityDTO.builder()
+                    .shopId(shopId)
+                    .shopName(shopName)
+                    .isRewardingEnabled(isRewardingEnabled)
+                    .currentPointsBalance(currentPoints)
+                    .currentPointsValue(currentPointsValue)
+                    .potentialEarnedPoints(potentialPoints)
+                    .totalAmount(totalAmount)
+                    .canPayWithPoints(canPay)
+                    .maxPointsPayableAmount(maxPayable)
+                    .message(message)
+                    .build());
+        }
+
+        return com.ecommerce.dto.PointsEligibilityResponse.builder()
+                .shopEligibilities(summaries)
+                .build();
     }
 }
