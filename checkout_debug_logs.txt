@@ -372,3 +372,57 @@
 2026-01-14T16:11:13.8733683 - Product count 1 in range [3.0-null]? false
 2026-01-14T16:11:13.8913643 - Quantity-based points calculated: 0
 2026-01-14T16:11:13.9098687 - total points: 0
+2026-01-14T16:33:03.52719 - passed system disabled
+2026-01-14T16:33:03.5526147 - passed quantity based enabled
+2026-01-14T16:33:03.5586859 - calculateQuantityBasedPoints - productCount: 1
+2026-01-14T16:33:03.569122 - Total reward ranges: 1
+2026-01-14T16:33:03.588016 - Range: type=QUANTITY, min=3.0, max=null, points=5
+2026-01-14T16:33:03.6108011 - Range type QUANTITY? true (actual: QUANTITY)
+2026-01-14T16:33:03.6302152 - Product count 1 in range [3.0-null]? false
+2026-01-14T16:33:03.6403254 - Quantity-based points calculated: 0
+2026-01-14T16:33:03.6492928 - total points: 0
+2026-01-14T16:41:05.1704864 - passed system disabled
+2026-01-14T16:41:05.18551 - passed quantity based enabled
+2026-01-14T16:41:05.1947132 - calculateQuantityBasedPoints - productCount: 1
+2026-01-14T16:41:05.2045619 - Total reward ranges: 1
+2026-01-14T16:41:05.2213707 - Range: type=QUANTITY, min=3.0, max=null, points=5
+2026-01-14T16:41:05.238639 - Range type QUANTITY? true (actual: QUANTITY)
+2026-01-14T16:41:05.2538481 - Product count 1 in range [3.0-null]? false
+2026-01-14T16:41:05.2654351 - Quantity-based points calculated: 0
+2026-01-14T16:41:05.2749573 - total points: 0
+2026-01-14T16:41:34.2047543 - passed system disabled
+2026-01-14T16:41:34.2183538 - passed quantity based enabled
+2026-01-14T16:41:34.2344503 - calculateQuantityBasedPoints - productCount: 1
+2026-01-14T16:41:34.2444605 - Total reward ranges: 1
+2026-01-14T16:41:34.2581547 - Range: type=QUANTITY, min=3.0, max=null, points=5
+2026-01-14T16:41:34.2802008 - Range type QUANTITY? true (actual: QUANTITY)
+2026-01-14T16:41:34.2970214 - Product count 1 in range [3.0-null]? false
+2026-01-14T16:41:34.3153454 - Quantity-based points calculated: 0
+2026-01-14T16:41:34.3251097 - total points: 0
+2026-01-14T16:47:43.7272285 - passed system disabled
+2026-01-14T16:47:43.7515258 - passed quantity based enabled
+2026-01-14T16:47:43.7694416 - calculateQuantityBasedPoints - productCount: 1
+2026-01-14T16:47:43.7851879 - Total reward ranges: 1
+2026-01-14T16:47:43.8132467 - Range: type=QUANTITY, min=3.0, max=null, points=5
+2026-01-14T16:47:43.8515429 - Range type QUANTITY? true (actual: QUANTITY)
+2026-01-14T16:47:43.8895997 - Product count 1 in range [3.0-null]? false
+2026-01-14T16:47:43.905991 - Quantity-based points calculated: 0
+2026-01-14T16:47:43.9194561 - total points: 0
+2026-01-14T16:47:51.7314086 - passed system disabled
+2026-01-14T16:47:51.7438176 - passed quantity based enabled
+2026-01-14T16:47:51.7581709 - calculateQuantityBasedPoints - productCount: 1
+2026-01-14T16:47:51.7692489 - Total reward ranges: 1
+2026-01-14T16:47:51.7820134 - Range: type=QUANTITY, min=3.0, max=null, points=5
+2026-01-14T16:47:51.7910743 - Range type QUANTITY? true (actual: QUANTITY)
+2026-01-14T16:47:51.8021918 - Product count 1 in range [3.0-null]? false
+2026-01-14T16:47:51.8158746 - Quantity-based points calculated: 0
+2026-01-14T16:47:51.8254052 - total points: 0
+2026-01-14T16:48:17.9918014 - passed system disabled
+2026-01-14T16:48:18.0060027 - passed quantity based enabled
+2026-01-14T16:48:18.0180114 - calculateQuantityBasedPoints - productCount: 1
+2026-01-14T16:48:18.0294868 - Total reward ranges: 1
+2026-01-14T16:48:18.0410388 - Range: type=QUANTITY, min=3.0, max=null, points=5
+2026-01-14T16:48:18.058181 - Range type QUANTITY? true (actual: QUANTITY)
+2026-01-14T16:48:18.0701299 - Product count 1 in range [3.0-null]? false
+2026-01-14T16:48:18.0822521 - Quantity-based points calculated: 0
+2026-01-14T16:48:18.095013 - total points: 0

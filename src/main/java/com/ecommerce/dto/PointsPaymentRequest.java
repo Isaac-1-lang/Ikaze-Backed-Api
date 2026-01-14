@@ -13,8 +13,23 @@ import java.util.UUID;
 public class PointsPaymentRequest {
 
     private UUID userId;
+
+    // Legacy field - kept for backward compatibility but deprecated
+    @Deprecated
     private UUID shopId;
+
     private List<CartItemDTO> items;
     private AddressDto shippingAddress;
     private boolean useAllAvailablePoints;
+
+    // New field for multi-vendor points selection
+    private List<ShopPointsSelection> selectedShopsForPoints;
+
+    @Data
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class ShopPointsSelection {
+        private UUID shopId;
+        private Integer pointsToUse;
+    }
 }

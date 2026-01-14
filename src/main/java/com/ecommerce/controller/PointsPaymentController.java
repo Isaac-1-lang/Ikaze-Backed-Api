@@ -114,7 +114,7 @@ public class PointsPaymentController {
     }
 
     @PostMapping("/complete-hybrid/{userId}/{orderId}")
-    @PreAuthorize("hasAnyRole('CUSTOMER','DELIVERY_AGENT','ADMIN')")
+    @PreAuthorize("hasAnyRole('CUSTOMER','DELIVERY_AGENT','ADMIN', 'VENDOR')")
     public ResponseEntity<PointsPaymentResult> completeHybridPayment(
             @PathVariable UUID userId,
             @PathVariable Long orderId,
