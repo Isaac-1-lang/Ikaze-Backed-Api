@@ -1,0 +1,71 @@
+2026-01-14T10:07:41.6788629 - passed system disabled
+2026-01-14T10:07:41.6970978 - passed quantity based enabled
+2026-01-14T10:07:41.705434 - calculateQuantityBasedPoints - productCount: 8
+2026-01-14T10:07:41.7093917 - Total reward ranges: 1
+2026-01-14T10:07:41.7169879 - Range: type=QUANTITY, min=3.0, max=null, points=5
+2026-01-14T10:07:41.7314331 - Range type QUANTITY? true (actual: QUANTITY)
+2026-01-14T10:07:41.7642949 - Product count 8 in range [3.0-null]? true
+2026-01-14T10:07:41.7790689 - Quantity-based points calculated: 5
+2026-01-14T10:07:41.7969475 - total points: 5
+2026-01-14T10:07:49.1314527 - START: createCheckoutSession
+2026-01-14T10:07:49.1380077 - Validated shipping address present
+2026-01-14T10:07:49.1420394 - Validating cart items...
+2026-01-14T10:07:49.1720102 - Cart validation complete. Items count: 2
+2026-01-14T10:07:49.1799381 - User found: b8b7ef97-c7b4-44fc-a48b-2ba63bfb64e7
+2026-01-14T10:07:49.1849746 - Starting FEFO stock allocation...
+2026-01-14T10:07:50.0167824 - FEFO allocation complete
+2026-01-14T10:07:50.0220872 - Calculating payment summary...
+2026-01-14T10:07:51.0430381 - passed system disabled
+2026-01-14T10:07:51.0474693 - passed quantity based enabled
+2026-01-14T10:07:51.0525422 - calculateQuantityBasedPoints - productCount: 8
+2026-01-14T10:07:51.0595893 - Total reward ranges: 1
+2026-01-14T10:07:51.0676483 - Range: type=QUANTITY, min=3.0, max=null, points=5
+2026-01-14T10:07:51.0745291 - Range type QUANTITY? true (actual: QUANTITY)
+2026-01-14T10:07:51.0813151 - Product count 8 in range [3.0-null]? true
+2026-01-14T10:07:51.086906 - Quantity-based points calculated: 5
+2026-01-14T10:07:51.0929686 - total points: 5
+2026-01-14T10:07:52.0574994 - Payment summary calculated - Total: 9297.49590723210038860000
+2026-01-14T10:07:52.0688945 - Initialized Order entity
+2026-01-14T10:07:52.0781592 - Order details (Info, Address, Customer) set
+2026-01-14T10:07:52.289281 - Initial order saved with ID: 41
+2026-01-14T10:07:52.2978394 - Creating OrderTransaction record...
+2026-01-14T10:07:52.3347467 - OrderTransaction saved with ID: 32
+2026-01-14T10:07:52.365636 - Shop count: 2
+2026-01-14T10:07:52.3776438 - Creating ShopOrder for shop: Kigali Madrid shop
+2026-01-14T10:07:53.1089391 - ShopOrder saved for shop 9415be7a-7964-4813-a0bc-40685f07c580
+2026-01-14T10:07:53.1169714 - Creating ShopOrder for shop: Jovin shop
+2026-01-14T10:07:54.0189743 - ShopOrder saved for shop 9dbb88fa-f785-4ede-b2a2-b68cc5f90b97
+2026-01-14T10:07:54.0256434 - Creating Stripe Session...
+2026-01-14T10:07:57.5632277 - Stripe Session URL created: https://checkout.stripe.com/c/pay/cs_test_b1ShZiBjixeW1qiMTFBO4a7DxPMxhpuxTnKWSxsgfmmehs00Xq8W3MFx84#fidnandhYHdWcXxpYCc%2FJ2FgY2RwaXEnKSdkdWxOYHwnPyd1blpxYHZxWjA0V2Fnf0tDdUtRVDI3YnZ8NzYzPWpTY2djXX1xS0B3SUExbldpR0dSPHdrUGxIN2F8dmBIYXN9TVxsT19sdzxBSmF0R1VCbmM3QVZhYWFPQUpAbXRKbGdnNTVLNEh3Q1VNcicpJ2N3amhWYHdzYHcnP3F3cGApJ2dkZm5id2pwa2FGamlqdyc%2FJyZjY2NjY2MnKSdpZHxqcHFRfHVgJz8naHBpcWxabHFgaCcpJ2BrZGdpYFVpZGZgbWppYWB3dic%2FcXdwYHgl
+2026-01-14T10:07:57.5691256 - Locking stock...
+2026-01-14T10:07:57.9418689 - Stock locked successfully
+2026-01-14T10:07:57.9471343 - SUCCESS: Checkout session created: https://checkout.stripe.com/c/pay/cs_test_b1ShZiBjixeW1qiMTFBO4a7DxPMxhpuxTnKWSxsgfmmehs00Xq8W3MFx84#fidnandhYHdWcXxpYCc%2FJ2FgY2RwaXEnKSdkdWxOYHwnPyd1blpxYHZxWjA0V2Fnf0tDdUtRVDI3YnZ8NzYzPWpTY2djXX1xS0B3SUExbldpR0dSPHdrUGxIN2F8dmBIYXN9TVxsT19sdzxBSmF0R1VCbmM3QVZhYWFPQUpAbXRKbGdnNTVLNEh3Q1VNcicpJ2N3amhWYHdzYHcnP3F3cGApJ2dkZm5id2pwa2FGamlqdyc%2FJyZjY2NjY2MnKSdpZHxqcHFRfHVgJz8naHBpcWxabHFgaCcpJ2BrZGdpYFVpZGZgbWppYWB3dic%2FcXdwYHgl
+2026-01-14T10:13:00.6508796 - Proceeding to check rewardable and reward
+2026-01-14T10:13:00.6636463 - Checking rewardable for shop order
+2026-01-14T10:13:00.6744641 - Shop not null
+2026-01-14T10:13:00.6812388 - Checkin rewardable for shop order
+2026-01-14T10:13:00.694216 - Shop ID: 9415be7a-7964-4813-a0bc-40685f07c580, Shop Name: Kigali Madrid shop
+2026-01-14T10:13:00.7024157 - Product Count: 1, Order Amount: 124.18
+2026-01-14T10:13:00.7097198 - Getting active reward system for shop
+2026-01-14T10:13:00.7258102 - No active reward system found for shop Kigali Madrid shop
+2026-01-14T10:13:00.7349385 - Checking rewardable for shop order
+2026-01-14T10:13:00.7460593 - Shop not null
+2026-01-14T10:13:00.7548424 - Checkin rewardable for shop order
+2026-01-14T10:13:00.7727356 - Shop ID: 9dbb88fa-f785-4ede-b2a2-b68cc5f90b97, Shop Name: Jovin shop
+2026-01-14T10:13:00.785861 - Product Count: 1, Order Amount: 9173.31
+2026-01-14T10:13:00.7967234 - Getting active reward system for shop
+2026-01-14T10:13:00.8206986 - Found reward system - isSystemEnabled: true
+2026-01-14T10:13:00.8326479 - isPurchasePointsEnabled: true
+2026-01-14T10:13:00.8422553 - isQuantityBasedEnabled: true
+2026-01-14T10:13:00.8535691 - isAmountBasedEnabled: false
+2026-01-14T10:13:00.8606426 - passed system disabled
+2026-01-14T10:13:00.8663887 - passed quantity based enabled
+2026-01-14T10:13:00.8746217 - calculateQuantityBasedPoints - productCount: 1
+2026-01-14T10:13:00.8818776 - Total reward ranges: 1
+2026-01-14T10:13:00.8902988 - Range: type=QUANTITY, min=3.0, max=null, points=5
+2026-01-14T10:13:00.8992357 - Range type QUANTITY? true (actual: QUANTITY)
+2026-01-14T10:13:00.9063508 - Product count 1 in range [3.0-null]? false
+2026-01-14T10:13:00.9140902 - Quantity-based points calculated: 0
+2026-01-14T10:13:00.9201493 - total points: 0
+2026-01-14T10:13:00.9292548 - Points calculated: 0 for shop Jovin shop
+2026-01-14T10:13:00.937367 - ShopOrder from Jovin shop in Order 41 does not meet reward criteria. Products: 1, Amount: 9173.31. No points awarded.
