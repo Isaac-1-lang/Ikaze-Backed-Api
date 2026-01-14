@@ -40,7 +40,11 @@ public interface OrderService {
 
     AdminOrderDTO getAdminOrderById(Long orderId);
 
+    AdminOrderDTO getAdminOrderById(Long orderId, UUID shopId);
+
     AdminOrderDTO getAdminOrderByNumber(String orderNumber);
+
+    AdminOrderDTO getAdminOrderByNumber(String orderNumber, UUID shopId);
 
     Page<AdminOrderDTO> searchOrders(OrderSearchDTO searchRequest, Pageable pageable);
 

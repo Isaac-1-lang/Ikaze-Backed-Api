@@ -15,4 +15,5 @@ import java.util.UUID;
 public class PointsEligibilityRequest {
     private UUID userId;
     private List<CartItemDTO> items;
+    private AddressDto shippingAddress;
 }

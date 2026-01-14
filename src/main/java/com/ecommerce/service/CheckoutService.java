@@ -260,6 +260,7 @@ public class CheckoutService {
                 }
 
                 shopOrder.setShippingCost(shopShippingCost);
+                shopOrder.setSubtotal(shopSubtotal);
                 shopOrder.setTotalAmount(shopSubtotal.add(shopShippingCost));
 
                 // Create ShopOrderTransaction and link to global transaction
@@ -620,7 +621,7 @@ public class CheckoutService {
 
         if (order.getUser() != null) {
             log.info("User is not null");
-             logDebugToFile("Proceeding to check rewardable and reward");
+            logDebugToFile("Proceeding to check rewardable and reward");
             rewardService.checkRewardableOnOrderAndReward(order);
         }
 
@@ -656,13 +657,7 @@ public class CheckoutService {
      * Helper method to build verification result for already completed transactions
      */
     private CheckoutVerificationResult buildVerificationResult(Session session, Order order, OrderTransaction tx) {
-        OrderResponseDTO orderResponse = OrderResponseDTO.builder()
-                .id(order.getOrderId())
-                .orderNumber(order.getOrderCode())
-                .status(order.getStatus() != null ? order.getStatus() : "PENDING")
-                .total(order.getTotalAmount())
-                .createdAt(order.getCreatedAt())
-                .build();
+        OrderResponseDTO orderResponse = convertOrderToResponseDTO(order);
 
         return new CheckoutVerificationResult(
                 session.getPaymentStatus(),
@@ -1476,6 +1471,33 @@ public class CheckoutService {
             List<OrderResponseDTO.OrderItem> itemDTOs = order.getAllItems().stream()
                     .map(this::mapOrderItemToResponseDTO).toList();
             dto.setItems(itemDTOs);
+        }
+
+        // Set shop orders grouped by shop
+        if (order.getShopOrders() != null && !order.getShopOrders().isEmpty()) {
+            List<OrderResponseDTO.ShopOrderResponse> shopOrderDTOs = new ArrayList<>();
+            for (com.ecommerce.entity.ShopOrder so : order.getShopOrders()) {
+                OrderResponseDTO.ShopOrderResponse shopOrderDTO = new OrderResponseDTO.ShopOrderResponse();
+                shopOrderDTO.setId(so.getId());
+                shopOrderDTO.setShopOrderCode(so.getShopOrderCode());
+                shopOrderDTO.setShopName(so.getShop() != null ? so.getShop().getName() : "Unknown Shop");
+                shopOrderDTO.setPickupToken(so.getPickupToken());
+                shopOrderDTO.setPickupTokenUsed(so.getPickupTokenUsed());
+                shopOrderDTO.setStatus(so.getStatus().name());
+                shopOrderDTO.setShippingCost(so.getShippingCost());
+                shopOrderDTO.setSubtotal(so.getSubtotal());
+                shopOrderDTO.setTotalAmount(so.getTotalAmount());
+
+                if (so.getItems() != null) {
+                    List<OrderResponseDTO.OrderItem> itemDTOs = new ArrayList<>();
+                    for (com.ecommerce.entity.OrderItem item : so.getItems()) {
+                        itemDTOs.add(mapOrderItemToResponseDTO(item));
+                    }
+                    shopOrderDTO.setItems(itemDTOs);
+                }
+                shopOrderDTOs.add(shopOrderDTO);
+            }
+            dto.setShopOrders(shopOrderDTOs);
         }
 
         return dto;

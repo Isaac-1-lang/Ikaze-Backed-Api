@@ -186,9 +186,21 @@ public class AdminOrderController {
 
     @GetMapping("/{orderId}")
     @Operation(summary = "Get order by ID", description = "Retrieve a specific order by ID")
-    public ResponseEntity<?> getOrderById(@PathVariable Long orderId) {
+    public ResponseEntity<?> getOrderById(
+            @PathVariable Long orderId,
+            @RequestParam(required = false) String shopId) {
         try {
-            AdminOrderDTO order = orderService.getAdminOrderById(orderId);
+            UUID shopUuid = null;
+            if (shopId != null && !shopId.trim().isEmpty()) {
+                shopUuid = UUID.fromString(shopId);
+                // Validate shop access
+                UUID currentUserId = getCurrentUserId();
+                if (currentUserId != null) {
+                    shopAuthorizationService.assertCanManageShop(currentUserId, shopUuid);
+                }
+            }
+
+            AdminOrderDTO order = orderService.getAdminOrderById(orderId, shopUuid);
 
             Map<String, Object> response = new HashMap<>();
             response.put("success", true);
@@ -216,9 +228,21 @@ public class AdminOrderController {
 
     @GetMapping("/number/{orderNumber}")
     @Operation(summary = "Get order by number", description = "Retrieve a specific order by order number")
-    public ResponseEntity<?> getOrderByNumber(@PathVariable String orderNumber) {
+    public ResponseEntity<?> getOrderByNumber(
+            @PathVariable String orderNumber,
+            @RequestParam(required = false) String shopId) {
         try {
-            AdminOrderDTO order = orderService.getAdminOrderByNumber(orderNumber);
+            UUID shopUuid = null;
+            if (shopId != null && !shopId.trim().isEmpty()) {
+                shopUuid = UUID.fromString(shopId);
+                // Validate shop access
+                UUID currentUserId = getCurrentUserId();
+                if (currentUserId != null) {
+                    shopAuthorizationService.assertCanManageShop(currentUserId, shopUuid);
+                }
+            }
+
+            AdminOrderDTO order = orderService.getAdminOrderByNumber(orderNumber, shopUuid);
 
             Map<String, Object> response = new HashMap<>();
             response.put("success", true);

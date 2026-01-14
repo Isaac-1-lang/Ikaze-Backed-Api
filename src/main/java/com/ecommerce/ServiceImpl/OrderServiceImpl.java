@@ -4,7 +4,6 @@ import com.ecommerce.entity.Order;
 import com.ecommerce.entity.OrderActivityLog;
 import com.ecommerce.entity.OrderItem;
 import com.ecommerce.entity.OrderAddress;
-import com.ecommerce.entity.OrderInfo;
 import com.ecommerce.entity.OrderCustomerInfo;
 import com.ecommerce.entity.OrderTransaction;
 import com.ecommerce.entity.Product;
@@ -31,7 +30,6 @@ import com.ecommerce.repository.ReturnRequestRepository;
 import com.ecommerce.repository.ReturnItemRepository;
 import com.ecommerce.service.OrderService;
 import com.ecommerce.service.RewardService;
-import com.ecommerce.dto.CreateOrderDTO;
 import com.ecommerce.dto.CustomerOrderDTO;
 import com.ecommerce.dto.AdminOrderDTO;
 import com.ecommerce.dto.DeliveryOrderDTO;
@@ -49,12 +47,12 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDateTime;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import java.util.ArrayList;
+import java.util.Optional;
 
 import com.ecommerce.dto.ShopOrderDTO;
 import com.ecommerce.entity.ShopOrder.ShopOrderStatus; // Needed for count implementation
@@ -203,7 +201,33 @@ public class OrderServiceImpl implements OrderService {
     public AdminOrderDTO getAdminOrderById(Long orderId) {
         Order order = orderRepository.findByIdWithDetailsForAdmin(orderId)
                 .orElseThrow(() -> new EntityNotFoundException("Order not found"));
-        return toAdminOrderDTO(order);
+        return toAdminOrderDTO(order, null);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public AdminOrderDTO getAdminOrderById(Long orderId, UUID shopId) {
+        log.info("Attempting to find order with ID: {} and shopId: {}", orderId, shopId);
+
+        // Try finding by Order ID first
+        Optional<Order> orderOpt = orderRepository.findByIdWithDetailsForAdmin(orderId);
+        if (orderOpt.isPresent()) {
+            log.info("Found order by main Order ID: {}", orderId);
+            return toAdminOrderDTO(orderOpt.get(), shopId);
+        }
+
+        // If not found and we have a shopId, try finding by ShopOrder ID
+        if (shopId != null) {
+            log.info("Order not found by main ID, trying by ShopOrder ID: {}", orderId);
+            Optional<ShopOrder> shopOrderOpt = shopOrderRepository.findById(orderId);
+            if (shopOrderOpt.isPresent() && shopOrderOpt.get().getShop().getShopId().equals(shopId)) {
+                log.info("Found order by ShopOrder ID: {}", orderId);
+                return toAdminOrderDTO(shopOrderOpt.get().getOrder(), shopId);
+            }
+        }
+
+        log.warn("Order not found with ID: {}", orderId);
+        throw new EntityNotFoundException("Order not found with ID: " + orderId);
     }
 
     @Override
@@ -211,7 +235,33 @@ public class OrderServiceImpl implements OrderService {
     public AdminOrderDTO getAdminOrderByNumber(String orderNumber) {
         Order order = orderRepository.findByOrderCodeWithDetailsForAdmin(orderNumber)
                 .orElseThrow(() -> new EntityNotFoundException("Order not found"));
-        return toAdminOrderDTO(order);
+        return toAdminOrderDTO(order, null);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public AdminOrderDTO getAdminOrderByNumber(String orderNumber, UUID shopId) {
+        log.info("Attempting to find order with number: {} and shopId: {}", orderNumber, shopId);
+
+        // Try finding by Order Number first
+        Optional<Order> orderOpt = orderRepository.findByOrderCodeWithDetailsForAdmin(orderNumber);
+        if (orderOpt.isPresent()) {
+            log.info("Found order by main Order Number: {}", orderNumber);
+            return toAdminOrderDTO(orderOpt.get(), shopId);
+        }
+
+        // If not found and we have a shopId, try finding by ShopOrder Code
+        if (shopId != null) {
+            log.info("Order not found by main number, trying by ShopOrder Code: {}", orderNumber);
+            Optional<ShopOrder> shopOrderOpt = shopOrderRepository.findByShopOrderCode(orderNumber);
+            if (shopOrderOpt.isPresent() && shopOrderOpt.get().getShop().getShopId().equals(shopId)) {
+                log.info("Found order by ShopOrder Code: {}", orderNumber);
+                return toAdminOrderDTO(shopOrderOpt.get().getOrder(), shopId);
+            }
+        }
+
+        log.warn("Order not found with number: {}", orderNumber);
+        throw new EntityNotFoundException("Order not found with number: " + orderNumber);
     }
 
     @Override
@@ -439,7 +489,9 @@ public class OrderServiceImpl implements OrderService {
                     .orElse(null);
 
             if (shopOrder != null) {
-                builder.status(shopOrder.getStatus().name())
+                builder.id(shopOrder.getId().toString()) // Use ShopOrder ID as primary ID when in shop context
+                        .orderNumber(shopOrder.getShopOrderCode()) // Use ShopOrder Code when in shop context
+                        .status(shopOrder.getStatus().name())
                         .total(shopOrder.getTotalAmount())
                         .subtotal(calculateShopOrderSubtotal(shopOrder))
                         .shipping(shopOrder.getShippingCost())

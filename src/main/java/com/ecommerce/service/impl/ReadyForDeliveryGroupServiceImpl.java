@@ -114,8 +114,7 @@ public class ReadyForDeliveryGroupServiceImpl implements ReadyForDeliveryGroupSe
         }
 
         for (Long orderId : orderIds) {
-            com.ecommerce.entity.ShopOrder so = shopOrderRepository.findById(orderId)
-                    .orElseThrow(() -> new EntityNotFoundException("Shop order not found with ID: " + orderId));
+            ShopOrder so = findShopOrder(orderId, group.getShop().getShopId());
 
             if (so.getReadyForDeliveryGroup() != null &&
                     so.getReadyForDeliveryGroup().getDeliveryGroupId().equals(groupId)) {
@@ -290,8 +289,7 @@ public class ReadyForDeliveryGroupServiceImpl implements ReadyForDeliveryGroupSe
                 : "N/A";
 
         for (Long orderId : orderIds) {
-            ShopOrder shopOrder = shopOrderRepository.findById(orderId)
-                    .orElseThrow(() -> new EntityNotFoundException("Shop order not found with ID: " + orderId));
+            ShopOrder shopOrder = findShopOrder(orderId, group.getShop().getShopId());
 
             if (shopOrder.getReadyForDeliveryGroup() != null) {
                 throw new IllegalStateException(
@@ -397,8 +395,7 @@ public class ReadyForDeliveryGroupServiceImpl implements ReadyForDeliveryGroupSe
 
         for (Long orderId : orderIds) {
             try {
-                ShopOrder shopOrder = shopOrderRepository.findById(orderId)
-                        .orElseThrow(() -> new EntityNotFoundException("Shop order not found with ID: " + orderId));
+                ShopOrder shopOrder = findShopOrder(orderId, group.getShop().getShopId());
 
                 if (shopOrder.getReadyForDeliveryGroup() != null) {
                     skippedOrders.add(BulkAddResult.SkippedOrder.builder()
@@ -452,8 +449,7 @@ public class ReadyForDeliveryGroupServiceImpl implements ReadyForDeliveryGroupSe
             throw new IllegalStateException("Cannot remove orders from a group that has already started delivery");
         }
 
-        ShopOrder shopOrder = shopOrderRepository.findById(orderId)
-                .orElseThrow(() -> new EntityNotFoundException("Shop order not found with ID: " + orderId));
+        ShopOrder shopOrder = findShopOrder(orderId, group.getShop().getShopId());
 
         if (shopOrder.getReadyForDeliveryGroup() != null &&
                 shopOrder.getReadyForDeliveryGroup().getDeliveryGroupId().equals(groupId)) {
@@ -495,15 +491,32 @@ public class ReadyForDeliveryGroupServiceImpl implements ReadyForDeliveryGroupSe
     public Optional<DeliveryGroupDto> findGroupByOrder(Long orderId) {
         log.info("Finding group for order: {}", orderId);
 
-        ShopOrder shopOrder = shopOrderRepository.findById(orderId)
-                .orElseThrow(() -> new EntityNotFoundException("Shop order not found with ID: " + orderId));
+        // Try finding by ShopOrder ID first
+        Optional<ShopOrder> shopOrderOpt = shopOrderRepository.findById(orderId);
 
-        if (shopOrder.getReadyForDeliveryGroup() != null) {
-            ReadyForDeliveryGroup group = groupRepository
-                    .findByIdWithOrdersAndDeliverer(shopOrder.getReadyForDeliveryGroup().getDeliveryGroupId())
-                    .orElse(null);
-            if (group != null) {
-                return Optional.of(mapToDeliveryGroupDto(group));
+        if (shopOrderOpt.isPresent()) {
+            ShopOrder shopOrder = shopOrderOpt.get();
+            if (shopOrder.getReadyForDeliveryGroup() != null) {
+                ReadyForDeliveryGroup group = groupRepository
+                        .findByIdWithOrdersAndDeliverer(shopOrder.getReadyForDeliveryGroup().getDeliveryGroupId())
+                        .orElse(null);
+                if (group != null) {
+                    return Optional.of(mapToDeliveryGroupDto(group));
+                }
+            }
+        } else {
+            // If not found by ID, it might be an Order ID.
+            // Look for any shop orders belonging to this order that are in a group.
+            List<ShopOrder> shopOrders = shopOrderRepository.findByOrder_OrderId(orderId);
+            for (ShopOrder so : shopOrders) {
+                if (so.getReadyForDeliveryGroup() != null) {
+                    ReadyForDeliveryGroup group = groupRepository
+                            .findByIdWithOrdersAndDeliverer(so.getReadyForDeliveryGroup().getDeliveryGroupId())
+                            .orElse(null);
+                    if (group != null) {
+                        return Optional.of(mapToDeliveryGroupDto(group));
+                    }
+                }
             }
         }
 
@@ -1105,13 +1118,12 @@ public class ReadyForDeliveryGroupServiceImpl implements ReadyForDeliveryGroupSe
     public DeliveryGroupDto changeOrderGroup(Long orderId, Long newGroupId) {
         log.info("Changing order {} to group {}", orderId, newGroupId);
 
-        // Find the shop order
-        ShopOrder shopOrder = shopOrderRepository.findById(orderId)
-                .orElseThrow(() -> new EntityNotFoundException("Shop order not found with ID: " + orderId));
-
-        // Find the new group
+        // Find the new group first to get shop context
         ReadyForDeliveryGroup newGroup = groupRepository.findByIdWithDeliverer(newGroupId)
                 .orElseThrow(() -> new EntityNotFoundException("Delivery group not found with ID: " + newGroupId));
+
+        // Find the shop order using robust lookup
+        ShopOrder shopOrder = findShopOrder(orderId, newGroup.getShop().getShopId());
 
         // Validate that the new group hasn't started delivery
         if (newGroup.getHasDeliveryStarted()) {
@@ -1140,7 +1152,9 @@ public class ReadyForDeliveryGroupServiceImpl implements ReadyForDeliveryGroupSe
 
         // Add to new group
         shopOrder.setReadyForDeliveryGroup(newGroup);
-        newGroup.getShopOrders().add(shopOrder);
+        if (!newGroup.getShopOrders().contains(shopOrder)) {
+            newGroup.getShopOrders().add(shopOrder);
+        }
 
         // Save both entities
         shopOrderRepository.save(shopOrder);
@@ -1149,5 +1163,33 @@ public class ReadyForDeliveryGroupServiceImpl implements ReadyForDeliveryGroupSe
         log.info("Successfully changed order {} to group {}", orderId, newGroupId);
 
         return mapToDeliveryGroupDto(savedGroup);
+    }
+
+    private ShopOrder findShopOrder(Long orderId, UUID shopId) {
+        // Try finding by ShopOrder ID first
+        Optional<ShopOrder> shopOrderOpt = shopOrderRepository.findById(orderId);
+        if (shopOrderOpt.isPresent()) {
+            ShopOrder so = shopOrderOpt.get();
+            // If shopId matches, great
+            if (shopId != null && so.getShop().getShopId().equals(shopId)) {
+                return so;
+            }
+            // If shopId doesn't match but we have it, try finding by Order ID and shopId
+            // instead
+            if (shopId != null) {
+                return shopOrderRepository.findByOrder_OrderIdAndShop_ShopId(orderId, shopId)
+                        .orElse(so); // Fallback to the one found by ID if not found by OrderID+ShopID
+            }
+            return so;
+        }
+
+        // If not found by direct ID, try by main Order ID and shop ID
+        if (shopId != null) {
+            return shopOrderRepository.findByOrder_OrderIdAndShop_ShopId(orderId, shopId)
+                    .orElseThrow(() -> new EntityNotFoundException(
+                            "Shop order not found for Order ID: " + orderId + " and shop ID: " + shopId));
+        }
+
+        throw new EntityNotFoundException("Shop order not found with ID: " + orderId);
     }
 }

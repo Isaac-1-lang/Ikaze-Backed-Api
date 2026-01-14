@@ -16,6 +16,13 @@ import org.springframework.data.repository.query.Param;
 public interface ShopOrderRepository extends JpaRepository<ShopOrder, Long> {
         Optional<ShopOrder> findByShopOrderCode(String shopOrderCode);
 
+        @Query("SELECT so FROM ShopOrder so WHERE so.order.orderId = :orderId AND so.shop.shopId = :shopId")
+        Optional<ShopOrder> findByOrder_OrderIdAndShop_ShopId(@Param("orderId") Long orderId,
+                        @Param("shopId") UUID shopId);
+
+        @Query("SELECT so FROM ShopOrder so WHERE so.order.orderId = :orderId")
+        List<ShopOrder> findByOrder_OrderId(@Param("orderId") Long orderId);
+
         Optional<ShopOrder> findByPickupToken(String pickupToken);
 
         // Find all shop orders for a specific shop
