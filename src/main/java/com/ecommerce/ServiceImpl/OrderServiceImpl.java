@@ -1400,6 +1400,12 @@ public class OrderServiceImpl implements OrderService {
                 .shippingCost(shopOrder.getShippingCost())
                 .discountAmount(shopOrder.getDiscountAmount())
                 .total(shopOrder.getTotalAmount())
+                .pointsUsed(shopOrder.getShopOrderTransaction() != null
+                        ? shopOrder.getShopOrderTransaction().getPointsUsed()
+                        : 0)
+                .pointsValue(shopOrder.getShopOrderTransaction() != null
+                        ? shopOrder.getShopOrderTransaction().getPointsValue()
+                        : BigDecimal.ZERO)
                 .deliveryInfo(deliveryInfo)
                 .returnRequests(returnRequestRepository.findByShopOrderId(shopOrder.getId()).stream()
                         .map(rr -> com.ecommerce.dto.CustomerOrderTrackingDTO.ReturnRequest.builder()

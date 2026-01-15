@@ -24,12 +24,14 @@ public interface ReturnRequestRepository
        /**
         * Find return requests by order ID
         */
-       List<ReturnRequest> findByOrderId(Long orderId);
+       List<ReturnRequest> findByShopOrderId(Long shopOrderId);
 
        /**
         * Find return requests by order ID ordered by submitted date descending
         */
-       List<ReturnRequest> findByOrderIdOrderBySubmittedAtDesc(Long orderId);
+       List<ReturnRequest> findByShopOrderIdOrderBySubmittedAtDesc(Long shopOrderId);
+
+       List<ReturnRequest> findByShopOrder_Order_OrderIdOrderBySubmittedAtDesc(Long orderId);
 
        List<ReturnRequest> findByCustomerId(UUID customerId);
 
@@ -38,7 +40,8 @@ public interface ReturnRequestRepository
         * MultipleBagFetchException)
         */
        @Query("SELECT DISTINCT rr FROM ReturnRequest rr " +
-                     "LEFT JOIN FETCH rr.order o " +
+                     "LEFT JOIN FETCH rr.shopOrder so " +
+                     "LEFT JOIN FETCH so.order o " +
                      "LEFT JOIN FETCH o.orderCustomerInfo oci " +
                      "LEFT JOIN FETCH rr.customer u " +
                      "WHERE rr.customerId = :customerId")
@@ -56,7 +59,8 @@ public interface ReturnRequestRepository
         * MultipleBagFetchException)
         */
        @Query("SELECT DISTINCT rr FROM ReturnRequest rr " +
-                     "LEFT JOIN FETCH rr.order o " +
+                     "LEFT JOIN FETCH rr.shopOrder so " +
+                     "LEFT JOIN FETCH so.order o " +
                      "LEFT JOIN FETCH o.orderCustomerInfo oci " +
                      "LEFT JOIN FETCH rr.customer u " +
                      "WHERE rr.status = :status")
@@ -116,7 +120,8 @@ public interface ReturnRequestRepository
         * MultipleBagFetchException)
         */
        @Query("SELECT DISTINCT rr FROM ReturnRequest rr " +
-                     "LEFT JOIN FETCH rr.order o " +
+                     "LEFT JOIN FETCH rr.shopOrder so " +
+                     "LEFT JOIN FETCH so.order o " +
                      "LEFT JOIN FETCH o.orderCustomerInfo " +
                      "WHERE rr.id = :id")
        Optional<ReturnRequest> findByIdWithBasicData(@Param("id") Long id);
@@ -168,12 +173,12 @@ public interface ReturnRequestRepository
        /**
         * Check if customer has any return request for specific order
         */
-       boolean existsByOrderIdAndCustomerId(Long orderId, UUID customerId);
+       boolean existsByShopOrderIdAndCustomerId(Long shopOrderId, UUID customerId);
 
        /**
         * Find return requests by order ID and customer ID
         */
-       Optional<ReturnRequest> findByOrderIdAndCustomerId(Long orderId, UUID customerId);
+       Optional<ReturnRequest> findByShopOrderIdAndCustomerId(Long shopOrderId, UUID customerId);
 
        /**
         * Find recent return requests by customer (last 30 days)
@@ -193,7 +198,8 @@ public interface ReturnRequestRepository
         * MultipleBagFetchException
         */
        @Query("SELECT DISTINCT rr FROM ReturnRequest rr " +
-                     "LEFT JOIN FETCH rr.order o " +
+                     "LEFT JOIN FETCH rr.shopOrder so " +
+                     "LEFT JOIN FETCH so.order o " +
                      "LEFT JOIN FETCH o.orderCustomerInfo oci " +
                      "WHERE rr.customerId IS NULL")
        Page<ReturnRequest> findGuestReturnRequests(Pageable pageable);
@@ -203,7 +209,8 @@ public interface ReturnRequestRepository
         * MultipleBagFetchException)
         */
        @Query("SELECT DISTINCT rr FROM ReturnRequest rr " +
-                     "LEFT JOIN FETCH rr.order o " +
+                     "LEFT JOIN FETCH rr.shopOrder so " +
+                     "LEFT JOIN FETCH so.order o " +
                      "LEFT JOIN FETCH o.orderCustomerInfo oci " +
                      "LEFT JOIN FETCH rr.customer u")
        Page<ReturnRequest> findAllWithDetails(Pageable pageable);
@@ -285,7 +292,8 @@ public interface ReturnRequestRepository
        @Query("SELECT DISTINCT rr FROM ReturnRequest rr " +
                      "LEFT JOIN FETCH rr.deliveryAgent da " +
                      "LEFT JOIN FETCH rr.assignedByUser abu " +
-                     "LEFT JOIN FETCH rr.order o " +
+                     "LEFT JOIN FETCH rr.shopOrder so " +
+                     "LEFT JOIN FETCH so.order o " +
                      "LEFT JOIN FETCH rr.customer c " +
                      "WHERE rr.id = :id")
        Optional<ReturnRequest> findByIdWithDeliveryDetails(@Param("id") Long id);
@@ -295,7 +303,8 @@ public interface ReturnRequestRepository
         */
        @Query("SELECT DISTINCT rr FROM ReturnRequest rr " +
                      "LEFT JOIN FETCH rr.deliveryAgent da " +
-                     "LEFT JOIN FETCH rr.order o " +
+                     "LEFT JOIN FETCH rr.shopOrder so " +
+                     "LEFT JOIN FETCH so.order o " +
                      "LEFT JOIN FETCH rr.customer c " +
                      "WHERE rr.deliveryAgentId = :deliveryAgentId")
        Page<ReturnRequest> findByDeliveryAgentIdWithDetails(@Param("deliveryAgentId") UUID deliveryAgentId,
@@ -306,7 +315,8 @@ public interface ReturnRequestRepository
         */
        @Query("SELECT DISTINCT rr FROM ReturnRequest rr " +
                      "LEFT JOIN FETCH rr.deliveryAgent da " +
-                     "LEFT JOIN FETCH rr.order o " +
+                     "LEFT JOIN FETCH rr.shopOrder so " +
+                     "LEFT JOIN FETCH so.order o " +
                      "LEFT JOIN FETCH rr.customer c " +
                      "WHERE rr.deliveryStatus = :deliveryStatus")
        Page<ReturnRequest> findByDeliveryStatusWithDetails(@Param("deliveryStatus") DeliveryStatus deliveryStatus,
@@ -318,7 +328,8 @@ public interface ReturnRequestRepository
         */
        @Query("SELECT DISTINCT rr FROM ReturnRequest rr " +
                      "LEFT JOIN FETCH rr.deliveryAgent da " +
-                     "LEFT JOIN FETCH rr.order o " +
+                     "LEFT JOIN FETCH rr.shopOrder so " +
+                     "LEFT JOIN FETCH so.order o " +
                      "LEFT JOIN FETCH o.orderAddress oa " +
                      "LEFT JOIN FETCH o.orderCustomerInfo oci " +
                      "LEFT JOIN FETCH rr.customer c " +
@@ -329,7 +340,8 @@ public interface ReturnRequestRepository
         * Check if OrderAddress exists for a specific return request's order
         */
        @Query("SELECT COUNT(oa) > 0 FROM ReturnRequest rr " +
-                     "JOIN rr.order o " +
+                     "JOIN rr.shopOrder so " +
+                     "JOIN so.order o " +
                      "JOIN o.orderAddress oa " +
                      "WHERE rr.id = :returnRequestId")
        boolean hasOrderAddressForReturnRequest(@Param("returnRequestId") Long returnRequestId);
@@ -337,12 +349,7 @@ public interface ReturnRequestRepository
        /**
         * Find return request by order number
         */
-       @Query("SELECT rr FROM ReturnRequest rr JOIN rr.order o WHERE o.orderCode = :orderNumber")
+       @Query("SELECT rr FROM ReturnRequest rr JOIN rr.shopOrder so JOIN so.order o WHERE o.orderCode = :orderNumber")
        Optional<ReturnRequest> findByOrderNumber(@Param("orderNumber") String orderNumber);
 
-       /**
-        * Find return requests that include items from a specific shop order
-        */
-       @Query("SELECT DISTINCT rr FROM ReturnRequest rr JOIN rr.returnItems ri WHERE ri.orderItem.shopOrder.id = :shopOrderId")
-       List<ReturnRequest> findByShopOrderId(@Param("shopOrderId") Long shopOrderId);
 }

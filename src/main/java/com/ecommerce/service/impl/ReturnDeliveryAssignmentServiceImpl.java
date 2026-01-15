@@ -36,14 +36,15 @@ public class ReturnDeliveryAssignmentServiceImpl implements ReturnDeliveryAssign
 
     @Override
     public ReturnDeliveryAssignmentDTO assignDeliveryAgent(AssignDeliveryAgentRequestDTO request, UUID assignedBy) {
-        log.info("Assigning delivery agent {} to return request {}", request.getDeliveryAgentId(), request.getReturnRequestId());
+        log.info("Assigning delivery agent {} to return request {}", request.getDeliveryAgentId(),
+                request.getReturnRequestId());
 
         // Validate return request
         ReturnRequest returnRequest = returnRequestRepository.findById(request.getReturnRequestId())
                 .orElseThrow(() -> new RuntimeException("Return request not found: " + request.getReturnRequestId()));
 
         if (!returnRequest.canBeAssignedToDeliveryAgent()) {
-            throw new IllegalStateException("Return request cannot be assigned to delivery agent. Status: " + 
+            throw new IllegalStateException("Return request cannot be assigned to delivery agent. Status: " +
                     returnRequest.getStatus() + ", Delivery Status: " + returnRequest.getDeliveryStatus());
         }
 
@@ -70,7 +71,7 @@ public class ReturnDeliveryAssignmentServiceImpl implements ReturnDeliveryAssign
         // Save the updated return request
         returnRequest = returnRequestRepository.save(returnRequest);
 
-        log.info("Successfully assigned delivery agent {} to return request {}", 
+        log.info("Successfully assigned delivery agent {} to return request {}",
                 request.getDeliveryAgentId(), request.getReturnRequestId());
 
         return convertToAssignmentDTO(returnRequest);
@@ -110,7 +111,8 @@ public class ReturnDeliveryAssignmentServiceImpl implements ReturnDeliveryAssign
                 .orElseThrow(() -> new RuntimeException("Return request not found: " + request.getReturnRequestId()));
 
         if (!returnRequest.isAssignedToDeliveryAgent()) {
-            throw new IllegalStateException("Return request must be assigned to a delivery agent before scheduling pickup");
+            throw new IllegalStateException(
+                    "Return request must be assigned to a delivery agent before scheduling pickup");
         }
 
         // Schedule pickup
@@ -123,7 +125,7 @@ public class ReturnDeliveryAssignmentServiceImpl implements ReturnDeliveryAssign
         // Save the updated return request
         returnRequest = returnRequestRepository.save(returnRequest);
 
-        log.info("Successfully scheduled pickup for return request {} at {}", 
+        log.info("Successfully scheduled pickup for return request {} at {}",
                 request.getReturnRequestId(), request.getScheduledPickupTime());
 
         return convertToAssignmentDTO(returnRequest);
@@ -131,7 +133,7 @@ public class ReturnDeliveryAssignmentServiceImpl implements ReturnDeliveryAssign
 
     @Override
     public ReturnDeliveryAssignmentDTO updatePickupStatus(UpdatePickupStatusRequestDTO request) {
-        log.info("Updating pickup status for return request {} to {}", 
+        log.info("Updating pickup status for return request {} to {}",
                 request.getReturnRequestId(), request.getNewStatus());
 
         if (!request.isValidPickupStatus()) {
@@ -152,7 +154,7 @@ public class ReturnDeliveryAssignmentServiceImpl implements ReturnDeliveryAssign
         // Save the updated return request
         returnRequest = returnRequestRepository.save(returnRequest);
 
-        log.info("Successfully updated pickup status for return request {} to {}", 
+        log.info("Successfully updated pickup status for return request {} to {}",
                 request.getReturnRequestId(), request.getNewStatus());
 
         return convertToAssignmentDTO(returnRequest);
@@ -171,7 +173,7 @@ public class ReturnDeliveryAssignmentServiceImpl implements ReturnDeliveryAssign
     @Transactional(readOnly = true)
     public Page<ReturnDeliveryAssignmentDTO> getAssignmentsByDeliveryAgent(UUID deliveryAgentId, Pageable pageable) {
         Page<ReturnRequest> returnRequests = returnRequestRepository.findByDeliveryAgentId(deliveryAgentId, pageable);
-        
+
         List<ReturnDeliveryAssignmentDTO> assignments = returnRequests.getContent().stream()
                 .map(this::convertToAssignmentDTO)
                 .collect(Collectors.toList());
@@ -183,7 +185,7 @@ public class ReturnDeliveryAssignmentServiceImpl implements ReturnDeliveryAssign
     @Transactional(readOnly = true)
     public Page<ReturnDeliveryAssignmentDTO> getAssignmentsByStatus(DeliveryStatus status, Pageable pageable) {
         Page<ReturnRequest> returnRequests = returnRequestRepository.findByDeliveryStatus(status, pageable);
-        
+
         List<ReturnDeliveryAssignmentDTO> assignments = returnRequests.getContent().stream()
                 .map(this::convertToAssignmentDTO)
                 .collect(Collectors.toList());
@@ -195,7 +197,7 @@ public class ReturnDeliveryAssignmentServiceImpl implements ReturnDeliveryAssign
     @Transactional(readOnly = true)
     public Page<ReturnDeliveryAssignmentDTO> getAssignableReturnRequests(Pageable pageable) {
         Page<ReturnRequest> returnRequests = returnRequestRepository.findAssignableReturnRequests(pageable);
-        
+
         List<ReturnDeliveryAssignmentDTO> assignments = returnRequests.getContent().stream()
                 .map(this::convertToAssignmentDTO)
                 .collect(Collectors.toList());
@@ -207,7 +209,7 @@ public class ReturnDeliveryAssignmentServiceImpl implements ReturnDeliveryAssign
     @Transactional(readOnly = true)
     public List<UserDTO> getAvailableDeliveryAgents() {
         List<User> deliveryAgents = userRepository.findByRole(UserRole.DELIVERY_AGENT);
-        
+
         return deliveryAgents.stream()
                 .map(this::convertToUserDTO)
                 .collect(Collectors.toList());
@@ -217,7 +219,7 @@ public class ReturnDeliveryAssignmentServiceImpl implements ReturnDeliveryAssign
     @Transactional(readOnly = true)
     public Page<UserDTO> searchAvailableDeliveryAgents(String search, Pageable pageable) {
         Page<User> deliveryAgents;
-        
+
         if (search != null && !search.trim().isEmpty()) {
             // Search by first name, last name, or email
             String searchTerm = search.trim().toLowerCase();
@@ -226,7 +228,7 @@ public class ReturnDeliveryAssignmentServiceImpl implements ReturnDeliveryAssign
             // Get all delivery agents with pagination
             deliveryAgents = userRepository.findByRole(UserRole.DELIVERY_AGENT, pageable);
         }
-        
+
         return deliveryAgents.map(this::convertToUserDTO);
     }
 
@@ -337,8 +339,8 @@ public class ReturnDeliveryAssignmentServiceImpl implements ReturnDeliveryAssign
     }
 
     @Override
-    public ReturnDeliveryAssignmentDTO reassignDeliveryAgent(Long returnRequestId, UUID newDeliveryAgentId, 
-                                                           UUID assignedBy, String reason) {
+    public ReturnDeliveryAssignmentDTO reassignDeliveryAgent(Long returnRequestId, UUID newDeliveryAgentId,
+            UUID assignedBy, String reason) {
         log.info("Reassigning return request {} from current agent to {}", returnRequestId, newDeliveryAgentId);
 
         ReturnRequest returnRequest = returnRequestRepository.findById(returnRequestId)
@@ -429,8 +431,8 @@ public class ReturnDeliveryAssignmentServiceImpl implements ReturnDeliveryAssign
         if (returnRequest.getDeliveryAgent() != null) {
             User deliveryAgent = returnRequest.getDeliveryAgent();
             builder.deliveryAgentName(deliveryAgent.getFirstName() + " " + deliveryAgent.getLastName())
-                   .deliveryAgentEmail(deliveryAgent.getUserEmail())
-                   .deliveryAgentPhone(deliveryAgent.getPhoneNumber());
+                    .deliveryAgentEmail(deliveryAgent.getUserEmail())
+                    .deliveryAgentPhone(deliveryAgent.getPhoneNumber());
         }
 
         // Add assigner information if available
@@ -443,19 +445,16 @@ public class ReturnDeliveryAssignmentServiceImpl implements ReturnDeliveryAssign
         if (returnRequest.getCustomer() != null) {
             User customer = returnRequest.getCustomer();
             builder.customerName(customer.getFirstName() + " " + customer.getLastName())
-                   .customerEmail(customer.getUserEmail())
-                   .customerPhone(customer.getPhoneNumber());
+                    .customerEmail(customer.getUserEmail())
+                    .customerPhone(customer.getPhoneNumber());
         }
 
-        // Add order information if available
-        if (returnRequest.getOrder() != null) {
-            builder.orderNumber(returnRequest.getOrder().getOrderCode());
-            
-            // TODO: Add pickup address from order shipping address
-            // Need to check Order entity structure for address fields
+        if (returnRequest.getShopOrder() != null) {
+            builder.orderNumber(returnRequest.getShopOrder().getShopOrderCode());
         }
 
         return builder.build();
+
     }
 
     /**

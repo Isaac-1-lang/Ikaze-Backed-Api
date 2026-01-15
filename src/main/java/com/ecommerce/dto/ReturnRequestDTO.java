@@ -17,17 +17,19 @@ import com.ecommerce.entity.OrderAddress;
 @NoArgsConstructor
 @AllArgsConstructor
 public class ReturnRequestDTO {
-    
+
     private Long id;
-    
-    @NotNull(message = "Order ID is required")
+
+    @NotNull(message = "Shop Order ID is required")
+    private Long shopOrderId;
+
     private Long orderId;
-    
+
     private UUID customerId;
-    
+
     @NotBlank(message = "Return reason is required")
     private String reason;
-    
+
     private ReturnRequest.ReturnStatus status;
     private LocalDateTime submittedAt;
     private LocalDateTime decisionAt;
@@ -35,7 +37,7 @@ public class ReturnRequestDTO {
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
     private ReturnRequest.DeliveryStatus deliveryStatus;
-    
+
     // Related data
     private List<ReturnMediaDTO> returnMedia;
     private List<ReturnItemDTO> returnItems;
@@ -47,16 +49,16 @@ public class ReturnRequestDTO {
     private LocalDateTime orderDate;
     private BigDecimal totalAmount;
     private OrderAddress shippingAddress;
-    
+
     // Delivery agent information
     private UUID deliveryAgentId;
     private String deliveryAgentName;
-    
+
     // Helper fields
     private boolean canBeAppealed;
     private int daysUntilExpiry;
     private boolean isEligibleForReturn;
-    
+
     // Expected refund breakdown
     private ExpectedRefundDTO expectedRefund;
 }

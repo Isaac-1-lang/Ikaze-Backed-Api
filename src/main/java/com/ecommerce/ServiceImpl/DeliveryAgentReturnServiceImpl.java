@@ -3,6 +3,7 @@ package com.ecommerce.ServiceImpl;
 import com.ecommerce.dto.ReturnRequestDTO;
 import com.ecommerce.dto.DeliveryAgentReturnTableDTO;
 import com.ecommerce.dto.DeliveryAgentReturnDetailsDTO;
+import com.ecommerce.entity.Order;
 import com.ecommerce.entity.ReturnRequest;
 import com.ecommerce.entity.User;
 import com.ecommerce.repository.ReturnRequestRepository;
@@ -103,16 +104,18 @@ public class DeliveryAgentReturnServiceImpl implements DeliveryAgentReturnServic
                     .orElseThrow(() -> new RuntimeException("Return request not found"));
 
             log.debug("Found return request {} with order {}", returnRequest.getId(),
-                    returnRequest.getOrder() != null ? returnRequest.getOrder().getId() : "null");
+                    returnRequest.getShopOrder().getOrder() != null
+                            ? returnRequest.getShopOrder().getOrder().getOrderId()
+                            : "null");
 
             // Check if OrderAddress exists in database
             boolean hasOrderAddress = returnRequestRepository.hasOrderAddressForReturnRequest(returnRequestId);
             log.debug("Database check - OrderAddress exists for return request {}: {}", returnRequestId,
                     hasOrderAddress);
 
-            if (returnRequest.getOrder() != null) {
-                log.debug("Order {} has OrderAddress loaded: {}", returnRequest.getOrder().getId(),
-                        returnRequest.getOrder().getOrderAddress() != null ? "YES" : "NO");
+            if (returnRequest.getShopOrder() != null && returnRequest.getShopOrder().getOrder() != null) {
+                log.debug("Order {} has OrderAddress loaded: {}", returnRequest.getShopOrder().getOrder().getOrderId(),
+                        returnRequest.getShopOrder().getOrder().getOrderAddress() != null ? "YES" : "NO");
             }
 
             // Verify the return request is assigned to this delivery agent
@@ -255,7 +258,7 @@ public class DeliveryAgentReturnServiceImpl implements DeliveryAgentReturnServic
                     if (deliveryStatus.contains(",")) {
                         String[] statuses = deliveryStatus.split(",");
                         List<ReturnRequest.DeliveryStatus> statusList = new ArrayList<>();
-                        
+
                         for (String status : statuses) {
                             try {
                                 statusList.add(ReturnRequest.DeliveryStatus.valueOf(status.trim().toUpperCase()));
@@ -263,7 +266,7 @@ public class DeliveryAgentReturnServiceImpl implements DeliveryAgentReturnServic
                                 log.warn("Invalid delivery status in filter: {}", status);
                             }
                         }
-                        
+
                         if (!statusList.isEmpty()) {
                             predicates.add(root.get("deliveryStatus").in(statusList));
                         }
@@ -289,14 +292,14 @@ public class DeliveryAgentReturnServiceImpl implements DeliveryAgentReturnServic
             // Filter by customer name
             if (customerName != null && !customerName.trim().isEmpty()) {
                 predicates.add(criteriaBuilder.like(
-                        criteriaBuilder.lower(root.get("order").get("user").get("firstName")),
+                        criteriaBuilder.lower(root.get("shopOrder").get("order").get("user").get("firstName")),
                         "%" + customerName.toLowerCase() + "%"));
             }
 
             // Filter by order number
             if (orderNumber != null && !orderNumber.trim().isEmpty()) {
                 predicates.add(criteriaBuilder.like(
-                        criteriaBuilder.lower(root.get("order").get("orderNumber")),
+                        criteriaBuilder.lower(root.get("shopOrder").get("shopOrderCode")),
                         "%" + orderNumber.toLowerCase() + "%"));
             }
 
@@ -343,24 +346,29 @@ public class DeliveryAgentReturnServiceImpl implements DeliveryAgentReturnServic
         dto.setDecisionNotes(returnRequest.getDecisionNotes());
 
         // Set order information
-        if (returnRequest.getOrder() != null) {
-            dto.setOrderId(returnRequest.getOrder().getId());
-            dto.setOrderNumber(returnRequest.getOrder().getOrderCode());
-            dto.setOrderDate(returnRequest.getOrder().getCreatedAt());
-            dto.setTotalAmount(returnRequest.getOrder().getTotalAmount());
+        if (returnRequest.getShopOrder() != null) {
+            dto.setOrderNumber(returnRequest.getShopOrder().getShopOrderCode());
+            dto.setOrderDate(returnRequest.getShopOrder().getCreatedAt());
+            dto.setTotalAmount(returnRequest.getShopOrder().getTotalAmount());
 
-            // Set customer information
-            if (returnRequest.getOrder().getUser() != null) {
-                dto.setCustomerId(returnRequest.getOrder().getUser().getId());
-                dto.setCustomerName(returnRequest.getOrder().getOrderCustomerInfo().getFirstName() + " " +
-                        returnRequest.getOrder().getOrderCustomerInfo().getLastName());
-                dto.setCustomerEmail(returnRequest.getOrder().getOrderCustomerInfo().getEmail());
-                dto.setCustomerPhone(returnRequest.getOrder().getOrderCustomerInfo().getPhoneNumber());
-            }
+            Order order = returnRequest.getShopOrder().getOrder();
+            if (order != null) {
+                dto.setOrderId(order.getOrderId());
+                // Set customer information
+                if (order.getUser() != null) {
+                    dto.setCustomerId(order.getUser().getId());
+                }
+                if (order.getOrderCustomerInfo() != null) {
+                    dto.setCustomerName(order.getOrderCustomerInfo().getFirstName() + " " +
+                            order.getOrderCustomerInfo().getLastName());
+                    dto.setCustomerEmail(order.getOrderCustomerInfo().getEmail());
+                    dto.setCustomerPhone(order.getOrderCustomerInfo().getPhoneNumber());
+                }
 
-            // Set shipping address
-            if (returnRequest.getOrder().getOrderAddress() != null) {
-                dto.setShippingAddress(returnRequest.getOrder().getOrderAddress());
+                // Set shipping address
+                if (order.getOrderAddress() != null) {
+                    dto.setShippingAddress(order.getOrderAddress());
+                }
             }
         }
 
@@ -376,7 +384,7 @@ public class DeliveryAgentReturnServiceImpl implements DeliveryAgentReturnServic
             com.ecommerce.dto.ExpectedRefundDTO expectedRefund = refundService.calculateExpectedRefund(returnRequest);
             dto.setExpectedRefund(expectedRefund);
         } catch (Exception e) {
-            log.error("Could not calculate expected refund for return request {}: {}", 
+            log.error("Could not calculate expected refund for return request {}: {}",
                     returnRequest.getId(), e.getMessage(), e);
             // Set null to indicate calculation failed, but don't break the entire request
             dto.setExpectedRefund(null);
@@ -399,34 +407,37 @@ public class DeliveryAgentReturnServiceImpl implements DeliveryAgentReturnServic
         dto.setCreatedAt(returnRequest.getCreatedAt());
 
         // Order information
-        if (returnRequest.getOrder() != null) {
-            dto.setOrderId(returnRequest.getOrder().getId());
-            dto.setOrderNumber(returnRequest.getOrder().getOrderCode());
-            dto.setOrderDate(returnRequest.getOrder().getCreatedAt());
+        if (returnRequest.getShopOrder() != null) {
+            dto.setOrderNumber(returnRequest.getShopOrder().getShopOrderCode());
+            dto.setOrderDate(returnRequest.getShopOrder().getCreatedAt());
 
-            // Customer information from OrderCustomerInfo
-            if (returnRequest.getOrder().getOrderCustomerInfo() != null) {
-                dto.setCustomerName(returnRequest.getOrder().getOrderCustomerInfo().getFirstName() + " " +
-                        returnRequest.getOrder().getOrderCustomerInfo().getLastName());
-                dto.setCustomerEmail(returnRequest.getOrder().getOrderCustomerInfo().getEmail());
-                dto.setCustomerPhone(returnRequest.getOrder().getOrderCustomerInfo().getPhoneNumber());
+            Order order = returnRequest.getShopOrder().getOrder();
+            if (order != null) {
+                dto.setOrderId(order.getOrderId());
+                // Customer information from OrderCustomerInfo
+                if (order.getOrderCustomerInfo() != null) {
+                    dto.setCustomerName(order.getOrderCustomerInfo().getFirstName() + " " +
+                            order.getOrderCustomerInfo().getLastName());
+                    dto.setCustomerEmail(order.getOrderCustomerInfo().getEmail());
+                    dto.setCustomerPhone(order.getOrderCustomerInfo().getPhoneNumber());
 
-                // Build customer address from OrderCustomerInfo
-                StringBuilder address = new StringBuilder();
-                if (returnRequest.getOrder().getOrderCustomerInfo().getStreetAddress() != null) {
-                    address.append(returnRequest.getOrder().getOrderCustomerInfo().getStreetAddress());
+                    // Build customer address from OrderCustomerInfo
+                    StringBuilder address = new StringBuilder();
+                    if (order.getOrderCustomerInfo().getStreetAddress() != null) {
+                        address.append(order.getOrderCustomerInfo().getStreetAddress());
+                    }
+                    if (order.getOrderCustomerInfo().getCity() != null) {
+                        if (address.length() > 0)
+                            address.append(", ");
+                        address.append(order.getOrderCustomerInfo().getCity());
+                    }
+                    if (order.getOrderCustomerInfo().getState() != null) {
+                        if (address.length() > 0)
+                            address.append(", ");
+                        address.append(order.getOrderCustomerInfo().getState());
+                    }
+                    dto.setCustomerAddress(address.toString());
                 }
-                if (returnRequest.getOrder().getOrderCustomerInfo().getCity() != null) {
-                    if (address.length() > 0)
-                        address.append(", ");
-                    address.append(returnRequest.getOrder().getOrderCustomerInfo().getCity());
-                }
-                if (returnRequest.getOrder().getOrderCustomerInfo().getState() != null) {
-                    if (address.length() > 0)
-                        address.append(", ");
-                    address.append(returnRequest.getOrder().getOrderCustomerInfo().getState());
-                }
-                dto.setCustomerAddress(address.toString());
             }
         }
 
@@ -458,80 +469,78 @@ public class DeliveryAgentReturnServiceImpl implements DeliveryAgentReturnServic
         dto.setDecisionNotes(returnRequest.getDecisionNotes());
 
         // Order information
-        if (returnRequest.getOrder() != null) {
-            dto.setOrderId(returnRequest.getOrder().getId());
-            dto.setOrderNumber(returnRequest.getOrder().getOrderCode());
-            dto.setOrderDate(returnRequest.getOrder().getCreatedAt());
-            dto.setOrderTotal(returnRequest.getOrder().getTotalAmount());
+        if (returnRequest.getShopOrder() != null) {
+            Order order = returnRequest.getShopOrder().getOrder();
+            dto.setOrderNumber(returnRequest.getShopOrder().getShopOrderCode());
+            dto.setOrderDate(returnRequest.getShopOrder().getCreatedAt());
+            dto.setOrderTotal(returnRequest.getShopOrder().getTotalAmount());
 
-            // Customer information
-            if (returnRequest.getOrder().getOrderCustomerInfo() != null) {
-                DeliveryAgentReturnDetailsDTO.CustomerInfoDTO customer = new DeliveryAgentReturnDetailsDTO.CustomerInfoDTO();
-                customer.setName(returnRequest.getOrder().getOrderCustomerInfo().getFirstName() + " " +
-                        returnRequest.getOrder().getOrderCustomerInfo().getLastName());
-                customer.setEmail(returnRequest.getOrder().getOrderCustomerInfo().getEmail());
-                customer.setPhone(returnRequest.getOrder().getOrderCustomerInfo().getPhoneNumber());
-                dto.setCustomer(customer);
-            }
+            if (order != null) {
+                dto.setOrderId(order.getOrderId());
+                // Customer information
+                if (order.getOrderCustomerInfo() != null) {
+                    DeliveryAgentReturnDetailsDTO.CustomerInfoDTO customer = new DeliveryAgentReturnDetailsDTO.CustomerInfoDTO();
+                    customer.setName(order.getOrderCustomerInfo().getFirstName() + " " +
+                            order.getOrderCustomerInfo().getLastName());
+                    customer.setEmail(order.getOrderCustomerInfo().getEmail());
+                    customer.setPhone(order.getOrderCustomerInfo().getPhoneNumber());
+                    dto.setCustomer(customer);
+                }
 
-            // Pickup address with coordinates from OrderAddress
-            DeliveryAgentReturnDetailsDTO.PickupAddressDTO address = new DeliveryAgentReturnDetailsDTO.PickupAddressDTO();
-            
-            if (returnRequest.getOrder() != null && returnRequest.getOrder().getOrderAddress() != null) {
-                com.ecommerce.entity.OrderAddress orderAddress = returnRequest.getOrder().getOrderAddress();
-                log.debug("Found OrderAddress: street={}, country={}, regions={}, lat={}, lng={}",
-                        orderAddress.getStreet(), orderAddress.getCountry(), orderAddress.getRegions(),
-                        orderAddress.getLatitude(), orderAddress.getLongitude());
-               
-                address.setStreet(orderAddress.getStreet());
-                address.setCountry(orderAddress.getCountry());
-                address.setRegions(orderAddress.getRegions());
-                address.setRoadName(orderAddress.getRoadName());
-                address.setLatitude(orderAddress.getLatitude());
-                address.setLongitude(orderAddress.getLongitude());
+                // Pickup address with coordinates from OrderAddress
+                DeliveryAgentReturnDetailsDTO.PickupAddressDTO address = new DeliveryAgentReturnDetailsDTO.PickupAddressDTO();
 
-                // Build full address
-                StringBuilder fullAddress = new StringBuilder();
-                if (orderAddress.getStreet() != null)
-                    fullAddress.append(orderAddress.getStreet());
-                if (orderAddress.getRoadName() != null) {
-                    if (fullAddress.length() > 0)
-                        fullAddress.append(", ");
-                    fullAddress.append(orderAddress.getRoadName());
-                }
-                if (orderAddress.getRegions() != null) {
-                    if (fullAddress.length() > 0)
-                        fullAddress.append(", ");
-                    fullAddress.append(orderAddress.getRegions());
-                }
-                if (orderAddress.getCountry() != null) {
-                    if (fullAddress.length() > 0)
-                        fullAddress.append(", ");
-                    fullAddress.append(orderAddress.getCountry());
-                }
-                address.setFullAddress(fullAddress.toString());
-                log.debug("Mapped pickup address: {}", address.getFullAddress());
-            } else {
-                // Handle missing OrderAddress with proper fallback values
-                log.warn("OrderAddress is null for return request {}", returnRequest.getId());
-                if (returnRequest.getOrder() == null) {
-                    log.warn("Order is null for return request {}", returnRequest.getId());
+                if (order.getOrderAddress() != null) {
+                    com.ecommerce.entity.OrderAddress orderAddress = order.getOrderAddress();
+                    log.debug("Found OrderAddress: street={}, country={}, regions={}, lat={}, lng={}",
+                            orderAddress.getStreet(), orderAddress.getCountry(), orderAddress.getRegions(),
+                            orderAddress.getLatitude(), orderAddress.getLongitude());
+
+                    address.setStreet(orderAddress.getStreet());
+                    address.setCountry(orderAddress.getCountry());
+                    address.setRegions(orderAddress.getRegions());
+                    address.setRoadName(orderAddress.getRoadName());
+                    address.setLatitude(orderAddress.getLatitude());
+                    address.setLongitude(orderAddress.getLongitude());
+
+                    // Build full address
+                    StringBuilder fullAddress = new StringBuilder();
+                    if (orderAddress.getStreet() != null)
+                        fullAddress.append(orderAddress.getStreet());
+                    if (orderAddress.getRoadName() != null) {
+                        if (fullAddress.length() > 0)
+                            fullAddress.append(", ");
+                        fullAddress.append(orderAddress.getRoadName());
+                    }
+                    if (orderAddress.getRegions() != null) {
+                        if (fullAddress.length() > 0)
+                            fullAddress.append(", ");
+                        fullAddress.append(orderAddress.getRegions());
+                    }
+                    if (orderAddress.getCountry() != null) {
+                        if (fullAddress.length() > 0)
+                            fullAddress.append(", ");
+                        fullAddress.append(orderAddress.getCountry());
+                    }
+                    address.setFullAddress(fullAddress.toString());
+                    log.debug("Mapped pickup address: {}", address.getFullAddress());
                 } else {
-                    log.warn("Order {} exists but has no OrderAddress", returnRequest.getOrder().getId());
+                    // Handle missing OrderAddress with proper fallback values
+                    log.warn("OrderAddress is null for return request {}", returnRequest.getId());
+
+                    // Set fallback values when OrderAddress is not available
+                    address.setStreet("Address not available");
+                    address.setCountry("Not specified");
+                    address.setRegions("Not specified");
+                    address.setRoadName("Not specified");
+                    address.setLatitude(null);
+                    address.setLongitude(null);
+                    address.setFullAddress(
+                            "Pickup address not available - Please contact customer for address details");
                 }
 
-                // Set fallback values when OrderAddress is not available
-                address.setStreet("Address not available");
-                address.setCountry("Not specified");
-                address.setRegions("Not specified");
-                address.setRoadName("Not specified");
-                address.setLatitude(null);
-                address.setLongitude(null);
-                address.setFullAddress("Pickup address not available - Please contact customer for address details");
-                log.debug("Set fallback pickup address for return request {}", returnRequest.getId());
+                dto.setPickupAddress(address);
             }
-            
-            dto.setPickupAddress(address);
         }
 
         // Return items with product details

@@ -572,7 +572,8 @@ public class OrderController {
 
         // Add return request information if exists
         try {
-            List<ReturnRequest> returnRequests = returnRequestRepository.findByOrderId(order.getOrderId());
+            List<ReturnRequest> returnRequests = returnRequestRepository
+                    .findByShopOrder_Order_OrderIdOrderBySubmittedAtDesc(order.getOrderId());
             if (returnRequests != null && !returnRequests.isEmpty()) {
                 ReturnRequest returnRequest = returnRequests.get(0); // Get the first (should be only one)
                 OrderResponseDTO.ReturnRequestInfo returnInfo = new OrderResponseDTO.ReturnRequestInfo();
