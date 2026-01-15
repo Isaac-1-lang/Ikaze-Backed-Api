@@ -19,6 +19,7 @@ public class DashboardResponseDTO {
     private long totalProducts;
     private long totalOrders;
     private BigDecimal totalRevenue; // Only for ADMIN; null for others
+    private BigDecimal pointsRevenue; // Points value for vendors/admin
     private long totalCustomers;
     private List<RecentOrderDTO> recentOrders;
     private AlertsDTO alerts;

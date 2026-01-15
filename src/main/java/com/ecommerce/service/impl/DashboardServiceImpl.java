@@ -116,6 +116,21 @@ public class DashboardServiceImpl implements DashboardService {
             // Revenue for shop (only for ADMIN or shop owner/authorized)
             if (role == UserRole.ADMIN || shopAuthorizationService.canManageShop(userId, shopId)) {
                 revenue = shopOrderRepository.sumTotalRevenueByShopId(shopId);
+
+                AlertsDTO alerts = AlertsDTO.builder()
+                        .lowStockProducts(lowStock)
+                        .pendingOrders(pendingOrders)
+                        .build();
+
+                DashboardResponseDTO.DashboardResponseDTOBuilder builder = DashboardResponseDTO.builder()
+                        .totalProducts(totalProducts)
+                        .totalOrders(totalOrders)
+                        .totalRevenue(revenue)
+                        .pointsRevenue(shopOrderRepository.sumTotalPointsRevenueByShopId(shopId))
+                        .totalCustomers(totalCustomers)
+                        .recentOrders(recentOrders)
+                        .alerts(alerts);
+                return builder.build();
             }
         } else {
             // Global data (ADMIN only)
@@ -130,17 +145,17 @@ public class DashboardServiceImpl implements DashboardService {
 
             List<Order> globalOrders = orderRepository.findAll(
                     PageRequest.of(0, 3, org.springframework.data.domain.Sort.by("createdAt").descending()))
-                .getContent();
+                    .getContent();
 
             recentOrders = globalOrders.stream()
                     .map(o -> RecentOrderDTO.builder()
                             .orderId(o.getOrderCode())
                             .status(o.getStatus())
-                .amount(o.getOrderTransaction() != null ? o.getOrderTransaction().getOrderAmount()
-                        : (o.getOrderInfo() != null ? o.getOrderInfo().getTotalAmount() : BigDecimal.ZERO))
+                            .amount(o.getOrderTransaction() != null ? o.getOrderTransaction().getOrderAmount()
+                                    : (o.getOrderInfo() != null ? o.getOrderInfo().getTotalAmount() : BigDecimal.ZERO))
                             .owner(o.getUser() != null ? o.getUser().getFullName() : "Guest")
-                .build())
-                .collect(Collectors.toList());
+                            .build())
+                    .collect(Collectors.toList());
 
             if (role == UserRole.ADMIN) {
                 revenue = moneyFlowService.getNetRevenue();

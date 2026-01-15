@@ -426,3 +426,68 @@
 2026-01-14T16:48:18.0701299 - Product count 1 in range [3.0-null]? false
 2026-01-14T16:48:18.0822521 - Quantity-based points calculated: 0
 2026-01-14T16:48:18.095013 - total points: 0
+2026-01-14T20:38:39.6858327 - passed system disabled
+2026-01-14T20:38:39.7010432 - passed quantity based enabled
+2026-01-14T20:38:39.7106638 - calculateQuantityBasedPoints - productCount: 1
+2026-01-14T20:38:39.7238024 - Total reward ranges: 1
+2026-01-14T20:38:39.736863 - Range: type=QUANTITY, min=3.0, max=null, points=5
+2026-01-14T20:38:39.7560009 - Range type QUANTITY? true (actual: QUANTITY)
+2026-01-14T20:38:39.7769181 - Product count 1 in range [3.0-null]? false
+2026-01-14T20:38:39.7864489 - Quantity-based points calculated: 0
+2026-01-14T20:38:39.7926331 - total points: 0
+2026-01-14T20:38:50.9563992 - passed system disabled
+2026-01-14T20:38:50.9699509 - passed quantity based enabled
+2026-01-14T20:38:50.9808004 - calculateQuantityBasedPoints - productCount: 1
+2026-01-14T20:38:50.9864211 - Total reward ranges: 1
+2026-01-14T20:38:51.0003567 - Range: type=QUANTITY, min=3.0, max=null, points=5
+2026-01-14T20:38:51.014328 - Range type QUANTITY? true (actual: QUANTITY)
+2026-01-14T20:38:51.0223285 - Product count 1 in range [3.0-null]? false
+2026-01-14T20:38:51.0347245 - Quantity-based points calculated: 0
+2026-01-14T20:38:51.0483811 - total points: 0
+2026-01-14T20:38:59.1768325 - passed system disabled
+2026-01-14T20:38:59.1871988 - passed quantity based enabled
+2026-01-14T20:38:59.1969686 - calculateQuantityBasedPoints - productCount: 1
+2026-01-14T20:38:59.2039983 - Total reward ranges: 1
+2026-01-14T20:38:59.2145601 - Range: type=QUANTITY, min=3.0, max=null, points=5
+2026-01-14T20:38:59.2268883 - Range type QUANTITY? true (actual: QUANTITY)
+2026-01-14T20:38:59.2356541 - Product count 1 in range [3.0-null]? false
+2026-01-14T20:38:59.2444334 - Quantity-based points calculated: 0
+2026-01-14T20:38:59.2530866 - total points: 0
+2026-01-14T20:40:17.7001276 - passed system disabled
+2026-01-14T20:40:17.7160299 - passed quantity based enabled
+2026-01-14T20:40:17.7311755 - calculateQuantityBasedPoints - productCount: 1
+2026-01-14T20:40:17.7447335 - Total reward ranges: 1
+2026-01-14T20:40:17.7519104 - Range: type=QUANTITY, min=3.0, max=null, points=5
+2026-01-14T20:40:17.7670048 - Range type QUANTITY? true (actual: QUANTITY)
+2026-01-14T20:40:17.7812136 - Product count 1 in range [3.0-null]? false
+2026-01-14T20:40:17.7978281 - Quantity-based points calculated: 0
+2026-01-14T20:40:17.8106088 - total points: 0
+2026-01-14T20:41:15.3893016 - Proceeding to check rewardable and reward
+2026-01-14T20:41:15.4066804 - Checking rewardable for shop order
+2026-01-14T20:41:15.4158324 - Shop not null
+2026-01-14T20:41:15.4275212 - Checkin rewardable for shop order
+2026-01-14T20:41:15.4440964 - Shop ID: 9dbb88fa-f785-4ede-b2a2-b68cc5f90b97, Shop Name: Jovin shop
+2026-01-14T20:41:15.4517771 - Product Count: 1, Order Amount: 1000.00
+2026-01-14T20:41:15.4593558 - Getting active reward system for shop
+2026-01-14T20:41:15.4822633 - Found reward system - isSystemEnabled: true
+2026-01-14T20:41:15.4926738 - isPurchasePointsEnabled: true
+2026-01-14T20:41:15.5039159 - isQuantityBasedEnabled: true
+2026-01-14T20:41:15.5131006 - isAmountBasedEnabled: false
+2026-01-14T20:41:15.5251841 - passed system disabled
+2026-01-14T20:41:15.5358812 - passed quantity based enabled
+2026-01-14T20:41:15.544834 - calculateQuantityBasedPoints - productCount: 1
+2026-01-14T20:41:15.5569536 - Total reward ranges: 1
+2026-01-14T20:41:15.5686126 - Range: type=QUANTITY, min=3.0, max=null, points=5
+2026-01-14T20:41:15.5771701 - Range type QUANTITY? true (actual: QUANTITY)
+2026-01-14T20:41:15.5866365 - Product count 1 in range [3.0-null]? false
+2026-01-14T20:41:15.5958473 - Quantity-based points calculated: 0
+2026-01-14T20:41:15.6054204 - total points: 0
+2026-01-14T20:41:15.6188896 - Points calculated: 0 for shop Jovin shop
+2026-01-14T20:41:15.6277783 - ShopOrder from Jovin shop in Order 47 does not meet reward criteria. Products: 1, Amount: 1000.00. No points awarded.
+2026-01-14T20:41:15.6395578 - Checking rewardable for shop order
+2026-01-14T20:41:15.6473824 - Shop not null
+2026-01-14T20:41:15.6570147 - Checkin rewardable for shop order
+2026-01-14T20:41:15.6672869 - Shop ID: 9415be7a-7964-4813-a0bc-40685f07c580, Shop Name: Kigali Madrid shop
+2026-01-14T20:41:15.6744056 - Product Count: 1, Order Amount: 20.00
+2026-01-14T20:41:15.6822841 - Getting active reward system for shop
+2026-01-14T20:41:15.7043593 - No active reward system found for shop Kigali Madrid shop

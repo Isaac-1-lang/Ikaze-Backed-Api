@@ -97,7 +97,7 @@ public class PointsPaymentServiceImpl implements PointsPaymentService {
     }
 
     @Override
-    @Transactional
+    // @Transactional
     public PointsPaymentResult processPointsPayment(PointsPaymentRequest request) {
         try {
             User user = userRepository.findById(request.getUserId())
@@ -156,7 +156,7 @@ public class PointsPaymentServiceImpl implements PointsPaymentService {
         }
         log.info("All batch allocations committed successfully");
 
-        // Deduct points shop by shop
+        // Deduct points shop by shop and update ShopOrderTransaction
         List<PointsPaymentResult.ShopPointsDeduction> deductions = new ArrayList<>();
         int totalPointsUsed = 0;
         BigDecimal totalPointsValue = BigDecimal.ZERO;
@@ -169,6 +169,9 @@ public class PointsPaymentServiceImpl implements PointsPaymentService {
 
                 totalPointsUsed += calc.pointsToUse;
                 totalPointsValue = totalPointsValue.add(calc.pointsValueToUse);
+
+                // Update the ShopOrderTransaction with points used for this shop
+                updateShopOrderTransactionPoints(savedOrder, calc.shopId, calc.pointsToUse, calc.pointsValueToUse);
 
                 deductions.add(PointsPaymentResult.ShopPointsDeduction.builder()
                         .shopId(calc.shopId)
@@ -247,7 +250,7 @@ public class PointsPaymentServiceImpl implements PointsPaymentService {
         }
         log.info("Stock locked successfully for session: {}", tempSessionId);
 
-        // Deduct points shop by shop
+        // Deduct points shop by shop and update ShopOrderTransaction
         List<PointsPaymentResult.ShopPointsDeduction> deductions = new ArrayList<>();
         int totalPointsUsed = 0;
         BigDecimal totalPointsValue = BigDecimal.ZERO;
@@ -260,6 +263,9 @@ public class PointsPaymentServiceImpl implements PointsPaymentService {
 
                 totalPointsUsed += calc.pointsToUse;
                 totalPointsValue = totalPointsValue.add(calc.pointsValueToUse);
+
+                // Update the ShopOrderTransaction with points used for this shop
+                updateShopOrderTransactionPoints(savedOrder, calc.shopId, calc.pointsToUse, calc.pointsValueToUse);
 
                 BigDecimal shopRemaining = calc.shopTotal.subtract(calc.pointsValueToUse).max(BigDecimal.ZERO);
                 deductions.add(PointsPaymentResult.ShopPointsDeduction.builder()
@@ -609,7 +615,10 @@ public class PointsPaymentServiceImpl implements PointsPaymentService {
             shopTx.setShopOrder(shopOrder);
             shopTx.setGlobalTransaction(tx);
             shopTx.setAmount(calc.shopTotal);
+            shopTx.setPointsUsed(calc.pointsToUse != null ? calc.pointsToUse : 0);
+            shopTx.setPointsValue(calc.pointsValueToUse != null ? calc.pointsValueToUse : BigDecimal.ZERO);
             shopOrder.setShopOrderTransaction(shopTx);
+            tx.getShopTransactions().add(shopTx);
 
             shopOrders.add(shopOrder);
         }
@@ -703,6 +712,22 @@ public class PointsPaymentServiceImpl implements PointsPaymentService {
 
         userPointsRepository.save(record);
         log.info("Points record created: {} points for user {} at shop {}", pointsChange, user.getId(), shopId);
+    }
+
+    private void updateShopOrderTransactionPoints(Order order, UUID shopId, Integer pointsUsed,
+            BigDecimal pointsValue) {
+        for (ShopOrder shopOrder : order.getShopOrders()) {
+            if (shopOrder.getShop() != null && shopOrder.getShop().getShopId().equals(shopId)) {
+                ShopOrderTransaction shopTx = shopOrder.getShopOrderTransaction();
+                if (shopTx != null) {
+                    shopTx.setPointsUsed(pointsUsed);
+                    shopTx.setPointsValue(pointsValue);
+                    log.info("Updated ShopOrderTransaction for shop {} with {} points (value: {})",
+                            shopId, pointsUsed, pointsValue);
+                }
+                break;
+            }
+        }
     }
 
     private boolean lockStockWithFEFOAllocation(String sessionId, List<CartItemDTO> items, AddressDto shippingAddress) {

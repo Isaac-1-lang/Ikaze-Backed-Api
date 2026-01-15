@@ -16,6 +16,7 @@ import com.ecommerce.entity.Warehouse;
 import com.ecommerce.entity.StockBatch;
 import com.ecommerce.entity.ReadyForDeliveryGroup;
 import com.ecommerce.entity.ShopOrder;
+import com.ecommerce.entity.ShopOrderTransaction;
 import com.ecommerce.entity.ReturnItem;
 import com.ecommerce.entity.ReturnRequest;
 import com.ecommerce.entity.ReturnAppeal;
@@ -28,6 +29,8 @@ import com.ecommerce.repository.ShopOrderRepository;
 import com.ecommerce.repository.OrderActivityLogRepository;
 import com.ecommerce.repository.ReturnRequestRepository;
 import com.ecommerce.repository.ReturnItemRepository;
+import com.ecommerce.repository.UserPointsRepository;
+import com.ecommerce.entity.UserPoints;
 import com.ecommerce.service.OrderService;
 import com.ecommerce.service.RewardService;
 import com.ecommerce.dto.CustomerOrderDTO;
@@ -53,6 +56,7 @@ import java.util.UUID;
 import java.util.stream.Collectors;
 import java.util.ArrayList;
 import java.util.Optional;
+import java.util.Collections;
 
 import com.ecommerce.dto.ShopOrderDTO;
 import com.ecommerce.entity.ShopOrder.ShopOrderStatus; // Needed for count implementation
@@ -72,6 +76,7 @@ public class OrderServiceImpl implements OrderService {
     private final ReturnRequestRepository returnRequestRepository;
     private final ReturnItemRepository returnItemRepository;
     private final RewardService rewardService;
+    private final UserPointsRepository userPointsRepository;
 
     public OrderServiceImpl(OrderRepository orderRepository,
             ProductRepository productRepository,
@@ -82,7 +87,8 @@ public class OrderServiceImpl implements OrderService {
             OrderActivityLogRepository orderActivityLogRepository,
             ReturnRequestRepository returnRequestRepository,
             ReturnItemRepository returnItemRepository,
-            @Autowired(required = false) RewardService rewardService) {
+            @Autowired(required = false) RewardService rewardService,
+            UserPointsRepository userPointsRepository) {
         this.orderRepository = orderRepository;
         this.productRepository = productRepository;
         this.productVariantRepository = productVariantRepository;
@@ -93,6 +99,7 @@ public class OrderServiceImpl implements OrderService {
         this.returnRequestRepository = returnRequestRepository;
         this.returnItemRepository = returnItemRepository;
         this.rewardService = rewardService;
+        this.userPointsRepository = userPointsRepository;
     }
 
     @Override
@@ -346,6 +353,58 @@ public class OrderServiceImpl implements OrderService {
     }
 
     private ShopOrderDTO toShopOrderDTO(com.ecommerce.entity.ShopOrder shopOrder) {
+        // Get points info from ShopOrderTransaction
+        Integer pointsUsed = 0;
+        BigDecimal pointsValue = BigDecimal.ZERO;
+        String paymentMethod = "CARD"; // Default
+
+        if (shopOrder.getShopOrderTransaction() != null) {
+            ShopOrderTransaction shopTx = shopOrder.getShopOrderTransaction();
+            pointsUsed = shopTx.getPointsUsed() != null ? shopTx.getPointsUsed() : 0;
+            pointsValue = shopTx.getPointsValue() != null ? shopTx.getPointsValue() : BigDecimal.ZERO;
+
+            // HEALING LOGIC: If shop points are 0 but global order used points, check
+            // UserPoints log
+            if (pointsUsed == 0 && shopOrder.getOrder().getOrderTransaction() != null &&
+                    shopOrder.getOrder().getOrderTransaction().getPointsUsed() > 0) {
+                UUID shopId = shopOrder.getShop().getShopId();
+                Long orderId = shopOrder.getOrder().getOrderId();
+                List<UserPoints> logs = userPointsRepository.findByOrderId(orderId);
+                Optional<UserPoints> shopLog = logs.stream()
+                        .filter(l -> l.getShop() != null && l.getShop().getShopId().equals(shopId))
+                        .findFirst();
+
+                if (shopLog.isPresent()) {
+                    pointsUsed = Math.abs(shopLog.get().getPoints());
+                    pointsValue = shopLog.get().getPointsValue() != null ? shopLog.get().getPointsValue()
+                            : BigDecimal.ZERO;
+                }
+            }
+
+            // Determine payment method for this shop based on points usage
+            if (pointsUsed > 0) {
+                // Check if points cover the full shop order amount
+                if (pointsValue.compareTo(shopOrder.getTotalAmount()) >= 0) {
+                    paymentMethod = "POINTS";
+                } else {
+                    paymentMethod = "HYBRID";
+                }
+            } else if (shopOrder.getShopOrderTransaction().getGlobalTransaction() != null) {
+                // Fallback to global transaction payment method, but be smart about it
+                OrderTransaction globalTx = shopOrder.getShopOrderTransaction().getGlobalTransaction();
+                OrderTransaction.PaymentMethod globalMethod = globalTx.getPaymentMethod();
+
+                if (globalMethod == OrderTransaction.PaymentMethod.POINTS
+                        || globalMethod == OrderTransaction.PaymentMethod.HYBRID) {
+                    // If global used points but THIS shop used 0 points, then this shop was paid by
+                    // card
+                    paymentMethod = "CREDIT_CARD";
+                } else {
+                    paymentMethod = globalMethod.name();
+                }
+            }
+        }
+
         return ShopOrderDTO.builder()
                 .shopOrderId(shopOrder.getId().toString())
                 .shopOrderCode(shopOrder.getShopOrderCode())
@@ -366,6 +425,9 @@ public class OrderServiceImpl implements OrderService {
                 .createdAt(shopOrder.getCreatedAt())
                 .updatedAt(shopOrder.getUpdatedAt())
                 .deliveryGroup(toDeliveryGroupInfoDTO(shopOrder.getReadyForDeliveryGroup()))
+                .pointsUsed(pointsUsed)
+                .pointsValue(pointsValue)
+                .paymentMethod(paymentMethod)
                 .build();
     }
 
@@ -476,7 +538,7 @@ public class OrderServiceImpl implements OrderService {
                 .total(order.getOrderInfo() != null ? order.getOrderInfo().getTotalAmount() : BigDecimal.ZERO)
                 .shippingAddress(toAdminOrderAddressDTO(order.getOrderAddress(), order.getOrderCustomerInfo()))
                 .billingAddress(toAdminOrderAddressDTO(order.getOrderAddress(), order.getOrderCustomerInfo()))
-                .paymentInfo(toAdminPaymentInfoDTO(order.getOrderTransaction()))
+                .paymentInfo(toAdminPaymentInfoDTO(order.getOrderTransaction(), shopId))
                 .notes(order.getOrderInfo() != null ? order.getOrderInfo().getNotes() : null)
                 .createdAt(order.getCreatedAt())
                 .updatedAt(order.getUpdatedAt());
@@ -691,30 +753,86 @@ public class OrderServiceImpl implements OrderService {
                 .build();
     }
 
-    private AdminOrderDTO.AdminPaymentInfoDTO toAdminPaymentInfoDTO(OrderTransaction tx) {
+    private AdminOrderDTO.AdminPaymentInfoDTO toAdminPaymentInfoDTO(OrderTransaction tx, UUID shopId) {
         if (tx == null)
             return null;
 
+        Integer pointsUsed = tx.getPointsUsed();
+        BigDecimal pointsValue = tx.getPointsValue();
+        List<AdminOrderDTO.AdminShopTransactionDTO> shopTransactions = null;
+
+        if (tx.getShopTransactions() != null) {
+            if (shopId != null) {
+                // Filter to only include this shop's transaction for privacy and accuracy
+                Optional<ShopOrderTransaction> shopTxOpt = tx.getShopTransactions().stream()
+                        .filter(stx -> stx.getShopOrder().getShop().getShopId().equals(shopId))
+                        .findFirst();
+
+                if (shopTxOpt.isPresent()) {
+                    ShopOrderTransaction shopTx = shopTxOpt.get();
+                    // Override the top-level points info with THIS shop's points usage
+                    pointsUsed = shopTx.getPointsUsed() != null ? shopTx.getPointsUsed() : 0;
+                    pointsValue = shopTx.getPointsValue() != null ? shopTx.getPointsValue() : BigDecimal.ZERO;
+
+                    // HEALING LOGIC: Use UserPoints log for legacy data
+                    if (pointsUsed == 0 && tx.getPointsUsed() > 0) {
+                        Long orderId = tx.getOrder().getOrderId();
+                        List<UserPoints> logs = userPointsRepository.findByOrderId(orderId);
+                        Optional<UserPoints> shopLog = logs.stream()
+                                .filter(l -> l.getShop() != null && l.getShop().getShopId().equals(shopId))
+                                .findFirst();
+
+                        if (shopLog.isPresent()) {
+                            pointsUsed = Math.abs(shopLog.get().getPoints());
+                            pointsValue = shopLog.get().getPointsValue() != null ? shopLog.get().getPointsValue()
+                                    : BigDecimal.ZERO;
+                        }
+                    }
+
+                    // Only show this shop's part in the transactions list
+                    shopTransactions = List.of(AdminOrderDTO.AdminShopTransactionDTO.builder()
+                            .shopName(shopTx.getShopOrder().getShop().getName())
+                            .amount(shopTx.getAmount())
+                            .pointsUsed(pointsUsed)
+                            .pointsValue(pointsValue)
+                            .build());
+                } else {
+                    pointsUsed = 0;
+                    pointsValue = BigDecimal.ZERO;
+                    shopTransactions = Collections.emptyList();
+                }
+            } else {
+                // Global admin view: show all transactions
+                shopTransactions = tx.getShopTransactions().stream()
+                        .map(stx -> AdminOrderDTO.AdminShopTransactionDTO.builder()
+                                .shopName(stx.getShopOrder().getShop().getName())
+                                .amount(stx.getAmount())
+                                .pointsUsed(stx.getPointsUsed())
+                                .pointsValue(stx.getPointsValue())
+                                .build())
+                        .collect(Collectors.toList());
+            }
+        }
+
+        String paymentMethod = tx.getPaymentMethod().name();
+        if (shopId != null && pointsUsed == 0 &&
+                (tx.getPaymentMethod() == OrderTransaction.PaymentMethod.POINTS ||
+                        tx.getPaymentMethod() == OrderTransaction.PaymentMethod.HYBRID)) {
+            // Override global payment method for this shop view if no points used here
+            paymentMethod = "CREDIT_CARD";
+        }
+
         return AdminOrderDTO.AdminPaymentInfoDTO.builder()
-                .paymentMethod(tx.getPaymentMethod().name())
+                .paymentMethod(paymentMethod)
                 .paymentStatus(tx.getStatus().name())
                 .stripePaymentIntentId(tx.getStripePaymentIntentId())
                 .stripeSessionId(tx.getStripeSessionId())
                 .transactionRef(tx.getTransactionRef())
                 .paymentDate(tx.getPaymentDate())
                 .receiptUrl(tx.getReceiptUrl())
-                .pointsUsed(tx.getPointsUsed())
-                .pointsValue(tx.getPointsValue())
-                .shopTransactions(tx.getShopTransactions() != null
-                        ? tx.getShopTransactions().stream()
-                                .map(stx -> AdminOrderDTO.AdminShopTransactionDTO.builder()
-                                        .shopName(stx.getShopOrder().getShop().getName())
-                                        .amount(stx.getAmount())
-                                        .pointsUsed(stx.getPointsUsed())
-                                        .pointsValue(stx.getPointsValue())
-                                        .build())
-                                .collect(Collectors.toList())
-                        : null)
+                .pointsUsed(pointsUsed)
+                .pointsValue(pointsValue)
+                .shopTransactions(shopTransactions)
                 .build();
     }
 
