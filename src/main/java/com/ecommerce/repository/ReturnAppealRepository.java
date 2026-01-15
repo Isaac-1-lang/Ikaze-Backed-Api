@@ -15,7 +15,8 @@ import java.util.Optional;
 import java.util.UUID;
 
 @Repository
-public interface ReturnAppealRepository extends JpaRepository<ReturnAppeal, Long>, JpaSpecificationExecutor<ReturnAppeal> {
+public interface ReturnAppealRepository
+        extends JpaRepository<ReturnAppeal, Long>, JpaSpecificationExecutor<ReturnAppeal> {
 
     /**
      * Find appeal by return request ID
@@ -50,7 +51,8 @@ public interface ReturnAppealRepository extends JpaRepository<ReturnAppeal, Long
     /**
      * Find appeals by status and submitted date range
      */
-    List<ReturnAppeal> findByStatusAndSubmittedAtBetween(ReturnAppeal.AppealStatus status, LocalDateTime startDate, LocalDateTime endDate);
+    List<ReturnAppeal> findByStatusAndSubmittedAtBetween(ReturnAppeal.AppealStatus status, LocalDateTime startDate,
+            LocalDateTime endDate);
 
     /**
      * Find appeal with media loaded
@@ -65,12 +67,13 @@ public interface ReturnAppealRepository extends JpaRepository<ReturnAppeal, Long
     Optional<ReturnAppeal> findByIdWithReturnRequest(@Param("id") Long id);
 
     /**
-     * Find appeal with basic data and media loaded (avoiding MultipleBagFetchException)
+     * Find appeal with basic data and media loaded (avoiding
+     * MultipleBagFetchException)
      */
     @Query("SELECT DISTINCT ra FROM ReturnAppeal ra " +
-           "LEFT JOIN FETCH ra.appealMedia " +
-           "LEFT JOIN FETCH ra.returnRequest " +
-           "WHERE ra.id = :id")
+            "LEFT JOIN FETCH ra.appealMedia " +
+            "LEFT JOIN FETCH ra.returnRequest " +
+            "WHERE ra.id = :id")
     Optional<ReturnAppeal> findByIdWithAllData(@Param("id") Long id);
 
     /**
@@ -89,12 +92,10 @@ public interface ReturnAppealRepository extends JpaRepository<ReturnAppeal, Long
      * Find appeals by customer ID and status
      */
     @Query("SELECT ra FROM ReturnAppeal ra JOIN ra.returnRequest rr WHERE rr.customerId = :customerId AND ra.status = :status")
-    List<ReturnAppeal> findByCustomerIdAndStatus(@Param("customerId") UUID customerId, @Param("status") ReturnAppeal.AppealStatus status);
+    List<ReturnAppeal> findByCustomerIdAndStatus(@Param("customerId") UUID customerId,
+            @Param("status") ReturnAppeal.AppealStatus status);
 
-    /**
-     * Find appeals by order ID (through return request relationship)
-     */
-    @Query("SELECT ra FROM ReturnAppeal ra JOIN ra.returnRequest rr WHERE rr.orderId = :orderId")
+    @Query("SELECT ra FROM ReturnAppeal ra JOIN ra.returnRequest rr JOIN rr.shopOrder so JOIN so.order o WHERE o.orderId = :orderId")
     List<ReturnAppeal> findByOrderId(@Param("orderId") Long orderId);
 
     /**
@@ -112,7 +113,8 @@ public interface ReturnAppealRepository extends JpaRepository<ReturnAppeal, Long
      * Count appeals by customer ID and status
      */
     @Query("SELECT COUNT(ra) FROM ReturnAppeal ra JOIN ra.returnRequest rr WHERE rr.customerId = :customerId AND ra.status = :status")
-    long countByCustomerIdAndStatus(@Param("customerId") UUID customerId, @Param("status") ReturnAppeal.AppealStatus status);
+    long countByCustomerIdAndStatus(@Param("customerId") UUID customerId,
+            @Param("status") ReturnAppeal.AppealStatus status);
 
     /**
      * Find pending appeals older than specified date
@@ -134,7 +136,8 @@ public interface ReturnAppealRepository extends JpaRepository<ReturnAppeal, Long
      * Find recent appeals by customer (last 30 days)
      */
     @Query("SELECT ra FROM ReturnAppeal ra JOIN ra.returnRequest rr WHERE rr.customerId = :customerId AND ra.submittedAt >= :thirtyDaysAgo ORDER BY ra.submittedAt DESC")
-    List<ReturnAppeal> findRecentAppealsByCustomerId(@Param("customerId") UUID customerId, @Param("thirtyDaysAgo") LocalDateTime thirtyDaysAgo);
+    List<ReturnAppeal> findRecentAppealsByCustomerId(@Param("customerId") UUID customerId,
+            @Param("thirtyDaysAgo") LocalDateTime thirtyDaysAgo);
 
     /**
      * Find appeals that need decision (pending for more than specified days)

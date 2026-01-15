@@ -108,7 +108,8 @@ public interface AppealMediaRepository extends JpaRepository<AppealMedia, Long> 
     List<AppealMedia> findByReturnRequestId(@Param("returnRequestId") Long returnRequestId);
 
     /**
-     * Find media files by customer ID (through appeal and return request relationships)
+     * Find media files by customer ID (through appeal and return request
+     * relationships)
      */
     @Query("SELECT am FROM AppealMedia am JOIN am.returnAppeal ra JOIN ra.returnRequest rr WHERE rr.customerId = :customerId")
     List<AppealMedia> findByCustomerId(@Param("customerId") String customerId);
@@ -119,10 +120,7 @@ public interface AppealMediaRepository extends JpaRepository<AppealMedia, Long> 
     @Query("SELECT COUNT(am) FROM AppealMedia am JOIN am.returnAppeal ra JOIN ra.returnRequest rr WHERE rr.customerId = :customerId")
     long countByCustomerId(@Param("customerId") String customerId);
 
-    /**
-     * Find media files by order ID (through appeal and return request relationships)
-     */
-    @Query("SELECT am FROM AppealMedia am JOIN am.returnAppeal ra JOIN ra.returnRequest rr WHERE rr.orderId = :orderId")
+    @Query("SELECT am FROM AppealMedia am JOIN am.returnAppeal ra JOIN ra.returnRequest rr JOIN rr.shopOrder so JOIN so.order o WHERE o.orderId = :orderId")
     List<AppealMedia> findByOrderId(@Param("orderId") Long orderId);
 
     /**

@@ -108,6 +108,10 @@ public class CustomerOrderTrackingDTO {
         private BigDecimal discountAmount;
         private BigDecimal total;
 
+        // Points information for this shop order
+        private Integer pointsUsed;
+        private BigDecimal pointsValue;
+
         // Delivery information
         private DeliveryInfo deliveryInfo;
 

@@ -20,8 +20,9 @@ import java.util.ArrayList;
 @NoArgsConstructor
 @AllArgsConstructor
 @EqualsAndHashCode(exclude = { "order", "shop", "items", "readyForDeliveryGroup", "orderActivityLogs",
-        "shopOrderTransaction" })
-@ToString(exclude = { "order", "shop", "items", "readyForDeliveryGroup", "orderActivityLogs", "shopOrderTransaction" })
+        "shopOrderTransaction", "returnRequests" })
+@ToString(exclude = { "order", "shop", "items", "readyForDeliveryGroup", "orderActivityLogs", "shopOrderTransaction",
+        "returnRequests" })
 public class ShopOrder {
 
     @Id
@@ -83,6 +84,9 @@ public class ShopOrder {
 
     @OneToOne(mappedBy = "shopOrder", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
     private ShopOrderTransaction shopOrderTransaction;
+
+    @OneToMany(mappedBy = "shopOrder", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
+    private List<ReturnRequest> returnRequests = new ArrayList<>();
 
     @Column(name = "created_at")
     private LocalDateTime createdAt;

@@ -72,6 +72,9 @@ public interface ShopOrderRepository extends JpaRepository<ShopOrder, Long> {
         @Query("SELECT COALESCE(SUM(so.totalAmount), 0) FROM ShopOrder so WHERE so.shop.shopId = :shopId")
         BigDecimal sumTotalRevenueByShopId(@Param("shopId") UUID shopId);
 
+        @Query("SELECT COALESCE(SUM(so.shopOrderTransaction.pointsValue), 0) FROM ShopOrder so WHERE so.shop.shopId = :shopId")
+        BigDecimal sumTotalPointsRevenueByShopId(@Param("shopId") UUID shopId);
+
         // Fetch shop orders by delivery group with pagination
         org.springframework.data.domain.Page<ShopOrder> findByReadyForDeliveryGroup_DeliveryGroupId(
                         Long deliveryGroupId,

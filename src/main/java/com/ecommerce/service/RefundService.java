@@ -40,8 +40,9 @@ public class RefundService {
     public void processRefund(ReturnRequest returnRequest) {
         log.info("Processing refund for return request {}", returnRequest.getId());
         try {
-            Order order = orderRepository.findById(returnRequest.getOrderId())
-                    .orElseThrow(() -> new RuntimeException("Order not found: " + returnRequest.getOrderId()));
+            Order order = orderRepository.findById(returnRequest.getShopOrder().getOrder().getOrderId())
+                    .orElseThrow(() -> new RuntimeException(
+                            "Order not found: " + returnRequest.getShopOrder().getOrder().getOrderId()));
 
             OrderTransaction transaction = order.getOrderTransaction();
             if (transaction == null) {
@@ -230,8 +231,9 @@ public class RefundService {
      */
     public Double calculateRefundAmount(ReturnRequest returnRequest) {
         try {
-            Order order = orderRepository.findById(returnRequest.getOrderId())
-                    .orElseThrow(() -> new RuntimeException("Order not found: " + returnRequest.getOrderId()));
+            Order order = orderRepository.findById(returnRequest.getShopOrder().getOrder().getOrderId())
+                    .orElseThrow(() -> new RuntimeException(
+                            "Order not found: " + returnRequest.getShopOrder().getOrder().getOrderId()));
 
             RefundCalculation refundCalc = calculateRefundAmounts(returnRequest, order);
             return refundCalc.totalRefundAmount.doubleValue();
@@ -294,7 +296,7 @@ public class RefundService {
                 return false;
             }
 
-            Order order = orderRepository.findById(returnRequest.getOrderId())
+            Order order = orderRepository.findById(returnRequest.getShopOrder().getOrder().getOrderId())
                     .orElse(null);
             if (order == null) {
                 return false;
@@ -566,8 +568,10 @@ public class RefundService {
             // Eagerly fetch order with all associations to prevent
             // LazyInitializationException
             // This is crucial because we're running outside a transaction (NOT_SUPPORTED)
-            Order order = orderRepository.findByIdWithAllAssociations(returnRequest.getOrderId())
-                    .orElseThrow(() -> new RuntimeException("Order not found: " + returnRequest.getOrderId()));
+            Order order = orderRepository
+                    .findByIdWithAllAssociations(returnRequest.getShopOrder().getOrder().getOrderId())
+                    .orElseThrow(() -> new RuntimeException(
+                            "Order not found: " + returnRequest.getShopOrder().getOrder().getOrderId()));
 
             OrderTransaction transaction = order.getOrderTransaction();
             if (transaction == null) {

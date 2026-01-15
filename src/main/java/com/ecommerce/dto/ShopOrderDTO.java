@@ -31,4 +31,9 @@ public class ShopOrderDTO {
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
     private DeliveryGroupInfoDTO deliveryGroup;
+
+    // Points-related fields for this shop order
+    private Integer pointsUsed;
+    private BigDecimal pointsValue;
+    private String paymentMethod; // POINTS, HYBRID, CARD, etc.
 }

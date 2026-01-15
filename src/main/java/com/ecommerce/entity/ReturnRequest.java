@@ -18,10 +18,10 @@ import java.util.UUID;
 @Entity
 @Table(name = "return_requests")
 @Data
-@ToString(exclude = {"returnMedia", "returnItems", "returnAppeal", "order", "customer"})
+@ToString(exclude = { "returnMedia", "returnItems", "returnAppeal", "shopOrder", "customer" })
 @NoArgsConstructor
 @AllArgsConstructor
-@EqualsAndHashCode(exclude = {"returnMedia", "returnItems", "returnAppeal", "order", "customer"})
+@EqualsAndHashCode(exclude = { "returnMedia", "returnItems", "returnAppeal", "shopOrder", "customer" })
 public class ReturnRequest {
 
     @Id
@@ -29,9 +29,9 @@ public class ReturnRequest {
     @Column(name = "id")
     private Long id;
 
-    @NotNull(message = "Order ID is required")
-    @Column(name = "order_id", nullable = false)
-    private Long orderId;
+    @NotNull(message = "Shop Order ID is required")
+    @Column(name = "shop_order_id", nullable = false)
+    private Long shopOrderId;
 
     @Column(name = "customer_id", nullable = true)
     private UUID customerId;
@@ -112,8 +112,8 @@ public class ReturnRequest {
     private ReturnAppeal returnAppeal;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "order_id", insertable = false, updatable = false)
-    private Order order;
+    @JoinColumn(name = "shop_order_id", insertable = false, updatable = false)
+    private ShopOrder shopOrder;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "customer_id", referencedColumnName = "id", insertable = false, updatable = false)
@@ -155,13 +155,13 @@ public class ReturnRequest {
      * Enum for delivery status
      */
     public enum DeliveryStatus {
-        NOT_ASSIGNED,           // No delivery agent assigned yet
-        ASSIGNED,               // Assigned to delivery agent but not started
-        PICKUP_SCHEDULED,       // Pickup time scheduled
-        PICKUP_IN_PROGRESS,     // Delivery agent is on the way/picking up
-        PICKUP_COMPLETED,       // Items picked up successfully
-        PICKUP_FAILED,          // Pickup attempt failed
-        CANCELLED               // Assignment cancelled
+        NOT_ASSIGNED, // No delivery agent assigned yet
+        ASSIGNED, // Assigned to delivery agent but not started
+        PICKUP_SCHEDULED, // Pickup time scheduled
+        PICKUP_IN_PROGRESS, // Delivery agent is on the way/picking up
+        PICKUP_COMPLETED, // Items picked up successfully
+        PICKUP_FAILED, // Pickup attempt failed
+        CANCELLED // Assignment cancelled
     }
 
     /**
@@ -224,7 +224,8 @@ public class ReturnRequest {
      */
     public void schedulePickup(LocalDateTime scheduledTime, LocalDateTime estimatedTime) {
         if (this.deliveryStatus != DeliveryStatus.ASSIGNED) {
-            throw new IllegalStateException("Cannot schedule pickup for return request that is not assigned to a delivery agent");
+            throw new IllegalStateException(
+                    "Cannot schedule pickup for return request that is not assigned to a delivery agent");
         }
         this.pickupScheduledAt = scheduledTime;
         this.estimatedPickupTime = estimatedTime;
@@ -278,20 +279,20 @@ public class ReturnRequest {
      * Checks if return request can be assigned to a delivery agent
      */
     public boolean canBeAssignedToDeliveryAgent() {
-        return this.status == ReturnStatus.APPROVED && 
-               (this.deliveryStatus == null ||  // Handle legacy data with null delivery status
-                this.deliveryStatus == DeliveryStatus.NOT_ASSIGNED || 
-                this.deliveryStatus == DeliveryStatus.CANCELLED ||
-                this.deliveryStatus == DeliveryStatus.PICKUP_FAILED);
+        return this.status == ReturnStatus.APPROVED &&
+                (this.deliveryStatus == null || // Handle legacy data with null delivery status
+                        this.deliveryStatus == DeliveryStatus.NOT_ASSIGNED ||
+                        this.deliveryStatus == DeliveryStatus.CANCELLED ||
+                        this.deliveryStatus == DeliveryStatus.PICKUP_FAILED);
     }
 
     /**
      * Checks if return request is assigned to a delivery agent
      */
     public boolean isAssignedToDeliveryAgent() {
-        return this.deliveryAgentId != null && 
-               this.deliveryStatus != DeliveryStatus.NOT_ASSIGNED &&
-               this.deliveryStatus != DeliveryStatus.CANCELLED;
+        return this.deliveryAgentId != null &&
+                this.deliveryStatus != DeliveryStatus.NOT_ASSIGNED &&
+                this.deliveryStatus != DeliveryStatus.CANCELLED;
     }
 
     /**
@@ -299,15 +300,16 @@ public class ReturnRequest {
      */
     public boolean isPickupInProgressOrCompleted() {
         return this.deliveryStatus == DeliveryStatus.PICKUP_IN_PROGRESS ||
-               this.deliveryStatus == DeliveryStatus.PICKUP_COMPLETED;
+                this.deliveryStatus == DeliveryStatus.PICKUP_COMPLETED;
     }
 
     /**
      * Gets the current delivery status display name
      */
     public String getDeliveryStatusDisplayName() {
-        if (deliveryStatus == null) return "Not Assigned";
-        
+        if (deliveryStatus == null)
+            return "Not Assigned";
+
         return switch (deliveryStatus) {
             case NOT_ASSIGNED -> "Not Assigned";
             case ASSIGNED -> "Assigned";

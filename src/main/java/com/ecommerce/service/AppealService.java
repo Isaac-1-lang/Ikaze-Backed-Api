@@ -107,7 +107,7 @@ public class AppealService {
                 savedAppeal.getId(), submitDTO.getReturnRequestId());
 
         // LOG ACTIVITY: Appeal Submitted
-        Order order = returnRequest.getOrder();
+        Order order = returnRequest.getShopOrder().getOrder();
         String customerName = order.getUser() != null
                 ? order.getUser().getFirstName() + " " + order.getUser().getLastName()
                 : order.getOrderCustomerInfo().getFullName();
@@ -170,7 +170,7 @@ public class AppealService {
                 savedAppeal.getId(), submitDTO.getReturnRequestId());
 
         // LOG ACTIVITY: Appeal Submitted (Guest)
-        Order order = returnRequest.getOrder();
+        Order order = returnRequest.getShopOrder().getOrder();
         String guestCustomerName = order.getOrderCustomerInfo() != null
                 ? order.getOrderCustomerInfo().getFullName()
                 : "Guest Customer";
@@ -359,8 +359,9 @@ public class AppealService {
         }
 
         // Validate that the order belongs to the email associated with the token
-        Order order = orderRepository.findById(returnRequest.getOrderId())
-                .orElseThrow(() -> new RuntimeException("Order not found: " + returnRequest.getOrderId()));
+        Order order = orderRepository.findById(returnRequest.getShopOrder().getOrder().getOrderId())
+                .orElseThrow(() -> new RuntimeException(
+                        "Order not found: " + returnRequest.getShopOrder().getOrder().getOrderId()));
 
         if (order.getOrderCustomerInfo() == null ||
                 !customerEmail.equalsIgnoreCase(order.getOrderCustomerInfo().getEmail())) {
@@ -382,8 +383,9 @@ public class AppealService {
      * validation)
      */
     private void validateAppealEligibility(ReturnRequest returnRequest) {
-        Order order = orderRepository.findById(returnRequest.getOrderId())
-                .orElseThrow(() -> new RuntimeException("Order not found: " + returnRequest.getOrderId()));
+        Order order = orderRepository.findById(returnRequest.getShopOrder().getOrder().getOrderId())
+                .orElseThrow(() -> new RuntimeException(
+                        "Order not found: " + returnRequest.getShopOrder().getOrder().getOrderId()));
 
         LocalDateTime deliveryDate = null;
 
@@ -636,7 +638,7 @@ public class AppealService {
 
         if (returnRequest != null) {
             activityLogService.logAppealApproved(
-                    returnRequest.getOrderId(),
+                    returnRequest.getShopOrder().getOrder().getOrderId(),
                     "Admin",
                     appeal.getId());
         }
@@ -651,7 +653,7 @@ public class AppealService {
         ReturnRequest returnRequest = appeal.getReturnRequest();
         if (returnRequest != null) {
             activityLogService.logAppealDenied(
-                    returnRequest.getOrderId(),
+                    returnRequest.getShopOrder().getOrder().getOrderId(),
                     "Admin",
                     decisionDTO.getDecisionNotes(),
                     appeal.getId());
@@ -702,8 +704,9 @@ public class AppealService {
     private void sendAppealConfirmationEmailToCustomer(ReturnAppeal appeal, ReturnRequest returnRequest) {
         try {
             // Get customer email from OrderCustomerInfo
-            Order order = orderRepository.findById(returnRequest.getOrderId())
-                    .orElseThrow(() -> new RuntimeException("Order not found: " + returnRequest.getOrderId()));
+            Order order = orderRepository.findById(returnRequest.getShopOrder().getOrder().getOrderId())
+                    .orElseThrow(() -> new RuntimeException(
+                            "Order not found: " + returnRequest.getShopOrder().getOrder().getOrderId()));
 
             String customerEmail = null;
             String customerName = null;
@@ -825,8 +828,9 @@ public class AppealService {
                 return;
             }
 
-            Order order = orderRepository.findById(returnRequest.getOrderId())
-                    .orElseThrow(() -> new RuntimeException("Order not found: " + returnRequest.getOrderId()));
+            Order order = orderRepository.findById(returnRequest.getShopOrder().getOrder().getOrderId())
+                    .orElseThrow(() -> new RuntimeException(
+                            "Order not found: " + returnRequest.getShopOrder().getOrder().getOrderId()));
 
             String customerEmail = null;
             String customerName = null;

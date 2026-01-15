@@ -33,6 +33,7 @@ public class ReturnService {
     private final ReturnMediaRepository returnMediaRepository;
     private final ReturnItemRepository returnItemRepository;
     private final OrderRepository orderRepository;
+    private final ShopOrderRepository shopOrderRepository;
     private final NotificationService notificationService;
     private final RefundService refundService;
     private final CloudinaryService cloudinaryService;
@@ -47,27 +48,28 @@ public class ReturnService {
      * Submit a new return request for authenticated users with media files
      */
     public ReturnRequestDTO submitReturnRequest(SubmitReturnRequestDTO submitDTO, MultipartFile[] mediaFiles) {
-        log.info("Processing authenticated return request for customer {} and order {}",
-                submitDTO.getCustomerId(), submitDTO.getOrderId());
+        log.info("Processing authenticated return request for customer {} and shop order {}",
+                submitDTO.getCustomerId(), submitDTO.getShopOrderId());
 
         // Validate that this is an authenticated user request
         if (submitDTO.getCustomerId() == null) {
             throw new IllegalArgumentException("Customer ID is required for authenticated return requests");
         }
 
-        Order order = validateOrderForAuthenticatedUser(submitDTO.getOrderId(), submitDTO.getCustomerId());
+        ShopOrder shopOrder = validateShopOrderForAuthenticatedUser(submitDTO.getShopOrderId(),
+                submitDTO.getCustomerId());
 
-        validateReturnEligibility(order);
+        validateReturnEligibility(shopOrder);
         validateCustomerReturnHistory(submitDTO.getCustomerId());
-        validateReturnItems(submitDTO.getReturnItems(), order);
-        validateReturnItemsEligibility(submitDTO.getReturnItems(), order);
+        validateReturnItems(submitDTO.getReturnItems(), shopOrder);
+        validateReturnItemsEligibility(submitDTO.getReturnItems(), shopOrder);
         validateReturnRequestLimit(submitDTO.getReturnItems());
         if (mediaFiles != null && mediaFiles.length > 0) {
             validateMediaFiles(mediaFiles);
         }
 
         ReturnRequest returnRequest = new ReturnRequest();
-        returnRequest.setOrderId(submitDTO.getOrderId());
+        returnRequest.setShopOrderId(submitDTO.getShopOrderId());
         returnRequest.setCustomerId(submitDTO.getCustomerId());
         returnRequest.setReason(submitDTO.getReason());
         returnRequest.setStatus(ReturnRequest.ReturnStatus.PENDING);
@@ -75,7 +77,7 @@ public class ReturnService {
 
         ReturnRequest savedRequest = returnRequestRepository.save(returnRequest);
 
-        createReturnItems(savedRequest, submitDTO.getReturnItems(), order);
+        createReturnItems(savedRequest, submitDTO.getReturnItems(), shopOrder);
 
         if (mediaFiles != null && mediaFiles.length > 0) {
             try {
@@ -88,10 +90,11 @@ public class ReturnService {
         }
 
         notificationService.notifyReturnSubmitted(savedRequest);
-        log.info("Authenticated return request {} submitted successfully for order {}",
-                savedRequest.getId(), submitDTO.getOrderId());
+        log.info("Authenticated return request {} submitted successfully for shop order {}",
+                savedRequest.getId(), submitDTO.getShopOrderId());
 
         // LOG ACTIVITY: Return Requested
+        Order order = shopOrder.getOrder();
         String customerName = order.getUser() != null
                 ? order.getUser().getFirstName() + " " + order.getUser().getLastName()
                 : order.getOrderCustomerInfo().getFullName();
@@ -123,10 +126,12 @@ public class ReturnService {
         // Validate tracking token and get associated email
         String email = validateTrackingToken(submitDTO.getTrackingToken());
 
-        // Find order by order number
-        Order order = orderRepository.findByOrderCode(submitDTO.getOrderNumber())
+        // Find shop order by shop order code
+        ShopOrder shopOrder = shopOrderRepository.findByShopOrderCode(submitDTO.getOrderNumber())
                 .orElseThrow(
-                        () -> new RuntimeException("Order not found with order number: " + submitDTO.getOrderNumber()));
+                        () -> new RuntimeException("Shop order not found with code: " + submitDTO.getOrderNumber()));
+
+        Order order = shopOrder.getOrder();
 
         // Verify the order belongs to the email associated with the token
         if (order.getOrderCustomerInfo() == null ||
@@ -140,16 +145,16 @@ public class ReturnService {
                     "This order belongs to a registered user and cannot be returned using tracking token");
         }
 
-        validateReturnEligibility(order);
-        validateReturnItems(submitDTO.getReturnItems(), order);
-        validateReturnItemsEligibility(submitDTO.getReturnItems(), order);
+        validateReturnEligibility(shopOrder);
+        validateReturnItems(submitDTO.getReturnItems(), shopOrder);
+        validateReturnItemsEligibility(submitDTO.getReturnItems(), shopOrder);
         validateReturnRequestLimit(submitDTO.getReturnItems());
         if (mediaFiles != null && mediaFiles.length > 0) {
             validateMediaFiles(mediaFiles);
         }
 
         ReturnRequest returnRequest = new ReturnRequest();
-        returnRequest.setOrderId(order.getOrderId());
+        returnRequest.setShopOrderId(shopOrder.getId());
         returnRequest.setCustomerId(null);
         returnRequest.setReason(submitDTO.getReason());
         returnRequest.setStatus(ReturnRequest.ReturnStatus.PENDING);
@@ -157,7 +162,7 @@ public class ReturnService {
 
         ReturnRequest savedRequest = returnRequestRepository.save(returnRequest);
 
-        createReturnItems(savedRequest, submitDTO.getReturnItems(), order);
+        createReturnItems(savedRequest, submitDTO.getReturnItems(), shopOrder);
 
         if (mediaFiles != null && mediaFiles.length > 0) {
             try {
@@ -242,7 +247,8 @@ public class ReturnService {
         }
 
         // Get all return requests for this order
-        List<ReturnRequest> requests = returnRequestRepository.findByOrderIdOrderBySubmittedAtDesc(orderId);
+        List<ReturnRequest> requests = returnRequestRepository
+                .findByShopOrder_Order_OrderIdOrderBySubmittedAtDesc(orderId);
 
         log.info("Found {} return requests for order {}", requests.size(), orderId);
 
@@ -277,37 +283,41 @@ public class ReturnService {
     @Transactional(readOnly = true)
     public List<ReturnRequestDTO> getReturnRequestsByOrderNumberAndToken(String orderNumber, String token) {
         log.info("Fetching return requests for guest order {}", orderNumber);
-        
+
         if (orderNumber == null || orderNumber.trim().isEmpty()) {
             throw new IllegalArgumentException("Order number is required");
         }
         if (token == null || token.trim().isEmpty()) {
             throw new IllegalArgumentException("Tracking token is required");
         }
-        
+
         // Validate tracking token
         String email = validateTrackingToken(token);
-        
-        // Find order by order number
-        Order order = orderRepository.findByOrderCode(orderNumber)
-                .orElseThrow(() -> new RuntimeException("Order not found with order number: " + orderNumber));
-        
+
+        // Find shop order by code (orderNumber parameter might be shop order code)
+        ShopOrder shopOrder = shopOrderRepository.findByShopOrderCode(orderNumber)
+                .orElseThrow(() -> new RuntimeException("Shop order not found: " + orderNumber));
+
+        Order order = shopOrder.getOrder();
+
         // Verify the order belongs to the email associated with the token
         if (order.getOrderCustomerInfo() == null ||
                 !email.equalsIgnoreCase(order.getOrderCustomerInfo().getEmail())) {
             throw new RuntimeException("Order does not belong to the email associated with this tracking token");
         }
-        
+
         // Ensure this is actually a guest order (no associated user)
         if (order.getUser() != null) {
-            throw new RuntimeException("This order belongs to a registered user and cannot be accessed using tracking token");
+            throw new RuntimeException(
+                    "This order belongs to a registered user and cannot be accessed using tracking token");
         }
-        
-        // Get all return requests for this order
-        List<ReturnRequest> requests = returnRequestRepository.findByOrderIdOrderBySubmittedAtDesc(order.getOrderId());
-        
-        log.info("Found {} return requests for guest order {}", requests.size(), orderNumber);
-        
+
+        // Get all return requests for this shop order
+        List<ReturnRequest> requests = returnRequestRepository
+                .findByShopOrderIdOrderBySubmittedAtDesc(shopOrder.getId());
+
+        log.info("Found {} return requests for shop order {}", requests.size(), orderNumber);
+
         return requests.stream()
                 .map(this::convertToDTO)
                 .collect(Collectors.toList());
@@ -356,8 +366,8 @@ public class ReturnService {
 
                         // Search in order code (with safe access)
                         try {
-                            if (rr.getOrder() != null && rr.getOrder().getOrderCode() != null) {
-                                matches |= rr.getOrder().getOrderCode().toLowerCase().contains(searchLower);
+                            if (rr.getShopOrder() != null && rr.getShopOrder().getShopOrderCode() != null) {
+                                matches |= rr.getShopOrder().getShopOrderCode().toLowerCase().contains(searchLower);
                             }
                         } catch (Exception e) {
                             // Ignore lazy loading exceptions for search
@@ -428,6 +438,19 @@ public class ReturnService {
         return returnRequestRepository.countByStatus(status);
     }
 
+    /**
+     * Get the shop ID associated with a return request
+     */
+    @Transactional(readOnly = true)
+    public UUID getShopIdForReturnRequest(Long returnRequestId) {
+        ReturnRequest rr = returnRequestRepository.findById(returnRequestId)
+                .orElseThrow(() -> new RuntimeException("Return request not found: " + returnRequestId));
+        if (rr.getShopOrder() == null || rr.getShopOrder().getShop() == null) {
+            throw new RuntimeException("Return request not properly linked to a shop");
+        }
+        return rr.getShopOrder().getShop().getShopId();
+    }
+
     // Private helper methods
 
     /**
@@ -452,12 +475,13 @@ public class ReturnService {
     }
 
     /**
-     * Validate order for authenticated user using orderId and userId
-     * Updated for multivendor architecture
+     * Validate shop order for authenticated user
      */
-    private Order validateOrderForAuthenticatedUser(Long orderId, UUID customerId) {
-        Order order = orderRepository.findById(orderId)
-                .orElseThrow(() -> new RuntimeException("Order not found: " + orderId));
+    private ShopOrder validateShopOrderForAuthenticatedUser(Long shopOrderId, UUID customerId) {
+        ShopOrder shopOrder = shopOrderRepository.findById(shopOrderId)
+                .orElseThrow(() -> new RuntimeException("Shop order not found: " + shopOrderId));
+
+        Order order = shopOrder.getOrder();
 
         if (order.getUser() == null) {
             throw new RuntimeException(
@@ -468,24 +492,20 @@ public class ReturnService {
             throw new RuntimeException("Order does not belong to this customer");
         }
 
-        // Check if order is delivered (using the aggregated status)
-        if (!"DELIVERED".equals(order.getStatus())) {
-            throw new RuntimeException("Order must be delivered to be eligible for return");
+        // Check if shop order is delivered
+        if (shopOrder.getStatus() != ShopOrder.ShopOrderStatus.DELIVERED) {
+            throw new RuntimeException("Shop order must be delivered to be eligible for return");
         }
 
         if (order.getOrderTransaction().getStatus() != OrderTransaction.TransactionStatus.COMPLETED) {
             throw new RuntimeException("Order transaction is not completed");
         }
-        return order;
+        return shopOrder;
     }
 
-    private void validateReturnEligibility(Order order) {
-        // For multivendor, we need to check if any shop order is delivered
-        boolean hasDeliveredItems = order.getShopOrders().stream()
-                .anyMatch(so -> so.getStatus() == ShopOrder.ShopOrderStatus.DELIVERED);
-
-        if (!hasDeliveredItems) {
-            throw new RuntimeException("No delivered items found for return");
+    private void validateReturnEligibility(ShopOrder shopOrder) {
+        if (shopOrder.getStatus() != ShopOrder.ShopOrderStatus.DELIVERED) {
+            throw new RuntimeException("Shop order is not delivered");
         }
     }
 
@@ -510,7 +530,7 @@ public class ReturnService {
 
         // LOG ACTIVITY: Return Approved
         activityLogService.logReturnApproved(
-                returnRequest.getOrderId(),
+                returnRequest.getShopOrder().getOrder().getOrderId(),
                 "Admin", // TODO: Get actual admin name from security context
                 returnRequest.getId());
     }
@@ -527,7 +547,7 @@ public class ReturnService {
 
         // LOG ACTIVITY: Return Denied
         activityLogService.logReturnDenied(
-                returnRequest.getOrderId(),
+                returnRequest.getShopOrder().getOrder().getOrderId(),
                 "Admin", // TODO: Get actual admin name from security context
                 decisionDTO.getDecisionNotes(),
                 returnRequest.getId());
@@ -611,13 +631,15 @@ public class ReturnService {
     /**
      * Create return items for the return request
      */
-    private void createReturnItems(ReturnRequest returnRequest, List<ReturnItemDTO> returnItemDTOs, Order order) {
+    private void createReturnItems(ReturnRequest returnRequest, List<ReturnItemDTO> returnItemDTOs,
+            ShopOrder shopOrder) {
         for (ReturnItemDTO itemDTO : returnItemDTOs) {
-            // Find the order item
-            OrderItem orderItem = order.getAllItems().stream() // Use getAllItems() for multivendor
+            // Find the order item in this specific shop order
+            OrderItem orderItem = shopOrder.getItems().stream()
                     .filter(oi -> oi.getOrderItemId().equals(itemDTO.getOrderItemId()))
                     .findFirst()
-                    .orElseThrow(() -> new RuntimeException("Order item not found: " + itemDTO.getOrderItemId()));
+                    .orElseThrow(() -> new RuntimeException(
+                            "Order item not found in shop order: " + itemDTO.getOrderItemId()));
 
             ReturnItem returnItem = new ReturnItem();
             returnItem.setReturnRequest(returnRequest);
@@ -633,20 +655,20 @@ public class ReturnService {
     }
 
     /**
-     * Validate return items against order
+     * Validate return items against shop order
      */
-    private void validateReturnItems(List<ReturnItemDTO> returnItems, Order order) {
+    private void validateReturnItems(List<ReturnItemDTO> returnItems, ShopOrder shopOrder) {
         if (returnItems == null || returnItems.isEmpty()) {
             throw new IllegalArgumentException("At least one item must be selected for return");
         }
 
         for (ReturnItemDTO itemDTO : returnItems) {
-            // Check if order item exists
-            boolean itemExists = order.getAllItems().stream() // Use getAllItems() for multivendor
+            // Check if order item exists in this shop order
+            boolean itemExists = shopOrder.getItems().stream()
                     .anyMatch(oi -> oi.getOrderItemId().equals(itemDTO.getOrderItemId()));
 
             if (!itemExists) {
-                throw new RuntimeException("Order item not found: " + itemDTO.getOrderItemId());
+                throw new RuntimeException("Order item not found in this shop order: " + itemDTO.getOrderItemId());
             }
 
             // Validate return quantity
@@ -659,9 +681,9 @@ public class ReturnService {
     /**
      * Validate return items eligibility (quantity, return window, etc.)
      */
-    private void validateReturnItemsEligibility(List<ReturnItemDTO> returnItems, Order order) {
+    private void validateReturnItemsEligibility(List<ReturnItemDTO> returnItems, ShopOrder shopOrder) {
         for (ReturnItemDTO itemDTO : returnItems) {
-            OrderItem orderItem = order.getAllItems().stream() // Use getAllItems() for multivendor
+            OrderItem orderItem = shopOrder.getItems().stream()
                     .filter(oi -> oi.getOrderItemId().equals(itemDTO.getOrderItemId()))
                     .findFirst()
                     .orElseThrow(() -> new RuntimeException("Order item not found: " + itemDTO.getOrderItemId()));
@@ -692,19 +714,33 @@ public class ReturnService {
         }
     }
 
-    /**
-     * Convert ReturnRequest entity to DTO
-     */
     private ReturnRequestDTO convertToDTO(ReturnRequest returnRequest) {
-        // This would be implemented based on your DTO structure
-        // For now, returning a placeholder
         ReturnRequestDTO dto = new ReturnRequestDTO();
         dto.setId(returnRequest.getId());
-        dto.setOrderId(returnRequest.getOrderId());
+        dto.setShopOrderId(returnRequest.getShopOrderId());
         dto.setCustomerId(returnRequest.getCustomerId());
         dto.setReason(returnRequest.getReason());
         dto.setStatus(returnRequest.getStatus());
         dto.setSubmittedAt(returnRequest.getSubmittedAt());
+
+        // Basic order info
+        if (returnRequest.getShopOrder() != null) {
+            dto.setOrderNumber(returnRequest.getShopOrder().getShopOrderCode());
+            dto.setOrderDate(returnRequest.getShopOrder().getCreatedAt());
+            dto.setTotalAmount(returnRequest.getShopOrder().getTotalAmount());
+
+            Order globalOrder = returnRequest.getShopOrder().getOrder();
+            if (globalOrder != null) {
+                if (globalOrder.getOrderCustomerInfo() != null) {
+                    dto.setCustomerName(globalOrder.getOrderCustomerInfo().getFirstName() + " "
+                            + globalOrder.getOrderCustomerInfo().getLastName());
+                    dto.setCustomerEmail(globalOrder.getOrderCustomerInfo().getEmail());
+                    dto.setCustomerPhone(globalOrder.getOrderCustomerInfo().getPhoneNumber());
+                }
+                dto.setShippingAddress(globalOrder.getOrderAddress());
+            }
+        }
+
         return dto;
     }
 }

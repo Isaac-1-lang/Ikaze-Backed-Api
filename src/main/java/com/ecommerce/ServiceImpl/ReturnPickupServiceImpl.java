@@ -61,7 +61,7 @@ public class ReturnPickupServiceImpl implements ReturnPickupService {
                 itemResults.add(result);
             }
 
-            updateOrderStatus(returnRequest.getOrder());
+            updateOrderStatus(returnRequest.getShopOrder().getOrder());
 
             updateReturnRequestStatus(returnRequest);
 
@@ -79,7 +79,6 @@ public class ReturnPickupServiceImpl implements ReturnPickupService {
             throw new RuntimeException("Failed to process return pickup: " + e.getMessage());
         }
     }
-
 
     private void validateDeliveryAgentAssignment(UUID deliveryAgentId, ReturnRequest returnRequest) {
         // 1. Verify delivery agent exists
@@ -123,7 +122,7 @@ public class ReturnPickupServiceImpl implements ReturnPickupService {
     }
 
     private void validateReturnWindows(ReturnPickupRequestDTO pickupRequest, ReturnRequest returnRequest) {
-        LocalDateTime orderDate = returnRequest.getOrder().getCreatedAt();
+        LocalDateTime orderDate = returnRequest.getShopOrder().getOrder().getCreatedAt();
         LocalDateTime now = LocalDateTime.now();
 
         for (ReturnPickupRequestDTO.ReturnItemPickupDTO pickupItem : pickupRequest.getReturnItems()) {
@@ -493,12 +492,13 @@ public class ReturnPickupServiceImpl implements ReturnPickupService {
         }
 
         // Check if order exists and is in valid state
-        if (returnRequest.getOrder() == null) {
+        if (returnRequest.getShopOrder().getOrder() == null) {
             throw new IllegalStateException("Return request has no associated order");
         }
 
-        // Validate order status allows return completion - check if any shop order is cancelled
-        Order order = returnRequest.getOrder();
+        // Validate order status allows return completion - check if any shop order is
+        // cancelled
+        Order order = returnRequest.getShopOrder().getOrder();
         if (order.getShopOrders() != null) {
             boolean hasCancelled = order.getShopOrders().stream()
                     .anyMatch(so -> so.getStatus() == com.ecommerce.entity.ShopOrder.ShopOrderStatus.CANCELLED);
@@ -650,8 +650,9 @@ public class ReturnPickupServiceImpl implements ReturnPickupService {
 
         try {
             // Get order and transaction details
-            Order order = orderRepository.findById(returnRequest.getOrderId())
-                    .orElseThrow(() -> new RuntimeException("Order not found: " + returnRequest.getOrderId()));
+            Order order = orderRepository.findById(returnRequest.getShopOrder().getOrder().getOrderId())
+                    .orElseThrow(() -> new RuntimeException(
+                            "Order not found: " + returnRequest.getShopOrder().getOrder().getOrderId()));
 
             OrderTransaction transaction = order.getOrderTransaction();
             if (transaction == null) {
@@ -917,7 +918,7 @@ public class ReturnPickupServiceImpl implements ReturnPickupService {
             boolean cardRefundSuccess = true;
             if (cardRefundAmount.compareTo(BigDecimal.ZERO) > 0) {
                 cardRefundSuccess = processStripeRefund(transaction, cardRefundAmount);
-                
+
                 // Record money flow OUT for successful card portion of hybrid refund
                 if (cardRefundSuccess) {
                     recordMoneyFlowForRefund(order, cardRefundAmount, "Hybrid refund (card portion) for return");
@@ -958,7 +959,7 @@ public class ReturnPickupServiceImpl implements ReturnPickupService {
                     : refundCalc.getTotalRefundAmount();
 
             boolean success = processStripeRefund(transaction, refundAmount);
-            
+
             // Record money flow OUT for successful card refund
             if (success) {
                 recordMoneyFlowForRefund(order, refundAmount, "Card refund for return");
@@ -1215,7 +1216,6 @@ public class ReturnPickupServiceImpl implements ReturnPickupService {
         }
     }
 
-
     private void recordMoneyFlowForRefund(Order order, BigDecimal refundAmount, String description) {
         try {
             com.ecommerce.dto.CreateMoneyFlowDTO createMoneyFlowDTO = com.ecommerce.dto.CreateMoneyFlowDTO.builder()
@@ -1224,13 +1224,13 @@ public class ReturnPickupServiceImpl implements ReturnPickupService {
                     .description(String.format("%s - Order #%s", description, order.getOrderCode()))
                     .build();
             com.ecommerce.entity.MoneyFlow savedFlow = moneyFlowService.save(createMoneyFlowDTO);
-            
-            log.info("Recorded money flow OUT: Amount={}, Order={}, MoneyFlow ID={}, New Balance={}, CreatedAt={}", 
-                    refundAmount, order.getOrderCode(), savedFlow.getId(), 
+
+            log.info("Recorded money flow OUT: Amount={}, Order={}, MoneyFlow ID={}, New Balance={}, CreatedAt={}",
+                    refundAmount, order.getOrderCode(), savedFlow.getId(),
                     savedFlow.getRemainingBalance(), savedFlow.getCreatedAt());
-                    
+
         } catch (Exception e) {
-            log.error("Failed to record money flow for refund on order {}: {}", 
+            log.error("Failed to record money flow for refund on order {}: {}",
                     order.getOrderCode(), e.getMessage(), e);
         }
     }
