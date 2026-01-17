@@ -12,8 +12,14 @@ import org.springframework.context.annotation.Configuration;
 import io.swagger.v3.oas.models.OpenAPI;
 import io.swagger.v3.oas.models.info.License;
 
+/**
+ * @author Isaac-1-lang
+ * @version 1.0
+ * @since 2026-01-17
+ * OpenAPI configuration for the application.
+ */
 @Configuration
-@OpenAPIDefinition(info = @Info(title = "E-Commerce API", version = "1.0", description = "API for E-Commerce platform", contact = @Contact(name = "Dev-Teammm", url = "https://github.com/Dev-Teammm")), security = {
+@OpenAPIDefinition(info = @Info(title = "Ikaze-Backend API", version = "1.0", description = "API for Ikaze platform", contact = @Contact(name = "Isaac-1-lang", url = "https://github.com/Isaac-1-lang/Ikaze-Backed-Api")), security = {
                 @SecurityRequirement(name = "bearerAuth")
 })
 @SecuritySchemes({
@@ -25,9 +31,9 @@ public class OpenApiConfig {
         public OpenAPI customOpenAPI() {
                 return new OpenAPI()
                                 .info(new io.swagger.v3.oas.models.info.Info()
-                                                .title("E-Commerce Backend API")
+                                                .title("Ikaze Backend API")
                                                 .version("1.0")
-                                                .description("API for E-Commerce platform")
+                                                .description("API for Inter-commerce platform")
                                                 .license(new License().name("Apache 2.0")
                                                                 .url("https://springdoc.org")));
         }

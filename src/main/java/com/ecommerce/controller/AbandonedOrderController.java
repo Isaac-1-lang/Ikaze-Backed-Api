@@ -18,6 +18,12 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
+/**
+ * @author Isaac-1-lang
+ * @version 1.0
+ * @since 2026-01-17
+ * Abandoned order controller for the application.
+ */
 @RestController
 @RequestMapping("/api/v1/admin/abandoned-orders")
 @RequiredArgsConstructor

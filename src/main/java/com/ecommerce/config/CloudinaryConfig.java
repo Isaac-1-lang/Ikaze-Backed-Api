@@ -8,6 +8,12 @@ import org.springframework.context.annotation.Configuration;
 import java.util.HashMap;
 import java.util.Map;
 
+/**
+ * @author Isaac-1-lang
+ * @version 1.0
+ * @since 2026-01-17
+ * Cloudinary configuration for the application.
+ */
 @Configuration
 public class CloudinaryConfig {
 
