@@ -19,8 +19,13 @@ import org.springframework.transaction.annotation.Transactional;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 
+/**
+ * @author Isaac-1-lang
+ * @version 1.0
+ * @since 2026-01-17
+ * Product discount service implementation for the application.
+ */
 @Service
 @RequiredArgsConstructor
 @Slf4j

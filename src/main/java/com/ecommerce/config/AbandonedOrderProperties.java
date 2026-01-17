@@ -4,6 +4,12 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.context.annotation.Configuration;
 import lombok.Data;
 
+/**
+ * @author Isaac-1-lang
+ * @version 1.0
+ * @since 2026-01-17
+ * Abandoned order properties for the application.
+ */
 @Configuration
 @ConfigurationProperties(prefix = "app.abandoned-order-cleanup")
 @Data

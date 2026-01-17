@@ -9,6 +9,9 @@ import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
+ * @author Isaac-1-lang
+ * @version 1.0
+ * @since 2026-01-17
  * Database migration configuration that runs on application startup.
  * This ensures database schema is updated to support all payment methods including HYBRID.
  */

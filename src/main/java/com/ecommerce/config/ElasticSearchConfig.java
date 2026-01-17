@@ -9,6 +9,12 @@ import org.elasticsearch.client.RestClient;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
+/**
+ * @author Isaac-1-lang
+ * @version 1.0
+ * @since 2026-01-17
+ * ElasticSearch configuration for the application.
+ */
 @Configuration
 public class ElasticSearchConfig {
 

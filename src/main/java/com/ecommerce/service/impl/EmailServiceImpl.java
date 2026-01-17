@@ -16,6 +16,12 @@ import jakarta.mail.MessagingException;
 import jakarta.mail.internet.MimeMessage;
 import java.util.concurrent.CompletableFuture;
 
+/**
+ * @author Isaac-1-lang
+ * @version 1.0
+ * @since 2026-01-17
+ * Email service implementation for the application.
+ */
 @Service
 @RequiredArgsConstructor
 @Slf4j

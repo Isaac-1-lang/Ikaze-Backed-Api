@@ -8,7 +8,6 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.transaction.annotation.Propagation;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
@@ -16,6 +15,12 @@ import java.time.LocalDateTime;
 import java.util.*;
 import java.util.stream.Collectors;
 
+/**
+ * @author Isaac-1-lang
+ * @version 1.0
+ * @since 2026-01-17
+ * Points payment service implementation for the application.
+ */
 @Service
 @RequiredArgsConstructor
 @Slf4j
@@ -40,7 +45,6 @@ public class PointsPaymentServiceImpl implements PointsPaymentService {
     private final UserPointsRepository userPointsRepository;
     private final ShopRepository shopRepository;
     private final RewardSystemRepository rewardSystemRepository;
-    private final ShopOrderRepository shopOrderRepository;
     private final CheckoutService checkoutService;
 
     @Override
@@ -504,15 +508,6 @@ public class PointsPaymentServiceImpl implements PointsPaymentService {
         return subtotal;
     }
 
-    private BigDecimal calculateShopShipping(AddressDto address, List<CartItemDTO> items, BigDecimal subtotal) {
-        try {
-            return shippingCostService.calculateOrderShippingCost(address, items, subtotal);
-        } catch (Exception e) {
-            log.warn("Error calculating shipping: {}", e.getMessage());
-            return BigDecimal.valueOf(5.00); // Default fallback
-        }
-    }
-
     private Order createMultiVendorOrder(PointsPaymentRequest request, User user,
             List<ShopPointsCalculation> shopCalculations,
             Map<CartItemDTO, List<FEFOStockAllocationService.BatchAllocation>> allocations,
@@ -885,7 +880,6 @@ public class PointsPaymentServiceImpl implements PointsPaymentService {
 
             // Total amount now includes shipping and taxes from CheckoutService
             BigDecimal totalAmount = shopSummary.getTotalAmount();
-            int totalProductCount = shopSummary.getProductCount();
 
             RewardSystem rewardSystem = rewardSystemRepository.findByShopShopIdAndIsActiveTrue(shopId).orElse(null);
 
