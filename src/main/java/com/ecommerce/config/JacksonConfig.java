@@ -17,6 +17,12 @@ public class JacksonConfig {
 
     @Bean
     @Primary
+    /**
+     * @author Isaac-1-lang
+     * @version 1.0
+     * @since 2026-01-17
+     * Jackson configuration for the application.
+     */
     public ObjectMapper objectMapper() {
         ObjectMapper mapper = new ObjectMapper();
         

@@ -25,6 +25,12 @@ import java.util.Collections;
 import java.util.List;
 import java.util.stream.Collectors;
 
+/**
+ * @author Isaac-1-lang
+ * @version 1.0
+ * @since 2026-01-17
+ * Landing page service implementation for the application.
+ */
 @Service
 @RequiredArgsConstructor
 @Slf4j
@@ -158,32 +164,6 @@ public class LandingPageServiceImpl implements LandingPageService {
                 .collect(Collectors.toList());
     }
 
-    private List<LandingPageCategoryDTO> getPopularCategoriesList(int limit) {
-        log.info("Fetching popular categories with limit: {}", limit);
-
-        // Get all active categories
-        List<Category> categories = categoryRepository.findByIsActiveTrue(PageRequest.of(0, limit * 2)).getContent();
-
-        return categories.stream()
-                .map(this::convertToLandingPageCategoryDTO)
-                .sorted((c1, c2) -> Long.compare(c2.getProductCount(), c1.getProductCount()))
-                .limit(limit)
-                .collect(Collectors.toList());
-    }
-
-    private List<LandingPageBrandDTO> getPopularBrandsList(int limit) {
-        log.info("Fetching popular brands with limit: {}", limit);
-
-        // Get all active brands
-        List<Brand> brands = brandRepository.findByIsActiveTrue();
-
-        return brands.stream()
-                .map(this::convertToLandingPageBrandDTO)
-                .sorted((b1, b2) -> Long.compare(b2.getProductCount(), b1.getProductCount()))
-                .limit(limit)
-                .collect(Collectors.toList());
-    }
-
     private LandingPageProductDTO convertToLandingPageProductDTO(Product product) {
         // Get primary image
         String primaryImageUrl = null;
@@ -244,36 +224,6 @@ public class LandingPageServiceImpl implements LandingPageService {
                 .hasVariantDiscounts(hasVariantDiscounts)
                 .maxVariantDiscount(maxVariantDiscount)
                 .discountedVariantsCount(discountedVariantsCount)
-                .build();
-    }
-
-    private LandingPageCategoryDTO convertToLandingPageCategoryDTO(Category category) {
-        long productCount = productRepository.countByCategoryAndIsActiveTrue(category);
-
-        return LandingPageCategoryDTO.builder()
-                .categoryId(category.getId())
-                .categoryName(category.getName())
-                .description(category.getDescription())
-                .imageUrl(category.getImageUrl())
-                .slug(category.getSlug())
-                .productCount(productCount)
-                .isActive(category.isActive())
-                .isFeatured(category.isFeatured())
-                .build();
-    }
-
-    private LandingPageBrandDTO convertToLandingPageBrandDTO(Brand brand) {
-        long productCount = productRepository.countByBrandAndIsActiveTrue(brand);
-
-        return LandingPageBrandDTO.builder()
-                .brandId(brand.getBrandId())
-                .brandName(brand.getBrandName())
-                .description(brand.getDescription())
-                .logoUrl(brand.getLogoUrl())
-                .slug(brand.getSlug())
-                .productCount(productCount)
-                .isActive(brand.isActive())
-                .isFeatured(brand.isFeatured())
                 .build();
     }
 
@@ -357,9 +307,6 @@ public class LandingPageServiceImpl implements LandingPageService {
         return getMaxVariantDiscount(product);
     }
 
-    /**
-     * Get random top-performing categories with their products
-     */
     private List<CategoryWithProductsDTO> getFeaturedCategoriesWithProducts(int categoryLimit, int productLimit) {
         log.info("Fetching {} featured categories with {} products each", categoryLimit, productLimit);
 
@@ -407,9 +354,6 @@ public class LandingPageServiceImpl implements LandingPageService {
                 .collect(Collectors.toList());
     }
 
-    /**
-     * Get random top-performing brands with their products
-     */
     private List<BrandWithProductsDTO> getFeaturedBrandsWithProducts(int brandLimit, int productLimit) {
         log.info("Fetching {} featured brands with {} products each", brandLimit, productLimit);
 
