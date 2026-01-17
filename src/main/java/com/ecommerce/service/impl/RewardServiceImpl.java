@@ -7,7 +7,6 @@ import com.ecommerce.entity.RewardSystem;
 import com.ecommerce.entity.Shop;
 import com.ecommerce.entity.User;
 import com.ecommerce.entity.UserPoints;
-import com.ecommerce.entity.UserPoints.PointsType;
 import com.ecommerce.repository.RewardSystemRepository;
 import com.ecommerce.repository.ShopRepository;
 import com.ecommerce.repository.UserPointsRepository;
