@@ -30,13 +30,8 @@ build/
 !/src/test//build/
 
 ### VS Code ###
-.vscode/
 
 ### Environment Variables ###
-.env
-.env.local
-.env.development
-.env.production
 
 ### Logs ###
 logs/
@@ -62,3 +57,5 @@ application-dev.properties
 temp/
 *.tmp
 .backend-ecommerce-key.pem
+config.bat
+node_modules
