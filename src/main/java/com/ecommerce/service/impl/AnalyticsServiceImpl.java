@@ -10,7 +10,6 @@ import com.ecommerce.entity.ShopOrder;
 import com.ecommerce.entity.User;
 import com.ecommerce.entity.Product;
 import com.ecommerce.repository.OrderRepository;
-import com.ecommerce.repository.OrderTransactionRepository;
 import com.ecommerce.repository.ProductRepository;
 import com.ecommerce.repository.ShopRepository;
 import com.ecommerce.repository.ShopOrderRepository;
@@ -35,7 +34,6 @@ public class AnalyticsServiceImpl implements AnalyticsService {
 
     private final OrderRepository orderRepository;
     private final ShopOrderRepository shopOrderRepository;
-    private final OrderTransactionRepository orderTransactionRepository;
     private final UserRepository userRepository;
     private final ProductRepository productRepository;
     private final ShopRepository shopRepository;

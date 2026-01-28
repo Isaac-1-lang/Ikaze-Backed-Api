@@ -1,17 +1,14 @@
 package com.ecommerce.service.impl;
 
 import com.ecommerce.Enum.UserRole;
-import com.ecommerce.Exception.CustomException;
 import com.ecommerce.ServiceImpl.JwtService;
 import com.ecommerce.dto.AlertsDTO;
 import com.ecommerce.dto.DashboardResponseDTO;
 import com.ecommerce.dto.RecentOrderDTO;
 import com.ecommerce.entity.Order;
-import com.ecommerce.entity.OrderTransaction;
 import com.ecommerce.entity.Shop;
 import com.ecommerce.entity.User;
 import com.ecommerce.repository.OrderRepository;
-import com.ecommerce.repository.OrderTransactionRepository;
 import com.ecommerce.repository.ProductRepository;
 import com.ecommerce.repository.ShopRepository;
 import com.ecommerce.repository.UserRepository;
@@ -25,7 +22,6 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.util.List;
-import java.util.Objects;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
@@ -37,7 +33,6 @@ public class DashboardServiceImpl implements DashboardService {
     private final ProductRepository productRepository;
     private final OrderRepository orderRepository;
     private final com.ecommerce.repository.ShopOrderRepository shopOrderRepository;
-    private final OrderTransactionRepository orderTransactionRepository;
     private final UserRepository userRepository;
     private final ShopRepository shopRepository;
     private final JwtService jwtService;
