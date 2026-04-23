@@ -18,8 +18,8 @@ Content-Type: application/json
 ### Request Body
 ```json
 {
-  "username": "john_doe",
-  "email": "john.doe@example.com",
+  "username": "Elias",
+  "email": "elias250@example.com",
   "password": "SecurePass123!"
 }
 ```
@@ -86,25 +86,25 @@ Content-Type: application/json
 
 #### cURL
 ```bash
-curl -X POST http://localhost:8080/api/auth/register \
+curl -X POST http://localhost:3000/api/auth/register \
   -H "Content-Type: application/json" \
   -d '{
-    "username": "john_doe",
-    "email": "john.doe@example.com",
+    "username": "Elias",
+    "email": "elias250@example.com",
     "password": "SecurePass123!"
   }'
 ```
 
 #### JavaScript (Fetch API)
 ```javascript
-fetch('http://localhost:8080/api/auth/register', {
+fetch('http://localhost:3000/api/auth/register', {
   method: 'POST',
   headers: {
     'Content-Type': 'application/json',
   },
   body: JSON.stringify({
-    username: 'john_doe',
-    email: 'john.doe@example.com',
+    username: 'Elias',
+    email: 'elias250  @example.com',
     password: 'SecurePass123!'
   })
 })
@@ -117,7 +117,7 @@ fetch('http://localhost:8080/api/auth/register', {
 ```python
 import requests
 
-url = "http://localhost:8080/api/auth/register"
+url = "http://localhost:3000/api/auth/register"
 payload = {
     "username": "john_doe",
     "email": "john.doe@example.com",
@@ -134,20 +134,20 @@ print(response.json())
 Once your application is running, you can access the interactive API documentation at:
 
 ```
-http://localhost:8080/swagger-ui.html
+http://localhost:3000/swagger-ui.html
 ```
 
 or
 
 ```
-http://localhost:8080/swagger-ui/index.html
+http://localhost:3000/swagger-ui/index.html
 ```
 
 ### OpenAPI JSON Specification
 The raw OpenAPI specification is available at:
 
 ```
-http://localhost:8080/v3/api-docs
+http://localhost:3000/v3/api-docs
 ```
 
 ### Features Available in Swagger UI
@@ -178,7 +178,7 @@ http://localhost:8080/v3/api-docs
    mvnw.cmd spring-boot:run
    ```
 
-4. The application will start on `http://localhost:8080`
+4. The application will start on `http://localhost:3000`
 
 ## Testing the API
 

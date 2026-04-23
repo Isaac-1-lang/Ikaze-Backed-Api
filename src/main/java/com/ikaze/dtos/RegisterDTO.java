@@ -7,13 +7,19 @@ import jakarta.validation.constraints.Size;
 
 @Schema(description = "User registration request")
 public class RegisterDTO {
-    
-    @Schema(description = "Username for the new account", example = "john_doe", required = true)
+
+
+
+    @Schema(description="Full naem for the new account", example="Elias Papias", required=true)
+    @NotBlank(message="Full name is required")
+    @Size(min=3,max=30,message="Full name must be between 3 and 30 characters")
+    private String fullName;   
+    @Schema(description = "Username for the new account", example = "Elias", required = true)
     @NotBlank(message = "Username is required")
     @Size(min = 3, max = 50, message = "Username must be between 3 and 50 characters")
     private String username;
     
-    @Schema(description = "Email address for the new account", example = "john.doe@example.com", required = true)
+    @Schema(description = "Email address for the new account", example = "elias250@example.com", required = true)
     @NotBlank(message = "Email is required")
     @Email(message = "Email must be valid")
     private String email;
@@ -22,6 +28,16 @@ public class RegisterDTO {
     @NotBlank(message = "Password is required")
     @Size(min = 8, max = 100, message = "Password must be between 8 and 100 characters")
     private String password;
+
+
+
+    public String getFullName() {
+        return fullName;
+    }
+
+    public void setUsername(String fullName) {
+        this.fullName=fullName;
+    }
 
     public String getUsername() {
         return username;
