@@ -196,3 +196,172 @@ After implementing the register API, you may want to:
 3. Implement password reset functionality
 4. Add user profile management
 5. Implement role-based access control
+
+
+---
+
+## 2. Login API
+
+### Overview
+The Login API authenticates users and returns a JWT token that must be included in subsequent API requests. Users can login with either their username or email address.
+
+### Endpoint
+```
+POST /api/auth/login
+```
+
+### Request Headers
+```
+Content-Type: application/json
+```
+
+### Request Body
+```json
+{
+  "usernameOrEmail": "john_doe",
+  "password": "SecurePass123!"
+}
+```
+
+### Request Parameters
+
+| Field           | Type   | Required | Constraints                    | Description                           |
+|-----------------|--------|----------|--------------------------------|---------------------------------------|
+| usernameOrEmail | string | Yes      | Not blank                      | Username or email address             |
+| password        | string | Yes      | Not blank                      | User's password                       |
+
+### Response
+
+#### Success Response (200 OK)
+```json
+{
+  "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJqb2huX2RvZSIsImlhdCI6MTYxNjIzOTAyMiwiZXhwIjoxNjE2MzI1NDIyfQ.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c",
+  "type": "Bearer",
+  "username": "john_doe",
+  "email": "john.doe@example.com",
+  "message": "Login successful"
+}
+```
+
+#### Error Response - Invalid Credentials (400 Bad Request)
+```json
+{
+  "timestamp": "2026-04-23T10:30:00",
+  "status": 400,
+  "error": "Bad Request",
+  "message": "Invalid username/email or password",
+  "path": "/api/auth/login",
+  "errors": null
+}
+```
+
+#### Error Response - Account Not Activated (400 Bad Request)
+```json
+{
+  "timestamp": "2026-04-23T10:30:00",
+  "status": 400,
+  "error": "Bad Request",
+  "message": "Account is not activated. Please verify your email.",
+  "path": "/api/auth/login",
+  "errors": null
+}
+```
+
+### Example Usage
+
+#### cURL
+```bash
+curl -X POST http://localhost:3000/api/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{
+    "usernameOrEmail": "john_doe",
+    "password": "SecurePass123!"
+  }'
+```
+
+#### JavaScript (Fetch API)
+```javascript
+fetch('http://localhost:3000/api/auth/login', {
+  method: 'POST',
+  headers: {
+    'Content-Type': 'application/json',
+  },
+  body: JSON.stringify({
+    usernameOrEmail: 'john_doe',
+    password: 'SecurePass123!'
+  })
+})
+.then(response => response.json())
+.then(data => {
+  // Store the token for future requests
+  localStorage.setItem('token', data.token);
+  console.log('Login successful:', data);
+})
+.catch(error => console.error('Error:', error));
+```
+
+#### Using the JWT Token in Subsequent Requests
+```javascript
+// Example: Making an authenticated request
+fetch('http://localhost:3000/api/protected-endpoint', {
+  method: 'GET',
+  headers: {
+    'Content-Type': 'application/json',
+    'Authorization': 'Bearer ' + localStorage.getItem('token')
+  }
+})
+.then(response => response.json())
+.then(data => console.log(data))
+.catch(error => console.error('Error:', error));
+```
+
+#### Python (Requests)
+```python
+import requests
+
+# Login
+url = "http://localhost:3000/api/auth/login"
+payload = {
+    "usernameOrEmail": "john_doe",
+    "password": "SecurePass123!"
+}
+
+response = requests.post(url, json=payload)
+data = response.json()
+
+# Extract token
+token = data['token']
+print(f"Token: {token}")
+
+# Use token in subsequent requests
+headers = {
+    "Authorization": f"Bearer {token}",
+    "Content-Type": "application/json"
+}
+
+# Example authenticated request
+protected_response = requests.get(
+    "http://localhost:3000/api/protected-endpoint",
+    headers=headers
+)
+print(protected_response.json())
+```
+
+---
+
+## JWT Token Information
+
+### Token Details
+- **Algorithm**: HS256 (HMAC with SHA-256)
+- **Expiration**: 24 hours (86400000 milliseconds)
+- **Type**: Bearer token
+
+### Using JWT Tokens
+Include the JWT token in the Authorization header for all protected endpoints:
+
+```
+Authorization: Bearer <your-jwt-token>
+```
+
+### Token Expiration
+Tokens expire after 24 hours. When a token expires, the user must login again to obtain a new token.

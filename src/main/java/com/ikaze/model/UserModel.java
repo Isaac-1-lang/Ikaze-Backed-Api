@@ -9,6 +9,10 @@ public class UserModel {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
+
+    @Column(nullable=false)
+    private String fullName;
+
     @Column(unique = true, nullable = false)
     private String username;
 
@@ -28,7 +32,14 @@ public class UserModel {
     public void setId(Long id) {
         this.id = id;
     }
+    
+    public String getFullName() {
+        return fullName;
+    }
 
+    public void setFullName(String fullName) {
+        this.fullName = fullName;
+    }
     public String getUsername() {
         return username;
     }
