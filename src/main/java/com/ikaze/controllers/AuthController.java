@@ -1,5 +1,7 @@
 package com.ikaze.controllers;
 
+import com.ikaze.dtos.LoginDTO;
+import com.ikaze.dtos.LoginResponse;
 import com.ikaze.dtos.RegisterDTO;
 import com.ikaze.services.AuthService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -55,5 +57,40 @@ public class AuthController {
             HttpStatus.CREATED.value()
         );
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
+    }
+
+    @Operation(
+        summary = "Login user",
+        description = "Authenticates a user with username/email and password. Returns a JWT token upon successful authentication that should be used for subsequent API requests."
+    )
+    @ApiResponses(value = {
+        @io.swagger.v3.oas.annotations.responses.ApiResponse(
+            responseCode = "200",
+            description = "Login successful",
+            content = @Content(
+                mediaType = "application/json",
+                schema = @Schema(implementation = LoginResponse.class)
+            )
+        ),
+        @io.swagger.v3.oas.annotations.responses.ApiResponse(
+            responseCode = "400",
+            description = "Invalid credentials or account not activated",
+            content = @Content(mediaType = "application/json")
+        ),
+        @io.swagger.v3.oas.annotations.responses.ApiResponse(
+            responseCode = "401",
+            description = "Unauthorized - Invalid username/email or password",
+            content = @Content(mediaType = "application/json")
+        ),
+        @io.swagger.v3.oas.annotations.responses.ApiResponse(
+            responseCode = "500",
+            description = "Internal server error",
+            content = @Content(mediaType = "application/json")
+        )
+    })
+    @PostMapping("/login")
+    public ResponseEntity<LoginResponse> login(@Valid @RequestBody LoginDTO request) {
+        LoginResponse response = authService.login(request);
+        return ResponseEntity.ok(response);
     }
 }
