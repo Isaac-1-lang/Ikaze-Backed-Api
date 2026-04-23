@@ -31,7 +31,9 @@ public class SecurityConfig {
 
                 // 3. Configure which routes are public and which are private
                 .authorizeHttpRequests(auth -> auth
-                        .requestMatchers("/api/auth/**").permitAll() // Registration/Login are public
+                        .requestMatchers("/api/auth/**").permitAll() // Registration/Login 
+                        .requestMatchers("/").permitAll() 
+                        // are public
                         .requestMatchers("/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html").permitAll() // Swagger is public
                         .anyRequest().authenticated() // Everything else needs a login
                 )
