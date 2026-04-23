@@ -35,7 +35,7 @@ public class RegisterDTO {
         return fullName;
     }
 
-    public void setUsername(String fullName) {
+    public void setFullname(String fullName) {
         this.fullName=fullName;
     }
 
