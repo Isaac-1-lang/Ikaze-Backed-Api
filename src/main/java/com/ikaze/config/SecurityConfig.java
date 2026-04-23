@@ -1,8 +1,11 @@
 package com.ikaze.config;
 
+import com.ikaze.security.CustomUserDetailsService;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.authentication.AuthenticationManager;
+import org.springframework.security.authentication.AuthenticationProvider;
+import org.springframework.security.authentication.dao.DaoAuthenticationProvider;
 import org.springframework.security.config.annotation.authentication.configuration.AuthenticationConfiguration;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
@@ -20,6 +23,12 @@ import java.util.Arrays;
 @EnableWebSecurity
 public class SecurityConfig {
 
+    private final CustomUserDetailsService userDetailsService;
+
+    public SecurityConfig(CustomUserDetailsService userDetailsService) {
+        this.userDetailsService = userDetailsService;
+    }
+
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         http
@@ -31,9 +40,8 @@ public class SecurityConfig {
 
                 // 3. Configure which routes are public and which are private
                 .authorizeHttpRequests(auth -> auth
-                        .requestMatchers("/api/auth/**").permitAll() // Registration/Login 
+                        .requestMatchers("/api/auth/**").permitAll() // Registration/Login are public
                         .requestMatchers("/").permitAll() 
-                        // are public
                         .requestMatchers("/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html").permitAll() // Swagger is public
                         .anyRequest().authenticated() // Everything else needs a login
                 )
@@ -41,7 +49,10 @@ public class SecurityConfig {
                 // 4. Set Session Management to Stateless (because we use JWT)
                 .sessionManagement(session -> session
                         .sessionCreationPolicy(SessionCreationPolicy.STATELESS)
-                );
+                )
+                
+                // 5. Set authentication provider
+                .authenticationProvider(authenticationProvider());
 
         return http.build();
     }
@@ -55,7 +66,7 @@ public class SecurityConfig {
             "http://localhost:3000",
             "http://localhost:4200",
             "http://localhost:5173",
-            "http://localhost:3000"
+            "http://localhost:8080"
         ));
         
         // Allow all HTTP methods
@@ -78,13 +89,20 @@ public class SecurityConfig {
         return source;
     }
 
-    // 5. Define the Password Encoder bean
+    @Bean
+    public AuthenticationProvider authenticationProvider() {
+        DaoAuthenticationProvider authProvider = new DaoAuthenticationProvider(userDetailsService);
+        authProvider.setPasswordEncoder(passwordEncoder());
+        return authProvider;
+    }
+
+    // 6. Define the Password Encoder bean
     @Bean
     public PasswordEncoder passwordEncoder() {
         return new BCryptPasswordEncoder();
     }
 
-    // 6. Define AuthenticationManager (Needed later for Login)
+    // 7. Define AuthenticationManager (Needed for Login)
     @Bean
     public AuthenticationManager authenticationManager(AuthenticationConfiguration config) throws Exception {
         return config.getAuthenticationManager();
